@@ -1,0 +1,4 @@
+<Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\..\FrameXML\UI.xsd">
+    <!-- 空投物资追踪器 UI框架定义 -->
+    <!-- 这个文件目前主要用于保持插件结构，实际UI元素主要在MainPanel.lua中创建 -->
+</Ui>
