@@ -323,18 +323,8 @@ end
 -- 检测地图上的战争物资箱图标
 -- @return boolean 是否检测到图标
 function TimerManager:DetectMapIcons()
-    -- 检查是否在有效的检测区域（使用总开关CheckAndUpdateAreaValid）
-    -- 这个函数检查：副本/战场/室内/主城/有效地图列表
-    if not CheckAndUpdateAreaValid then
-        SafeDebug("CheckAndUpdateAreaValid函数不可用，跳过地图图标检测")
-        return false;
-    end
-    
-    if not CheckAndUpdateAreaValid() then
-        -- 使用限制输出，避免刷屏（每30秒最多输出一次）
-        SafeDebugLimited("map_icon_invalid_area", "【空投检测】当前区域无效，跳过地图图标检测")
-        return false;
-    end
+    -- 注意：此函数只在区域有效时被调用（定时器已暂停时不会调用）
+    -- 区域有效性检测只在区域变化时执行一次，如果区域无效，定时器已暂停
     
     -- 获取当前地图ID
     if not C_Map or not C_Map.GetBestMapForUnit then
@@ -634,7 +624,7 @@ function TimerManager:StopMapIconDetection()
     if self.mapIconDetectionTimer then
         self.mapIconDetectionTimer:Cancel();
         self.mapIconDetectionTimer = nil;
-        Utils.Print("地图图标检测已停止");
+        SafeDebug("地图图标检测已停止");
     end
     return true;
 end

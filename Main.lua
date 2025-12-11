@@ -669,13 +669,8 @@ function CheckAndUpdateAreaValid()
 end
 
 -- 2. 位面检测（独立、持续监听）
+-- 注意：此函数只在区域有效时被调用（定时器已暂停时不会调用）
 local function UpdatePhaseInfo()
-    -- 注意：位面检测需要在有效区域内才进行
-    -- 如果区域无效（副本/战场/室内/主城/不在有效地图列表），跳过位面检测
-    if not CheckAndUpdateAreaValid() then
-        DebugPrintLimited("phase_invalid_area", "【位面检测】当前区域无效，跳过位面检测");
-        return;
-    end
     
     if Data then
         -- 获取当前地图信息（使用最新的正式服API）
@@ -885,15 +880,18 @@ local function OnEvent(self, event, ...)
         end
         -- 创建浮动按钮
         CreateFloatingButton();
-        -- 初始化时立即检测地图有效性和位面信息（独立检测）
+        -- 初始化时立即检测地图有效性（只在区域变化时检测，初始化时检测一次）
         CheckAndUpdateAreaValid();
-        UpdatePhaseInfo();
+        -- 如果区域有效，执行一次位面检测
+        if not detectionPaused then
+            UpdatePhaseInfo();
+        end
         DebugPrint("【初始化】插件初始化完成（TimerManager、UI、地图检测已启动）");
     elseif event == "CHAT_MSG_MONSTER_SAY" then
-        -- 空投检测：NPC喊话检测（独立运行，但需要检查地图有效性）
-        -- 注意：这里使用CheckAndUpdateAreaValid()来确保地图有效性状态是最新的
-        if not CheckAndUpdateAreaValid() then
-            DebugPrintLimited("invalid_area_npc", "【NPC喊话】当前区域无效，跳过处理");
+        -- 空投检测：NPC喊话检测
+        -- 注意：如果区域无效，事件已被取消注册，此函数不会被调用
+        -- 但为了安全起见，仍然检查检测是否已暂停
+        if detectionPaused then
             return;
         end
         
@@ -973,23 +971,30 @@ local function OnEvent(self, event, ...)
             C_Timer.After(0.1, function()
                 zoneChangePending = false;
                 DebugPrint("【游戏事件】区域变化: " .. event);
-                -- 区域变化时，首先检测地图有效性（这是总开关，必须先检测）
+                -- 区域变化时，首先检测地图有效性（这是总开关，只在区域变化时检测一次）
                 -- 地图有效性检测：检查是否在副本/战场/室内，检查是否在有效地图列表中
+                -- 如果区域有效，会自动恢复检测功能；如果区域无效，会自动暂停检测功能
                 CheckAndUpdateAreaValid();
-                -- 区域变化时更新位面信息（独立检测）
-                UpdatePhaseInfo();
-                -- 区域变化时检测地图图标（空投检测，独立运行）
-                if TimerManager then
-                    TimerManager:DetectMapIcons();
-                    -- 调试信息已在地图图标检测函数内部输出，这里不再重复输出
+                
+                -- 区域变化后，如果区域有效，执行一次检测
+                if not detectionPaused then
+                    -- 区域变化时更新位面信息（独立检测）
+                    UpdatePhaseInfo();
+                    -- 区域变化时检测地图图标（空投检测，独立运行）
+                    if TimerManager then
+                        TimerManager:DetectMapIcons();
+                    end
                 end
             end);
         else
             DebugPrintLimited("zone_change_pending", "【游戏事件】区域变化（已处理，跳过重复）: " .. event);
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
-        -- 当玩家选择目标时，也尝试更新位面信息（静默执行，不输出调试信息）
-        UpdatePhaseInfo();
+        -- 当玩家选择目标时，也尝试更新位面信息（仅在区域有效时执行）
+        -- 注意：如果区域无效，检测功能已暂停，不需要更新位面信息
+        if not detectionPaused then
+            UpdatePhaseInfo();
+        end
     end
 end
 
@@ -997,14 +1002,20 @@ end
 if C_TooltipInfo and TooltipDataProcessor then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, tooltipData)
         if tooltip == GameTooltip then
-            -- 鼠标悬停在单位上时更新位面信息
-            UpdatePhaseInfo();
+            -- 鼠标悬停在单位上时更新位面信息（仅在区域有效时执行）
+            -- 注意：如果区域无效，检测功能已暂停，不需要更新位面信息
+            if not detectionPaused then
+                UpdatePhaseInfo();
+            end
         end
     end)
 else
     -- 旧版API支持
     GameTooltip:HookScript("OnTooltipSetUnit", function(tooltip) 
-        UpdatePhaseInfo();
+        -- 鼠标悬停在单位上时更新位面信息（仅在区域有效时执行）
+        if not detectionPaused then
+            UpdatePhaseInfo();
+        end
     end);
 end
 
