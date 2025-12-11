@@ -1,0 +1,139 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CrateTracker.toc'
+      - '*.lua'
+      - '*.xml'
+      - 'Load.xml'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      should-release: ${{ steps.check-version.outputs.should-release }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整历史来比较版本
+
+      - name: Get current version
+        id: get-version
+        run: |
+          VERSION=$(grep "^## Version:" CrateTracker.toc | sed 's/^## Version:[[:space:]]*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Check if version changed
+        id: check-version
+        run: |
+          CURRENT_VERSION="${{ steps.get-version.outputs.version }}"
+          
+          # 获取上一个提交的版本号
+          PREV_VERSION=$(git show HEAD~1:CrateTracker.toc 2>/dev/null | grep "^## Version:" | sed 's/^## Version:[[:space:]]*//' || echo "")
+          
+          if [ -z "$PREV_VERSION" ]; then
+            echo "No previous version found, creating first release"
+            echo "should-release=true" >> $GITHUB_OUTPUT
+          elif [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+            echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+            echo "should-release=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $CURRENT_VERSION"
+            echo "should-release=false" >> $GITHUB_OUTPUT
+          fi
+
+  create-release:
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(grep "^## Version:" CrateTracker.toc | sed 's/^## Version:[[:space:]]*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      - name: Create release package
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          PACKAGE_NAME="CrateTracker_v${VERSION}"
+          
+          # 创建临时目录
+          mkdir -p release_package
+          
+          # 复制所有需要的文件
+          # Lua文件
+          cp *.lua release_package/ 2>/dev/null || true
+          
+          # 配置文件
+          cp *.toc release_package/ 2>/dev/null || true
+          cp *.xml release_package/ 2>/dev/null || true
+          cp Load.xml release_package/ 2>/dev/null || true
+          
+          # HTML文件
+          cp *.html release_package/ 2>/dev/null || true
+          
+          # 用户文档（README.md）
+          cp README.md release_package/ 2>/dev/null || true
+          
+          # 复制文件夹
+          if [ -d "Module" ]; then
+            cp -r Module release_package/
+          fi
+          
+          if [ -d "Media" ]; then
+            cp -r Media release_package/
+          fi
+          
+          # 创建ZIP文件
+          cd release_package
+          zip -r "../${PACKAGE_NAME}.zip" . -q
+          cd ..
+          
+          echo "package_name=${PACKAGE_NAME}.zip" >> $GITHUB_OUTPUT
+          echo "Created package: ${PACKAGE_NAME}.zip"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: CrateTracker v${{ needs.check-version.outputs.version }}
+          body: |
+            ## CrateTracker v${{ needs.check-version.outputs.version }}
+            
+            ### 安装说明
+            
+            1. 下载 `CrateTracker_v${{ needs.check-version.outputs.version }}.zip`
+            2. 解压到魔兽世界插件目录：
+               ```
+               World of Warcraft\_retail_\Interface\AddOns\CrateTracker
+               ```
+            3. 重启游戏或使用 `/reload` 命令
+            
+            ### 更新内容
+            
+            查看 [提交历史](https://github.com/${{ github.repository }}/compare/v${{ needs.check-version.outputs.version }}...main) 了解详细变更。
+            
+            ### 使用说明
+            
+            查看 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) 了解详细使用方法。
+          files: |
+            CrateTracker_v${{ needs.check-version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
