@@ -41,11 +41,6 @@ v1.0.6
 - `/ct team off` - 关闭团队通知
 - `/ct team status` - 查看团队通知状态
 
-### 调试
-
-- `/ct debug on` - 开启调试信息
-- `/ct debug off` - 关闭调试信息
-
 ## 功能说明
 
 ### 自动检测
