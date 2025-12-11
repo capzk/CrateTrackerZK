@@ -488,6 +488,9 @@ local detectionPaused = false; -- 检测功能是否已暂停
 local phaseTimerPaused = false; -- 位面检测定时器是否已暂停
 local npcSpeechEventRegistered = true; -- NPC喊话事件是否已注册
 
+-- 前向声明：位面检测函数（将在后面定义）
+local UpdatePhaseInfo;
+
 -- 暂停所有检测功能
 local function PauseAllDetections()
     if detectionPaused then
@@ -670,7 +673,7 @@ end
 
 -- 2. 位面检测（独立、持续监听）
 -- 注意：此函数只在区域有效时被调用（定时器已暂停时不会调用）
-local function UpdatePhaseInfo()
+UpdatePhaseInfo = function()
     
     if Data then
         -- 获取当前地图信息（使用最新的正式服API）
