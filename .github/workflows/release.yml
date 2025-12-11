@@ -68,7 +68,7 @@ jobs:
 
       - name: Create release package
         run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
+          VERSION="${{ steps.get-version.outputs.version }}"
           PACKAGE_NAME="CrateTracker_v${VERSION}"
           
           # 创建临时目录
@@ -109,14 +109,14 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.check-version.outputs.version }}
-          name: CrateTracker v${{ needs.check-version.outputs.version }}
+          tag_name: v${{ steps.get-version.outputs.version }}
+          name: CrateTracker v${{ steps.get-version.outputs.version }}
           body: |
-            ## CrateTracker v${{ needs.check-version.outputs.version }}
+            ## CrateTracker v${{ steps.get-version.outputs.version }}
             
             ### 安装说明
             
-            1. 下载 `CrateTracker_v${{ needs.check-version.outputs.version }}.zip`
+            1. 下载 `CrateTracker_v${{ steps.get-version.outputs.version }}.zip`
             2. 解压到魔兽世界插件目录：
                ```
                World of Warcraft\_retail_\Interface\AddOns\CrateTracker
@@ -125,13 +125,13 @@ jobs:
             
             ### 更新内容
             
-            查看 [提交历史](https://github.com/${{ github.repository }}/compare/v${{ needs.check-version.outputs.version }}...main) 了解详细变更。
+            查看 [提交历史](https://github.com/${{ github.repository }}/compare/v${{ steps.get-version.outputs.version }}...main) 了解详细变更。
             
             ### 使用说明
             
             查看 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) 了解详细使用方法。
           files: |
-            CrateTracker_v${{ needs.check-version.outputs.version }}.zip
+            CrateTracker_v${{ steps.get-version.outputs.version }}.zip
           draft: false
           prerelease: false
         env:
