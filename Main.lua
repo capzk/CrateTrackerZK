@@ -477,6 +477,79 @@ local zoneChangePending = false;
 -- 1. 地图有效性检测（事件驱动，区域变化时检测）
 local lastAreaValidState = nil; -- 记录上次的地图有效性状态
 
+-- 检测功能暂停/恢复控制（变量将在后面定义，这里先声明）
+local phaseTimer = nil; -- 位面检测定时器（将在后面创建）
+local eventFrame = nil; -- 事件框架（将在后面创建）
+local phaseLastTime = 0; -- 位面检测计时器累计时间
+local PHASE_INTERVAL = 10; -- 位面检测间隔（10秒）
+
+-- 检测功能暂停/恢复控制
+local detectionPaused = false; -- 检测功能是否已暂停
+local phaseTimerPaused = false; -- 位面检测定时器是否已暂停
+local npcSpeechEventRegistered = true; -- NPC喊话事件是否已注册
+
+-- 暂停所有检测功能
+local function PauseAllDetections()
+    if detectionPaused then
+        return; -- 已经暂停，避免重复操作
+    end
+    detectionPaused = true;
+    
+    -- 暂停位面检测定时器
+    if phaseTimer and not phaseTimerPaused then
+        phaseTimer:SetScript("OnUpdate", nil);
+        phaseTimerPaused = true;
+        DebugPrint("【检测控制】位面检测定时器已暂停");
+    end
+    
+    -- 暂停地图图标检测定时器
+    if TimerManager then
+        TimerManager:StopMapIconDetection();
+        DebugPrint("【检测控制】地图图标检测定时器已暂停");
+    end
+    
+    -- 暂停NPC喊话检测（取消注册事件）
+    if eventFrame and npcSpeechEventRegistered then
+        eventFrame:UnregisterEvent("CHAT_MSG_MONSTER_SAY");
+        npcSpeechEventRegistered = false;
+        DebugPrint("【检测控制】NPC喊话检测已暂停");
+    end
+end
+
+-- 恢复所有检测功能
+local function ResumeAllDetections()
+    if not detectionPaused then
+        return; -- 已经恢复，避免重复操作
+    end
+    detectionPaused = false;
+    
+    -- 恢复位面检测定时器
+    if phaseTimer and phaseTimerPaused then
+        phaseTimer:SetScript("OnUpdate", function(self, elapsed)
+            phaseLastTime = phaseLastTime + elapsed;
+            if phaseLastTime >= PHASE_INTERVAL then
+                phaseLastTime = 0;
+                UpdatePhaseInfo();
+            end
+        end);
+        phaseTimerPaused = false;
+        DebugPrint("【检测控制】位面检测定时器已恢复");
+    end
+    
+    -- 恢复地图图标检测定时器
+    if TimerManager then
+        TimerManager:StartMapIconDetection(3);
+        DebugPrint("【检测控制】地图图标检测定时器已恢复");
+    end
+    
+    -- 恢复NPC喊话检测（重新注册事件）
+    if eventFrame and not npcSpeechEventRegistered then
+        eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
+        npcSpeechEventRegistered = true;
+        DebugPrint("【检测控制】NPC喊话检测已恢复");
+    end
+end
+
 -- 地图有效性检测函数（作为总开关，供其他模块调用）
 function CheckAndUpdateAreaValid()
     -- 检查是否在副本/战场/室内
@@ -490,6 +563,8 @@ function CheckAndUpdateAreaValid()
             lastAreaValidState = false;
             -- 只在调试模式下输出提示信息
             DebugPrint("【地图有效性】区域无效（副本/战场/室内），插件已自动暂停");
+            -- 暂停所有检测功能
+            PauseAllDetections();
         end
         return false;
     end
@@ -500,6 +575,8 @@ function CheckAndUpdateAreaValid()
         if lastAreaValidState ~= false then
             lastAreaValidState = false;
             DebugPrint("【地图有效性】无法获取地图ID");
+            -- 暂停所有检测功能
+            PauseAllDetections();
         end
         return false;
     end
@@ -530,6 +607,8 @@ function CheckAndUpdateAreaValid()
             lastAreaValidState = false;
             -- 只在调试模式下输出提示信息
             DebugPrint("【地图有效性】区域无效（主城），插件已自动暂停: " .. currentMapName);
+            -- 暂停所有检测功能
+            PauseAllDetections();
         end
         return false;
     end
@@ -570,6 +649,8 @@ function CheckAndUpdateAreaValid()
                 lastAreaValidState = true;
                 -- 只在调试模式下输出提示信息
                 DebugPrint("【地图有效性】区域有效，插件已启用: " .. (matchedMapName or currentMapName));
+                -- 恢复所有检测功能
+                ResumeAllDetections();
             end
             return true;
         else
@@ -577,6 +658,8 @@ function CheckAndUpdateAreaValid()
                 lastAreaValidState = false;
                 -- 只在调试模式下输出提示信息
                 DebugPrint("【地图有效性】区域无效（不在有效地图列表中），插件已自动暂停: " .. currentMapName);
+                -- 暂停所有检测功能
+                PauseAllDetections();
             end
             return false;
         end
@@ -947,7 +1030,7 @@ SLASH_CRATETRACKER2 = "/crate"  -- 保留兼容性
 SlashCmdList.CRATETRACKER = HandleCommand;
 
 -- 创建事件框架
-local eventFrame = CreateFrame("Frame");
+eventFrame = CreateFrame("Frame");
 eventFrame:SetScript("OnEvent", OnEvent);
 eventFrame:RegisterEvent("PLAYER_LOGIN");
 eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
@@ -960,9 +1043,7 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
 -- 因为区域变化事件已经能捕获所有区域变化，定时检测是多余的
 
 -- 1. 位面检测定时器（每10秒检测一次，独立运行）
-local phaseTimer = CreateFrame("Frame");
-local phaseLastTime = 0;
-local PHASE_INTERVAL = 10; -- 10秒检测一次
+phaseTimer = CreateFrame("Frame");
 
 phaseTimer:SetScript("OnUpdate", function(self, elapsed)
     phaseLastTime = phaseLastTime + elapsed;
