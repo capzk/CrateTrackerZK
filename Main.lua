@@ -713,6 +713,15 @@ UpdatePhaseInfo = function()
             end
         end
         
+        -- 检查是否在主城（主城是无效区域，不检测位面）
+        local capitalCityName = "多恩诺嘉尔";
+        local cleanCapitalCityName = string.lower(string.gsub(capitalCityName, "[%p ]", ""));
+        local cleanCurrentMapName = string.lower(string.gsub(currentMapName, "[%p ]", ""));
+        if cleanCurrentMapName == cleanCapitalCityName then
+            DebugPrintLimited("capital_city_phase", "【位面检测】当前在主城（无效区域），跳过位面检测: " .. currentMapName);
+            return;
+        end
+        
         -- 合并地图信息输出（只在调试模式下输出，且限制频率）
         if currentMapName ~= "" then
             local mapInfoText = "【地图信息】地图ID=" .. tostring(currentMapID) .. " 地图名称=" .. currentMapName;
@@ -726,7 +735,7 @@ UpdatePhaseInfo = function()
         local maps = Data:GetAllMaps();
         local targetMapData = nil;
         local matchedMapName = nil;
-        local isSubArea = false;  -- 标记是否为子区域匹配（父地图匹配）
+        local isSubArea = false;  -- 标记是否为子区域（有父地图且父地图在有效列表中）
         
         -- 1. 首先尝试匹配当前地图名称（使用不区分大小写的比较，增加匹配的灵活性）
         for _, mapData in ipairs(maps) do
@@ -737,8 +746,22 @@ UpdatePhaseInfo = function()
             if cleanMapDataName == cleanCurrentMapName then
                 targetMapData = mapData;
                 matchedMapName = currentMapName;
-                isSubArea = false;  -- 当前地图匹配，不是子区域
-                DebugPrintLimited("map_match_" .. tostring(currentMapID), "【位面检测】地图匹配成功: " .. currentMapName);
+                -- 检查是否有父地图，且父地图也在有效地图列表中（子区域判断）
+                if parentMapName ~= "" then
+                    for _, parentMapData in ipairs(maps) do
+                        local cleanParentMapDataName = string.lower(string.gsub(parentMapData.mapName, "[%p ]", ""));
+                        local cleanParentMapName = string.lower(string.gsub(parentMapName, "[%p ]", ""));
+                        if cleanParentMapDataName == cleanParentMapName then
+                            -- 当前地图匹配，但父地图也在有效列表中，说明当前是子区域
+                            isSubArea = true;
+                            DebugPrintLimited("subarea_detected_" .. tostring(currentMapID), "【位面检测】检测到子区域: " .. currentMapName .. " (父地图=" .. parentMapName .. ")，跳过位面检测");
+                            break;
+                        end
+                    end
+                end
+                if not isSubArea then
+                    DebugPrintLimited("map_match_" .. tostring(currentMapID), "【位面检测】地图匹配成功: " .. currentMapName);
+                end
                 break;
             end
         end
@@ -760,8 +783,9 @@ UpdatePhaseInfo = function()
             end
         end
         
-        -- 位面检测：只有非子区域（当前地图直接匹配）才进行位面检查和更新位面ID数据
-        -- 子区域（父地图匹配或大陆地图匹配）不检测也不处理任何位面数据
+        -- 位面检测：只有非子区域（当前地图直接匹配且没有父地图在有效列表中）才进行位面检查和更新位面ID数据
+        -- 子区域（有父地图且父地图在有效列表中）不检测也不处理任何位面数据
+        -- 主城等无效区域：不会匹配到 targetMapData，也不会检测位面
         if targetMapData and not isSubArea then
             -- 获取当前地图的位面信息（根据用户要求，只从NPC获取）
             local instanceID = nil;
@@ -1065,6 +1089,10 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
 phaseTimer = CreateFrame("Frame");
 
 phaseTimer:SetScript("OnUpdate", function(self, elapsed)
+    -- 如果检测功能已暂停，不执行检测
+    if detectionPaused or phaseTimerPaused then
+        return;
+    end
     phaseLastTime = phaseLastTime + elapsed;
     if phaseLastTime >= PHASE_INTERVAL then
         phaseLastTime = 0;
