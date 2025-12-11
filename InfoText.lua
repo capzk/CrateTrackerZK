@@ -13,7 +13,7 @@ end
 local InfoText = BuildEnv('InfoText');
 
 -- 公告文本
-InfoText.Announcement = [[空投物资追踪器 v1.0.6-dev
+InfoText.Announcement = [[空投物资追踪器 v1.0.8-dev
 
 最新公告：
 
@@ -24,7 +24,7 @@ capzk@itcat.dev
 如有问题或建议，欢迎反馈！]];
 
 -- 插件简介文本
-InfoText.Introduction = [[空投物资追踪器 v1.0.6-dev
+InfoText.Introduction = [[空投物资追踪器 v1.0.8-dev
 
 自动检测当前地图空投物资刷新情况，同时支持手动设置刷新时间。
 自动保存数据，关闭插件时数据不会丢失。

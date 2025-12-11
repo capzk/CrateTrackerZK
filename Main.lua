@@ -526,30 +526,35 @@ local function ResumeAllDetections()
     end
     detectionPaused = false;
     
-    -- 恢复位面检测定时器
-    if phaseTimer and phaseTimerPaused then
-        phaseTimer:SetScript("OnUpdate", function(self, elapsed)
-            phaseLastTime = phaseLastTime + elapsed;
-            if phaseLastTime >= PHASE_INTERVAL then
-                phaseLastTime = 0;
-                UpdatePhaseInfo();
-            end
-        end);
-        phaseTimerPaused = false;
-        DebugPrint("【检测控制】位面检测定时器已恢复");
-    end
-    
-    -- 恢复地图图标检测定时器
+    -- 恢复地图图标检测定时器（立即启动）
     if TimerManager then
         TimerManager:StartMapIconDetection(3);
         DebugPrint("【检测控制】地图图标检测定时器已恢复");
     end
     
-    -- 恢复NPC喊话检测（重新注册事件）
+    -- 恢复NPC喊话检测（立即启动，重新注册事件）
     if eventFrame and not npcSpeechEventRegistered then
         eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
         npcSpeechEventRegistered = true;
         DebugPrint("【检测控制】NPC喊话检测已恢复");
+    end
+    
+    -- 恢复位面检测定时器（延迟6秒启动）
+    if phaseTimer and phaseTimerPaused then
+        DebugPrint("【检测控制】位面检测定时器将在6秒后启动");
+        C_Timer.After(6, function()
+            if phaseTimer and phaseTimerPaused then
+                phaseTimer:SetScript("OnUpdate", function(self, elapsed)
+                    phaseLastTime = phaseLastTime + elapsed;
+                    if phaseLastTime >= PHASE_INTERVAL then
+                        phaseLastTime = 0;
+                        UpdatePhaseInfo();
+                    end
+                end);
+                phaseTimerPaused = false;
+                DebugPrint("【检测控制】位面检测定时器已恢复（延迟6秒后启动）");
+            end
+        end);
     end
 end
 

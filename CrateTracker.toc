@@ -1,5 +1,5 @@
 ## Interface: 110200, 110205, 110207
-## Version: 1.0.7-dev
+## Version: 1.0.8-dev
 ## Title: CrateTracker
 ## Author: capzk
 ## Title-zhCN: |cff00ff88[空投物资追踪器]|r
