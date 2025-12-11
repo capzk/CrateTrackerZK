@@ -487,6 +487,7 @@ local PHASE_INTERVAL = 10; -- 位面检测间隔（10秒）
 local detectionPaused = false; -- 检测功能是否已暂停
 local phaseTimerPaused = false; -- 位面检测定时器是否已暂停
 local npcSpeechEventRegistered = true; -- NPC喊话事件是否已注册
+local phaseTimerResumePending = false; -- 位面检测定时器恢复是否正在进行中（防止重复创建延迟定时器）
 
 -- 前向声明：位面检测函数（将在后面定义）
 local UpdatePhaseInfo;
@@ -502,6 +503,7 @@ local function PauseAllDetections()
     if phaseTimer and not phaseTimerPaused then
         phaseTimer:SetScript("OnUpdate", nil);
         phaseTimerPaused = true;
+        phaseTimerResumePending = false; -- 清除恢复标记（如果正在恢复，取消恢复）
         DebugPrint("【检测控制】位面检测定时器已暂停");
     end
     
@@ -540,9 +542,11 @@ local function ResumeAllDetections()
     end
     
     -- 恢复位面检测定时器（延迟6秒启动）
-    if phaseTimer and phaseTimerPaused then
+    if phaseTimer and phaseTimerPaused and not phaseTimerResumePending then
+        phaseTimerResumePending = true; -- 标记为正在恢复，防止重复创建定时器
         DebugPrint("【检测控制】位面检测定时器将在6秒后启动");
         C_Timer.After(6, function()
+            phaseTimerResumePending = false; -- 清除标记
             if phaseTimer and phaseTimerPaused then
                 phaseTimer:SetScript("OnUpdate", function(self, elapsed)
                     phaseLastTime = phaseLastTime + elapsed;
@@ -678,7 +682,13 @@ end
 
 -- 2. 位面检测（独立、持续监听）
 -- 注意：此函数只在区域有效时被调用（定时器已暂停时不会调用）
+-- 前提条件：1. 区域有效 2. 不是子区域 3. 不是主城
 UpdatePhaseInfo = function()
+    -- 首先检查区域有效性（大前提）
+    if detectionPaused then
+        DebugPrintLimited("phase_detection_paused", "【位面检测】检测功能已暂停，跳过位面检测");
+        return;
+    end
     
     if Data then
         -- 获取当前地图信息（使用最新的正式服API）
@@ -811,12 +821,16 @@ UpdatePhaseInfo = function()
                     -- 位面发生变化，只更新位面信息，不干扰空投检测
                     -- 空投检测逻辑完全独立，不受位面变化影响
                     
+                    -- 先保存旧值，因为 UpdateMap 会立即更新 targetMapData
+                    local oldInstance = targetMapData.instance;
+                    
                     -- 更新地图的位面信息，保存上一次的位面ID
-                    Data:UpdateMap(targetMapData.id, { lastInstance = targetMapData.instance, instance = instanceID });
-                    DebugPrint("【位面检测】位面ID已更新: " .. targetMapData.mapName .. " 旧=" .. (targetMapData.instance or "无") .. " 新=" .. instanceID);
+                    Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
+                    DebugPrint("【位面检测】位面ID已更新: " .. targetMapData.mapName .. " 旧=" .. (oldInstance or "无") .. " 新=" .. instanceID);
                     
                     -- 只有在位面ID发生变化时才显示提示
-                    if targetMapData.instance then
+                    -- 注意：使用 oldInstance 判断，因为 targetMapData.instance 已经被更新为新值
+                    if oldInstance then
                         DEFAULT_CHAT_FRAME:AddMessage("|cff00ff88[空投物资追踪器]|r 地图[|cffffcc00" .. targetMapData.mapName .. "|r]位面已变更为：|cffffff00" .. instanceID .. "|r");
                     else
                         DEFAULT_CHAT_FRAME:AddMessage("|cff00ff88[空投物资追踪器]|r 当前位面ID为：|cffffff00" .. instanceID .. "|r");
@@ -912,12 +926,9 @@ local function OnEvent(self, event, ...)
         end
         -- 创建浮动按钮
         CreateFloatingButton();
-        -- 初始化时立即检测地图有效性（只在区域变化时检测，初始化时检测一次）
+        -- 初始化时检测地图有效性（只在区域变化时检测，初始化时检测一次）
+        -- 注意：初始化时不进行位面检测，位面检测由其他逻辑（区域变化、定时器、事件触发）负责
         CheckAndUpdateAreaValid();
-        -- 如果区域有效，执行一次位面检测
-        if not detectionPaused then
-            UpdatePhaseInfo();
-        end
         DebugPrint("【初始化】插件初始化完成（TimerManager、UI、地图检测已启动）");
     elseif event == "CHAT_MSG_MONSTER_SAY" then
         -- 空投检测：NPC喊话检测
@@ -1006,15 +1017,30 @@ local function OnEvent(self, event, ...)
                 -- 区域变化时，首先检测地图有效性（这是总开关，只在区域变化时检测一次）
                 -- 地图有效性检测：检查是否在副本/战场/室内，检查是否在有效地图列表中
                 -- 如果区域有效，会自动恢复检测功能；如果区域无效，会自动暂停检测功能
+                local wasInvalidBefore = (lastAreaValidState == false);
                 CheckAndUpdateAreaValid();
+                local justBecameValid = wasInvalidBefore and (lastAreaValidState == true);
                 
                 -- 区域变化后，如果区域有效，执行一次检测
                 if not detectionPaused then
-                    -- 区域变化时更新位面信息（独立检测）
-                    UpdatePhaseInfo();
-                    -- 区域变化时检测地图图标（空投检测，独立运行）
+                    -- 区域变化时检测地图图标（空投检测，独立运行，立即启动）
                     if TimerManager then
                         TimerManager:DetectMapIcons();
+                    end
+                    
+                    -- 位面检测：如果刚刚从无效区域变为有效区域，延迟6秒后再检测
+                    -- 否则立即检测（区域在有效区域内切换）
+                    if justBecameValid then
+                        -- 从无效区域变为有效区域，延迟6秒后再检测位面
+                        DebugPrint("【检测控制】区域从无效变为有效，位面检测将在6秒后执行");
+                        C_Timer.After(6, function()
+                            if not detectionPaused then
+                                UpdatePhaseInfo();
+                            end
+                        end);
+                    else
+                        -- 区域在有效区域内切换，立即检测位面
+                        UpdatePhaseInfo();
                     end
                 end
             end);
