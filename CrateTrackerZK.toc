@@ -1,5 +1,5 @@
 ## Interface: 110200, 110205, 110207
-## Version: 1.1.0-beta
+## Version: 1.1.0
 ## Title: CrateTrackerZK
 ## Author: capzk
 ## Title-zhCN: |cff00ff88[CrateTrackerZK]|r
