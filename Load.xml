@@ -1,15 +1,31 @@
 <Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
-    <!-- 核心脚本文件 -->
-    <Script file="Utils.lua"/>
-    <Script file="Data.lua"/>
-    <Script file="Debug.lua"/>
-    <Script file="Notification.lua"/>
-    <Script file="Commands.lua"/>
-    <Script file="TimerManager.lua"/>
-    <Script file="InfoText.lua"/>
-    <Script file="Info.lua"/>
-    <Script file="Main.lua"/>
-    <Script file="MainPanel.lua"/>
-    <!-- UI布局文件 -->
-    <Include file="Module/Frame.xml"/>
+    <!-- 基础工具 -->
+    <Script file="Utils/Utils.lua"/>
+    <Script file="Utils/Debug.lua"/>
+    
+    <!-- 本地化管理 -->
+    <Script file="Locales/Locales.lua"/>
+    <Script file="Locales/zhCN.lua"/>
+    
+    <!-- 数据管理 -->
+    <Script file="Data/MapData.lua"/>
+    <Script file="Data/Data.lua"/>
+    
+    <!-- 功能模块 -->
+    <Script file="Modules/Notification.lua"/>
+    <Script file="Modules/Commands.lua"/>
+    <Script file="Modules/Timer.lua"/>
+    <Script file="Modules/Area.lua"/>
+    <Script file="Modules/Phase.lua"/>
+    
+    <!-- UI 信息与显示 -->
+    <Script file="UI/Info.lua"/>
+    
+    <!-- 核心逻辑 -->
+    <Script file="Core/Core.lua"/>
+    
+    <!-- UI 界面 -->
+    <Script file="UI/FloatingButton.lua"/>
+    <Script file="UI/MainPanel.lua"/>
+    <Include file="UI/Frame.xml"/>
 </Ui>

@@ -12,6 +12,10 @@ end
 -- 定义TimerManager命名空间
 local TimerManager = BuildEnv('TimerManager')
 
+-- 获取命名空间和本地化
+local CrateTrackerZK = BuildEnv("CrateTrackerZK");
+local L = CrateTrackerZK.L;
+
 -- 确保Data命名空间存在
 if not Data then
     Data = BuildEnv('Data')
@@ -37,7 +41,7 @@ local function SafeDebug(...)
                 message = message .. " " .. tostring(arg);
             end
         end
-        print('|cff00ff00[空投物资追踪器]|r' .. message);
+        print('|cff00ff00[CrateTrackerZK]|r' .. message);
     end
     -- 如果Utils.Debug不存在且debugEnabled为false，则静默忽略
 end
@@ -126,6 +130,10 @@ function TimerManager:StartTimer(mapId, source, timestamp)
     
     if isNPCSpeech then
         -- NPC喊话检测：每次检测到都更新刷新时间，设置空投进行中
+        -- 系统检测的时间是权威时间，清除手动输入的时间锁定
+        if Data.manualInputLock then
+            Data.manualInputLock[mapId] = nil;
+        end
         -- 更新刷新时间
         success = Data:SetLastRefresh(mapId, timestamp);
         
@@ -166,6 +174,11 @@ function TimerManager:StartTimer(mapId, source, timestamp)
         success = Data:SetLastRefresh(mapId, timestamp);
         
         if success then
+            -- 对于手动输入，设置时间锁定标志以防止自动更新修改这个时间
+            if source == self.detectionSources.MANUAL_INPUT and Data.manualInputLock then
+                Data.manualInputLock[mapId] = timestamp;
+            end
+            
             -- 记录日志（只在调试模式下输出）
             local sourceText = self:GetSourceDisplayName(source);
             SafeDebug("地图[" .. mapData.mapName .. "]计时已通过" .. sourceText .. "启动，下次刷新: " .. Data:FormatDateTime(mapData.nextRefresh));
@@ -295,6 +308,45 @@ function TimerManager:GetSourceDisplayName(source)
     };
     
     return displayNames[source] or "未知来源";
+end
+
+-- NPC喊话检测函数
+function TimerManager:CheckNPCSpeech(message, speaker)
+    -- 检查是否是路费欧斯的喊话（精确匹配说话者名称）
+    if not speaker or speaker ~= "路费欧斯" then
+        return false;
+    end
+    
+    -- 移除消息中的颜色代码和特殊字符
+    local cleanMessage = message;
+    if cleanMessage then
+        -- 移除颜色代码 |c...|r
+        cleanMessage = cleanMessage:gsub("|c[0-9a-fA-F]+", "");
+        cleanMessage = cleanMessage:gsub("|r", "");
+        -- 去除首尾空白字符
+        cleanMessage = cleanMessage:match("^%s*(.-)%s*$");
+    end
+    
+    if not cleanMessage then
+        return false;
+    end
+    
+    -- 检查消息是否完全匹配指定的四句话之一
+    local keywords = {
+        "附近好像有宝藏，自然也会有宝藏猎手了。小心背后。",
+        "附近有满满一箱资源，赶紧找，不然难免大打出手哦！",
+        "机会送上门来了！只要你够有勇气，那些宝贝在等着你呢。",
+        "区域里出现了珍贵资源！快去抢吧！"
+    }
+    
+    for _, keyword in ipairs(keywords) do
+        if cleanMessage == keyword then
+            SafeDebug("【NPC喊话】检测到空投喊话（精确匹配）: " .. cleanMessage);
+            return true;
+        end
+    end
+    
+    return false;
 end
 
 -- 更新UI显示
@@ -536,6 +588,10 @@ function TimerManager:DetectMapIcons()
                     -- 设置标记（空投进行中）
                     self.mapIconDetected[targetMapData.id] = true;
                     
+                    -- 系统检测的时间是权威时间，清除手动输入的时间锁定
+                    if Data.manualInputLock then
+                        Data.manualInputLock[targetMapData.id] = nil;
+                    end
                     -- 更新刷新时间（使用首次检测到的时间，更准确）
                     local success = Data:SetLastRefresh(targetMapData.id, firstDetectedTime);
                     

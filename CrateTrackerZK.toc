@@ -1,11 +1,12 @@
 ## Interface: 110200, 110205, 110207
-## Version: 1.0.8-dev
-## Title: CrateTracker
+## Version: 1.0.9
+## Title: CrateTrackerZK
 ## Author: capzk
-## Title-zhCN: |cff00ff88[空投物资追踪器]|r
+## Title-zhCN: |cff00ff88[CrateTrackerZK]|r
 ## Notes-zhCN: 帮助您追踪游戏中的战争物资空投宝箱刷新情况
-## SavedVariables: CRATETRACKER_UI_DB, CRATETRACKER_DB
+## SavedVariables: CRATETRACKERZK_UI_DB, CRATETRACKERZK_DB
 ## LoadManagers: AddonLoader
 ## X-LoadOn-Always: delayed
+
 
 Load.xml

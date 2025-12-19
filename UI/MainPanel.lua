@@ -1,0 +1,632 @@
+-- CrateTrackerZK - 主面板
+local ADDON_NAME = "CrateTrackerZK";
+local CrateTrackerZK = BuildEnv(ADDON_NAME);
+local L = CrateTrackerZK.L;
+local MainPanel = BuildEnv('MainPanel')
+
+local Layout = {
+    FRAME_WIDTH  = 560,
+    FRAME_HEIGHT = 320,
+    
+    TABLE = {
+        HEADER_HEIGHT = 30,
+        ROW_HEIGHT = 32,
+        COL_WIDTH = 90,
+        OPERATION_COL_WIDTH = 130,
+        COL_SPACING = 5,
+        COL_COUNT = 5,
+        COLS = {
+            { key = "map",       titleKey = "Map" },
+            { key = "phase",     titleKey = "Phase" },
+            { key = "last",      titleKey = "LastRefresh" },
+            { key = "next",      titleKey = "NextRefresh" },
+            { key = "operation", titleKey = "Operation" },
+        },
+    },
+    
+    BUTTONS = {
+        REFRESH_WIDTH = 52,
+        REFRESH_HEIGHT = 22,
+        NOTIFY_WIDTH = 52,
+        NOTIFY_HEIGHT = 22,
+        BUTTON_SPACING = 60,
+    },
+    TITLE_BAR = {
+        HEIGHT = 32,
+        BUTTON_SIZE = 20,
+        BUTTON_SPACING = 4,
+        BUTTON_OFFSET_RIGHT = 8,
+        DROPDOWN_ITEM_HEIGHT = 28,
+    },
+};
+
+do
+    Layout.TABLE.COL_WIDTHS = {};
+    for i = 1, Layout.TABLE.COL_COUNT do
+        if i == Layout.TABLE.COL_COUNT then
+            Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.OPERATION_COL_WIDTH;
+        else
+            Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.COL_WIDTH;
+        end
+    end
+    
+    Layout.TABLE.WIDTH = 0;
+    for i = 1, Layout.TABLE.COL_COUNT do
+        Layout.TABLE.WIDTH = Layout.TABLE.WIDTH + Layout.TABLE.COL_WIDTHS[i];
+        if i < Layout.TABLE.COL_COUNT then
+            Layout.TABLE.WIDTH = Layout.TABLE.WIDTH + Layout.TABLE.COL_SPACING;
+        end
+    end
+    
+    Layout.TABLE.COL_OFFSETS = {};
+    local offset = 0;
+    for i = 1, Layout.TABLE.COL_COUNT do
+        Layout.TABLE.COL_OFFSETS[i] = offset;
+        offset = offset + Layout.TABLE.COL_WIDTHS[i];
+        if i < Layout.TABLE.COL_COUNT then
+            offset = offset + Layout.TABLE.COL_SPACING;
+        end
+    end
+    
+    local titleBarHeight = Layout.TITLE_BAR.HEIGHT;
+    local bottomPadding = 20;
+    local contentHeight = Layout.FRAME_HEIGHT - titleBarHeight - bottomPadding;
+    local tableHeight = contentHeight;
+    
+    Layout.TABLE.PADDING_X = (Layout.FRAME_WIDTH - Layout.TABLE.WIDTH) / 2;
+    Layout.TABLE.PADDING_TOP = titleBarHeight;
+    Layout.TABLE.HEIGHT = tableHeight;
+end
+
+local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
+    if colIndex < 1 or colIndex > Layout.TABLE.COL_COUNT then return nil end;
+    
+    local cell = CreateFrame('Frame', nil, parent);
+    local width = Layout.TABLE.COL_WIDTHS[colIndex];
+    local offsetX = Layout.TABLE.COL_OFFSETS[colIndex];
+    
+    cell:SetSize(width, rowHeight);
+    cell:SetPoint('LEFT', parent, 'LEFT', offsetX, 0);
+    
+    if isHeader then
+        local bg = cell:CreateTexture(nil, 'BACKGROUND');
+        bg:SetTexture([[Interface\FriendsFrame\WhoFrame-ColumnTabs]]);
+        bg:SetTexCoord(0.078125, 0.90625, 0, 0.75);
+        bg:SetAllPoints();
+    end
+    
+    local fontName = isHeader and 'GameFontHighlight' or 'GameFontNormal';
+    local textObj = cell:CreateFontString(nil, 'ARTWORK', fontName);
+    textObj:SetAllPoints(cell);
+    textObj:SetJustifyH('CENTER');
+    textObj:SetJustifyV('MIDDLE');
+    cell.Text = textObj;
+    
+    return cell;
+end
+
+local function CreateTableRow(parent, rowIndex, rowHeight)
+    local row = CreateFrame('Frame', nil, parent);
+    row:SetSize(Layout.TABLE.WIDTH, rowHeight);
+    row:SetPoint('TOPLEFT', parent, 'TOPLEFT', 0, -(rowIndex - 1) * rowHeight);
+    
+    row.bg = row:CreateTexture(nil, 'BACKGROUND');
+    row.bg:SetAllPoints();
+    
+    row.columns = {};
+    for j = 1, Layout.TABLE.COL_COUNT do
+        local cell = CreateTableCell(row, j, rowHeight, false);
+        row.columns[j] = cell;
+        
+        if j == 3 then
+            cell.Text:SetTextColor(0.4, 0.8, 1);
+            cell:EnableMouse(true);
+        elseif j == 5 then
+            cell.Text:Hide();
+        else
+            cell.Text:SetTextColor(1, 1, 1);
+        end
+    end
+    
+    local opCell = row.columns[5];
+    
+    row.refreshBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
+    row.refreshBtn:SetSize(Layout.BUTTONS.REFRESH_WIDTH, Layout.BUTTONS.REFRESH_HEIGHT);
+    row.refreshBtn:SetText(L["Refresh"]);
+    row.refreshBtn:SetPoint('CENTER', opCell, 'CENTER', -Layout.BUTTONS.BUTTON_SPACING / 2, 0);
+    
+    row.notifyBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
+    row.notifyBtn:SetSize(Layout.BUTTONS.NOTIFY_WIDTH, Layout.BUTTONS.NOTIFY_HEIGHT);
+    row.notifyBtn:SetText(L["Notify"]);
+    row.notifyBtn:SetPoint('CENTER', opCell, 'CENTER', Layout.BUTTONS.BUTTON_SPACING / 2, 0);
+    
+    return row;
+end
+
+local function CreateTable(frame)
+    local tableContainer = CreateFrame('Frame', nil, frame);
+    tableContainer:SetSize(Layout.TABLE.WIDTH, Layout.TABLE.HEIGHT);
+    tableContainer:SetPoint('TOPLEFT', frame, 'TOPLEFT', Layout.TABLE.PADDING_X, -Layout.TABLE.PADDING_TOP);
+    
+    local tableHeader = CreateFrame('Frame', nil, tableContainer);
+    tableHeader:SetSize(Layout.TABLE.WIDTH, Layout.TABLE.HEADER_HEIGHT);
+    tableHeader:SetPoint('TOPLEFT', tableContainer, 'TOPLEFT', 0, 0);
+    
+    local headerCells = {};
+    for i = 1, Layout.TABLE.COL_COUNT do
+        local col = Layout.TABLE.COLS[i];
+        local cell = CreateTableCell(tableHeader, i, Layout.TABLE.HEADER_HEIGHT, true);
+        cell.Text:SetText(L[col.titleKey]);
+        
+        if i == 3 or i == 4 then
+            local highlight = cell:CreateTexture(nil, 'HIGHLIGHT');
+            highlight:SetTexture([[Interface\PaperDollInfoFrame\UI-Character-Tab-Highlight]]);
+            highlight:SetBlendMode('ADD');
+            highlight:SetAllPoints();
+            
+            local sortField = (i == 3) and 'lastRefresh' or 'remaining';
+            cell:EnableMouse(true);
+            cell:SetScript('OnMouseUp', function() MainPanel:SortTable(sortField) end);
+        end
+        
+        headerCells[i] = cell;
+    end
+    
+    local tableContent = CreateFrame('Frame', nil, tableContainer);
+    tableContent:SetSize(Layout.TABLE.WIDTH, tableContainer:GetHeight() - Layout.TABLE.HEADER_HEIGHT);
+    tableContent:SetPoint('TOPLEFT', tableContainer, 'TOPLEFT', 0, -Layout.TABLE.HEADER_HEIGHT);
+    
+    frame.tableContainer = tableContainer;
+    frame.tableHeader = tableHeader;
+    frame.tableContent = tableContent;
+    frame.headerCells = headerCells;
+    frame.tableRows = {};
+    
+    return tableContainer;
+end
+
+function MainPanel:CreateMainFrame()
+    if CrateTrackerZKFrame then return CrateTrackerZKFrame end
+    
+    if MainPanel.updateTimer then
+        MainPanel.updateTimer:Cancel();
+        MainPanel.updateTimer = nil;
+    end
+    
+    local frame = CreateFrame('Frame', 'CrateTrackerZKFrame', UIParent, 'BasicFrameTemplateWithInset');
+    frame:SetSize(Layout.FRAME_WIDTH, Layout.FRAME_HEIGHT);
+    
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.position then
+        local pos = CRATETRACKERZK_UI_DB.position;
+        frame:SetPoint(pos.point, pos.x, pos.y);
+    else
+        frame:SetPoint('CENTER');
+    end
+    
+    frame.TitleText:SetText(L["MainPanelTitle"]);
+    
+    if frame.CloseButton then
+        frame.CloseButton:SetScript('OnClick', function()
+            frame:Hide();
+            if CrateTrackerZKFloatingButton then
+                CrateTrackerZKFloatingButton:Show();
+            end
+        end);
+    end
+    
+    frame:SetMovable(true);
+    frame:EnableMouse(true);
+    
+    if frame.TitleRegion then
+        frame.TitleRegion:RegisterForDrag('LeftButton');
+        local originalOnDragStop = frame.TitleRegion:GetScript('OnDragStop');
+        frame.TitleRegion:SetScript('OnDragStop', function(self)
+            if originalOnDragStop then
+                originalOnDragStop(self);
+            end
+            frame:StopMovingOrSizing();
+            local point, _, _, x, y = frame:GetPoint();
+            if CRATETRACKERZK_UI_DB then
+                CRATETRACKERZK_UI_DB.position = { point = point, x = x, y = y };
+            end
+        end);
+    else
+        frame:RegisterForDrag('LeftButton');
+        frame:SetScript('OnDragStart', frame.StartMoving);
+        frame:SetScript('OnDragStop', function(self)
+            self:StopMovingOrSizing();
+            local point, _, _, x, y = self:GetPoint();
+            if CRATETRACKERZK_UI_DB then
+                CRATETRACKERZK_UI_DB.position = { point = point, x = x, y = y };
+            end
+        end);
+    end
+    
+    self:CreateInfoButton(frame);
+    CreateTable(frame);
+    
+    frame.sortField = nil;
+    frame.sortOrder = 'asc';
+    
+    MainPanel.updateTimer = C_Timer.NewTicker(1, function() MainPanel:UpdateTable() end);
+    
+    function frame:Toggle() MainPanel:Toggle() end
+    MainPanel.mainFrame = frame;
+    return frame;
+end
+
+function MainPanel:SortTable(field)
+    local frame = self.mainFrame;
+    if not frame then return end
+    
+    if frame.sortField == field then
+        frame.sortOrder = frame.sortOrder == 'asc' and 'desc' or 'asc';
+    else
+        frame.sortField = field;
+        frame.sortOrder = 'asc';
+    end
+    
+    self:UpdateTable();
+end
+
+local function CreateSortComparator(sortField, sortOrder)
+    return function(a, b)
+        if not a or not b then
+            if not a then return false end
+            if not b then return true end
+        end
+        
+        local aVal = a[sortField];
+        local bVal = b[sortField];
+        
+        if not aVal and not bVal then
+            return false;
+        end
+        if not aVal then
+            return false;
+        end
+        if not bVal then
+            return true;
+        end
+        
+        if sortOrder == 'asc' then
+            return aVal < bVal;
+        else
+            return aVal > bVal;
+        end
+    end;
+end
+
+local function PrepareTableData()
+    local maps = Data:GetAllMaps();
+    local mapArray = {};
+    for _, mapData in ipairs(maps) do
+        if mapData then
+            mapData.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
+            table.insert(mapArray, mapData);
+        end
+    end
+    return mapArray;
+end
+
+function MainPanel:UpdateTable()
+    local frame = self.mainFrame;
+    if not frame or not frame:IsShown() then return end
+    
+    if Data and Data.CheckAndUpdateRefreshTimes then
+        Data:CheckAndUpdateRefreshTimes();
+    end
+    
+    local mapArray = PrepareTableData();
+    
+    if frame.sortField and (frame.sortField == 'lastRefresh' or frame.sortField == 'remaining') then
+        local comparator = CreateSortComparator(frame.sortField, frame.sortOrder);
+        table.sort(mapArray, comparator);
+    end
+    
+    local rowHeight = Layout.TABLE.ROW_HEIGHT;
+    for i = 1, #frame.tableRows do
+        frame.tableRows[i]:Hide();
+    end
+    
+    for i, mapData in ipairs(mapArray) do
+        local row = frame.tableRows[i];
+        if not row then
+            row = CreateTableRow(frame.tableContent, i, rowHeight);
+            frame.tableRows[i] = row;
+        end
+        
+        row:ClearAllPoints();
+        row:SetPoint('TOPLEFT', frame.tableContent, 'TOPLEFT', 0, -(i - 1) * rowHeight);
+        
+        row.bg:SetColorTexture(0.1, 0.1, 0.1, i % 2 == 0 and 0.5 or 0.3);
+        
+        row.columns[1].Text:SetText(mapData.mapName);
+        
+        local instanceID = mapData.instance;
+        local instanceText = L["NotAcquired"];
+        local color = {1, 1, 1};
+        
+        if instanceID then
+            instanceText = tostring(instanceID):sub(-5);
+            local isAirdrop = (TimerManager and ((TimerManager.mapIconDetected and TimerManager.mapIconDetected[mapData.id]) or (TimerManager.npcSpeechDetected and TimerManager.npcSpeechDetected[mapData.id])));
+            
+            if mapData.nextRefresh and time() >= mapData.nextRefresh then
+                color = {1, 1, 1};
+            elseif isAirdrop then
+                color = {0, 1, 0};
+            elseif instanceID ~= mapData.lastInstance then
+                color = {1, 0, 0};
+            else
+                color = {0, 1, 0};
+            end
+        end
+        row.columns[2].Text:SetText(instanceText);
+        row.columns[2].Text:SetTextColor(unpack(color));
+        
+        row.columns[3].Text:SetText(Data:FormatDateTime(mapData.lastRefresh));
+        row.columns[3]:SetScript('OnMouseUp', function() MainPanel:EditLastRefresh(mapData.id) end);
+        
+        local remaining = mapData.remaining;
+        row.columns[4].Text:SetText(Data:FormatTime(remaining, true));
+        if remaining then
+            if remaining < 300 then row.columns[4].Text:SetTextColor(1, 0, 0)
+            elseif remaining < 900 then row.columns[4].Text:SetTextColor(1, 0.5, 0)
+            else row.columns[4].Text:SetTextColor(0, 1, 0) end
+        else
+            row.columns[4].Text:SetTextColor(1, 1, 1)
+        end
+        
+        row.refreshBtn:SetScript('OnClick', function() MainPanel:RefreshMap(mapData.id) end);
+        row.notifyBtn:SetScript('OnClick', function() MainPanel:NotifyMapRefresh(mapData) end);
+        
+        row:Show();
+    end
+end
+
+function MainPanel:RefreshMap(mapId)
+    if TimerManager then
+        TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON);
+    else
+        Data:SetLastRefresh(mapId);
+    end
+    self:UpdateTable();
+end
+
+function MainPanel:EditLastRefresh(mapId)
+    local mapData = Data:GetMap(mapId);
+    if not mapData then return end
+    
+    StaticPopupDialogs['CRATETRACKERZK_EDIT_LASTREFRESH'] = {
+        text = L["InputTimeHint"],
+        button1 = L["Confirm"],
+        button2 = L["Cancel"],
+        hasEditBox = true,
+        OnAccept = function(sf) 
+            local input = sf.EditBox:GetText();
+            MainPanel:ProcessInput(mapId, input);
+        end,
+        timeout = 0, whileDead = true, hideOnEscape = true,
+    };
+    StaticPopup_Show('CRATETRACKERZK_EDIT_LASTREFRESH');
+end
+
+function MainPanel:ProcessInput(mapId, input)
+    local hh, mm, ss = Utils.ParseTimeInput(input);
+    if not hh then Utils.PrintError(L["TimeFormatError"]); return end
+    
+    local ts = Utils.GetTimestampFromTime(hh, mm, ss);
+    if not ts then Utils.PrintError(L["TimestampError"]); return end
+    
+    if TimerManager then
+        TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
+    else
+        Data:SetLastRefresh(mapId, ts);
+    end
+    self:UpdateTable();
+end
+
+function MainPanel:NotifyMapRefresh(mapData)
+    if Notification then Notification:NotifyMapRefresh(mapData) else Utils.PrintError(L["NotificationModuleNotLoaded"]) end
+end
+
+function MainPanel:Toggle()
+    if not CrateTrackerZKFrame then self:CreateMainFrame() end
+    if CrateTrackerZKFrame:IsShown() then
+        CrateTrackerZKFrame:Hide();
+        if CrateTrackerZKFloatingButton then CrateTrackerZKFloatingButton:Show() end
+    else
+        CrateTrackerZKFrame:Show();
+        self:UpdateTable();
+        if CrateTrackerZKFloatingButton then CrateTrackerZKFloatingButton:Hide() end
+    end
+end
+
+-- ============================================================================
+-- 标题栏按钮创建
+-- ============================================================================
+
+-- 创建帮助按钮（使用问号图标，简单可点击元素）
+function MainPanel:CreateInfoButton(parentFrame)
+    local config = Layout.TITLE_BAR;
+    
+    local buttonSize = 20;
+    if parentFrame.CloseButton then
+        buttonSize = parentFrame.CloseButton:GetWidth();
+    end
+    
+    local menuButton = CreateFrame('Button', nil, parentFrame);
+    menuButton:SetSize(buttonSize, buttonSize);
+    
+    if parentFrame.CloseButton then
+        menuButton:SetPoint('TOPRIGHT', parentFrame.CloseButton, 'TOPLEFT', -config.BUTTON_SPACING, 0);
+    else
+        menuButton:SetPoint('TOPRIGHT', parentFrame, 'TOPRIGHT', -config.BUTTON_OFFSET_RIGHT - buttonSize - config.BUTTON_SPACING, -6);
+    end
+    
+    local iconColor = {0.8, 0.8, 0.8, 1};
+    local dotSize = 4;
+    local dotSpacing = 5;
+    
+    local function CreateDot(parent, offsetX, offsetY)
+        local dot = parent:CreateTexture(nil, 'ARTWORK');
+        dot:SetSize(dotSize, dotSize);
+        dot:SetPoint('CENTER', parent, 'CENTER', offsetX, offsetY);
+        dot:SetColorTexture(unpack(iconColor));
+        return dot;
+    end
+    
+    menuButton.dot1 = CreateDot(menuButton, -dotSpacing, 0);
+    menuButton.dot2 = CreateDot(menuButton, 0, 0);
+    menuButton.dot3 = CreateDot(menuButton, dotSpacing, 0);
+    
+    local function UpdateIconColor(r, g, b, a)
+        a = a or 1;
+        menuButton.dot1:SetColorTexture(r, g, b, a);
+        menuButton.dot2:SetColorTexture(r, g, b, a);
+        menuButton.dot3:SetColorTexture(r, g, b, a);
+    end
+    
+    menuButton:SetScript('OnEnter', function(self)
+        UpdateIconColor(1, 1, 1, 1);
+    end);
+    
+    menuButton:SetScript('OnLeave', function(self)
+        UpdateIconColor(0.8, 0.8, 0.8, 1);
+    end);
+    
+    menuButton:SetScript('OnMouseDown', function(self)
+        UpdateIconColor(0.5, 0.5, 0.5, 1);
+    end);
+    
+    menuButton:SetScript('OnMouseUp', function(self)
+        UpdateIconColor(1, 1, 1, 1);
+    end);
+    
+    local dropdownMenu = CreateFrame('Frame', nil, parentFrame);
+    dropdownMenu:SetSize(120, 1);
+    dropdownMenu:SetPoint('TOPRIGHT', menuButton, 'BOTTOMRIGHT', 0, -2);
+    dropdownMenu:SetFrameStrata('DIALOG');
+    dropdownMenu:Hide();
+    
+    local bg = dropdownMenu:CreateTexture(nil, 'BACKGROUND');
+    bg:SetAllPoints();
+    bg:SetColorTexture(0.1, 0.1, 0.1, 0.95);
+    
+    local borderSize = 1;
+    local borderColor = {0.5, 0.5, 0.5, 1};
+    
+    local topBorder = dropdownMenu:CreateTexture(nil, 'BORDER');
+    topBorder:SetPoint('TOPLEFT', dropdownMenu, 'TOPLEFT', 0, 0);
+    topBorder:SetPoint('TOPRIGHT', dropdownMenu, 'TOPRIGHT', 0, 0);
+    topBorder:SetHeight(borderSize);
+    topBorder:SetColorTexture(unpack(borderColor));
+    
+    local bottomBorder = dropdownMenu:CreateTexture(nil, 'BORDER');
+    bottomBorder:SetPoint('BOTTOMLEFT', dropdownMenu, 'BOTTOMLEFT', 0, 0);
+    bottomBorder:SetPoint('BOTTOMRIGHT', dropdownMenu, 'BOTTOMRIGHT', 0, 0);
+    bottomBorder:SetHeight(borderSize);
+    bottomBorder:SetColorTexture(unpack(borderColor));
+    
+    local leftBorder = dropdownMenu:CreateTexture(nil, 'BORDER');
+    leftBorder:SetPoint('TOPLEFT', dropdownMenu, 'TOPLEFT', 0, 0);
+    leftBorder:SetPoint('BOTTOMLEFT', dropdownMenu, 'BOTTOMLEFT', 0, 0);
+    leftBorder:SetWidth(borderSize);
+    leftBorder:SetColorTexture(unpack(borderColor));
+    
+    local rightBorder = dropdownMenu:CreateTexture(nil, 'BORDER');
+    rightBorder:SetPoint('TOPRIGHT', dropdownMenu, 'TOPRIGHT', 0, 0);
+    rightBorder:SetPoint('BOTTOMRIGHT', dropdownMenu, 'BOTTOMRIGHT', 0, 0);
+    rightBorder:SetWidth(borderSize);
+    rightBorder:SetColorTexture(unpack(borderColor));
+    
+    local menuItems = {
+        {
+            text = L["MenuHelp"] or "帮助",
+            func = function()
+                if Info then
+                    Info:ShowIntroduction();
+                end
+                dropdownMenu:Hide();
+            end,
+        },
+        {
+            text = L["MenuAbout"] or "关于",
+            func = function()
+                if Info then
+                    Info:ShowAnnouncement();
+                end
+                dropdownMenu:Hide();
+            end,
+        },
+        {
+            text = L["MenuSettings"] or "设置",
+            func = function()
+                dropdownMenu:Hide();
+            end,
+        },
+    };
+    
+    local itemHeight = config.DROPDOWN_ITEM_HEIGHT;
+    local menuButtons = {};
+    for i, item in ipairs(menuItems) do
+        local itemButton = CreateFrame('Button', nil, dropdownMenu);
+        itemButton:SetSize(120, itemHeight);
+        itemButton:SetPoint('TOPLEFT', dropdownMenu, 'TOPLEFT', 0, -(i - 1) * itemHeight);
+        
+        local text = itemButton:CreateFontString(nil, 'OVERLAY', 'GameFontNormal');
+        text:SetAllPoints();
+        text:SetJustifyH('LEFT');
+        text:SetJustifyV('MIDDLE');
+        text:SetText(item.text);
+        text:SetTextColor(1, 1, 1, 1);
+        
+        local highlight = itemButton:CreateTexture(nil, 'HIGHLIGHT');
+        highlight:SetAllPoints();
+        highlight:SetColorTexture(1, 1, 1, 0.2);
+        
+        itemButton:SetScript('OnClick', item.func);
+        
+        table.insert(menuButtons, itemButton);
+    end
+    
+    dropdownMenu:SetHeight(#menuItems * itemHeight);
+    
+    menuButton:SetScript('OnClick', function(self, button)
+        if dropdownMenu:IsShown() then
+            dropdownMenu:Hide();
+        else
+            dropdownMenu:Show();
+        end
+    end);
+    
+    local function CloseMenu()
+        if dropdownMenu:IsShown() then
+            dropdownMenu:Hide();
+        end
+    end
+    
+    local clickFrame = CreateFrame('Frame', nil, UIParent);
+    clickFrame:SetScript('OnMouseDown', function(self, button)
+        if button == 'LeftButton' and dropdownMenu:IsShown() then
+            local x, y = GetCursorPosition();
+            local scale = UIParent:GetEffectiveScale();
+            x = x / scale;
+            y = y / scale;
+            
+            local menuX, menuY = dropdownMenu:GetCenter();
+            local menuWidth = dropdownMenu:GetWidth();
+            local menuHeight = dropdownMenu:GetHeight();
+            
+            if menuX and menuY then
+                if not (x >= menuX - menuWidth/2 and x <= menuX + menuWidth/2 and
+                        y >= menuY - menuHeight/2 and y <= menuY + menuHeight/2) then
+                    CloseMenu();
+                end
+            end
+        end
+    end);
+    
+    parentFrame.menuButton = menuButton;
+    parentFrame.dropdownMenu = dropdownMenu;
+end
