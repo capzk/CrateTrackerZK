@@ -20,9 +20,9 @@ L["FloatingButtonTooltipLine1"] = "Click to open/close tracking panel";
 L["FloatingButtonTooltipLine2"] = "Drag to move button position";
 
 -- Phase Detection
-L["NoInstanceAcquiredHint"] = "No instance ID acquired. Please hover over any NPC to get current instance ID";
-L["CurrentInstanceID"] = "Current instance ID: |cffffff00%s|r";
-L["InstanceChangedTo"] = "Map [|cffffcc00%s|r] instance changed to: |cffffff00%s|r";
+L["NoInstanceAcquiredHint"] = "No phasing ID acquired. Please hover over any NPC to get current phasing ID";
+L["CurrentInstanceID"] = "Current phasing ID: |cffffff00%s|r";
+L["InstanceChangedTo"] = "Map [|cffffcc00%s|r] phasing ID changed to: |cffffff00%s|r";
 
 -- Message Prefix
 L["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
@@ -130,7 +130,7 @@ L["InfoButton"] = "Info";
 L["AnnouncementButton"] = "Announcement";
 L["IntroButton"] = "Introduction";
 L["Map"] = "Map";
-L["Phase"] = "Phase";
+L["Phase"] = "Phasing";
 L["LastRefresh"] = "Last Refresh";
 L["NextRefresh"] = "Next Refresh";
 L["Operation"] = "Operation";
