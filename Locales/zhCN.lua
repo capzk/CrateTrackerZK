@@ -57,6 +57,7 @@ L["HelpClear"] = "/ctk clear 或 /ctk reset - 清除所有时间和位面数据�
 L["HelpTeam"] = "/ctk team on|off - 开启/关闭团队通知";
 L["HelpStatus"] = "/ctk team status - 查看团队通知状态";
 L["HelpHelp"] = "/ctk help - 显示此帮助信息";
+L["HelpUpdateWarning"] = "版本更新后出现任何问题，请彻底删除此插件目录后全新安装！！";
 L["CollectDataLandmarkName"] = "地标名称";
 L["CollectDataVignetteName"] = "Vignette名称";
 L["CollectDataAreaPOIName"] = "区域POI名称";

@@ -105,4 +105,7 @@ function Commands:ShowHelp()
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpTeam"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpStatus"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpHelp"]);
+    if L["HelpUpdateWarning"] then
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpUpdateWarning"]);
+    end
 end

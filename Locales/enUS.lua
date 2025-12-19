@@ -59,6 +59,7 @@ L["HelpClear"] = "/ctk clear or /ctk reset - Clear all time and instance data (p
 L["HelpTeam"] = "/ctk team on|off - Enable/disable team notification";
 L["HelpStatus"] = "/ctk team status - View team notification status";
 L["HelpHelp"] = "/ctk help - Show this help information";
+L["HelpUpdateWarning"] = "If any problem occurs after updating, please completely delete this addon folder and reinstall it from scratch!!";
 L["CollectDataEnabled"] = "Data collection mode enabled. Map icon information will be displayed in chat";
 L["CollectDataDisabled"] = "Data collection mode disabled";
 L["CollectDataUsage"] = "Data collection command: /ctk collect on|off - Enable/disable data collection mode (for collecting English version data)";
