@@ -83,8 +83,7 @@ function Area:CheckAndUpdateAreaValid()
         parentMapName = parentMapInfo and parentMapInfo.name or "";
     end
     
-    -- 检查是否在主城
-    if currentMapName == "多恩诺嘉尔" then
+    if Data and Data:IsCapitalCity(currentMapName) then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
             DebugPrint("【地图有效性】区域无效（主城），插件已自动暂停: " .. currentMapName);
@@ -93,22 +92,17 @@ function Area:CheckAndUpdateAreaValid()
         return false;
     end
     
-    -- 检查地图列表
     if Data then
         local maps = Data:GetAllMaps();
         local isValid = false;
         local matchedMapName = nil;
         
-        local cleanCurrent = string.lower(string.gsub(currentMapName, "[%p ]", ""));
-        local cleanParent = string.lower(string.gsub(parentMapName, "[%p ]", ""));
-        
         for _, mapData in ipairs(maps) do
-            local cleanMap = string.lower(string.gsub(mapData.mapName, "[%p ]", ""));
-            if cleanMap == cleanCurrent then
+            if Data:IsMapNameMatch(mapData, currentMapName) then
                 isValid = true;
                 matchedMapName = currentMapName;
                 break;
-            elseif cleanParent ~= "" and cleanMap == cleanParent then
+            elseif parentMapName ~= "" and Data:IsMapNameMatch(mapData, parentMapName) then
                 isValid = true;
                 matchedMapName = parentMapName;
                 break;

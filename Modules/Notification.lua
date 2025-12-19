@@ -76,14 +76,15 @@ function Notification:NotifyMapRefresh(mapData)
     end
     
     local message;
+    local displayName = Data:GetMapDisplayName(mapData);
     if isAirdropActive then
-        message = string.format(L["AirdropDetected"], mapData.mapName);
+        message = string.format(L["AirdropDetected"], displayName);
     else
         local remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
         if not remaining then
-            message = string.format(L["NoTimeRecord"], mapData.mapName);
+            message = string.format(L["NoTimeRecord"], displayName);
         else
-            message = string.format(L["TimeRemaining"], mapData.mapName, Data:FormatTime(remaining, true));
+            message = string.format(L["TimeRemaining"], displayName, Data:FormatTime(remaining, true));
         end
     end
     

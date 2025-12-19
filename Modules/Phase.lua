@@ -67,42 +67,26 @@ function Phase:UpdatePhaseInfo()
         parentMapName = parentMapInfo and parentMapInfo.name or "";
     end
     
-    -- 主城跳过
-    if currentMapName == "多恩诺嘉尔" then
+    if Data and Data:IsCapitalCity(currentMapName) then
         DebugPrintLimited("capital_city_phase", "【位面检测】当前在主城（无效区域），跳过位面检测: " .. currentMapName);
         return;
     end
     
-    -- 查找匹配地图
     local maps = Data:GetAllMaps();
     local targetMapData = nil;
-    local isSubArea = false;
     
-    local cleanCurrent = string.lower(string.gsub(currentMapName, "[%p ]", ""));
-    local cleanParent = string.lower(string.gsub(parentMapName, "[%p ]", ""));
-    
+    -- 优先检查当前地图名称是否直接匹配列表中的地图
+    -- 只有当前地图名称直接匹配时才更新位面ID，确保数据有效性
     for _, mapData in ipairs(maps) do
-        local cleanMap = string.lower(string.gsub(mapData.mapName, "[%p ]", ""));
-        if cleanMap == cleanCurrent then
+        if Data:IsMapNameMatch(mapData, currentMapName) then
             targetMapData = mapData;
-            -- 判断子区域
-            if parentMapName ~= "" then
-                for _, pMap in ipairs(maps) do
-                    if string.lower(string.gsub(pMap.mapName, "[%p ]", "")) == cleanParent then
-                        isSubArea = true;
-                        break;
-                    end
-                end
-            end
-            break;
-        elseif cleanParent ~= "" and cleanMap == cleanParent then
-            targetMapData = mapData;
-            isSubArea = true;
             break;
         end
     end
     
-    if targetMapData and not isSubArea then
+    -- 只有当当前地图名称直接匹配列表中的地图时才更新位面ID
+    -- 如果只匹配父地图，则不更新（因为当前地图不在列表中，数据无效）
+    if targetMapData then
         local instanceID = self:GetLayerFromNPC();
         
         if instanceID ~= targetMapData.instance then
@@ -111,7 +95,7 @@ function Phase:UpdatePhaseInfo()
                 Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
                 
                 if oldInstance then
-                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["InstanceChangedTo"], targetMapData.mapName, instanceID));
+                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
                 else
                     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["CurrentInstanceID"], instanceID));
                 end

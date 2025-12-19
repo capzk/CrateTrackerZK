@@ -22,7 +22,7 @@ local function OnLogin()
     
     if TimerManager then
         TimerManager:Initialize();
-        TimerManager:StartMapIconDetection(3);
+        TimerManager:StartMapIconDetection(2);
     end
     
     if MainPanel then MainPanel:CreateMainFrame() end
@@ -40,15 +40,6 @@ end
 local function OnEvent(self, event, ...)
     if event == "PLAYER_LOGIN" then
         OnLogin();
-    elseif event == "CHAT_MSG_MONSTER_SAY" then
-        if Area and Area.detectionPaused then return end
-        
-        local message, speaker = ...;
-        if TimerManager and TimerManager.CheckNPCSpeech then
-            if TimerManager:CheckNPCSpeech(message, speaker) then
-                TimerManager:StartCurrentMapTimer(TimerManager.detectionSources.NPC_SPEECH);
-            end
-        end
     elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then
         C_Timer.After(0.1, function()
             local wasInvalid = Area and Area.lastAreaValidState == false;
@@ -82,17 +73,11 @@ function CrateTrackerZK:PauseAllDetections()
     
     if TimerManager then TimerManager:StopMapIconDetection() end
     
-    if self.eventFrame then
-        self.eventFrame:UnregisterEvent("CHAT_MSG_MONSTER_SAY");
-    end
 end
 
 function CrateTrackerZK:ResumeAllDetections()
-    if TimerManager then TimerManager:StartMapIconDetection(3) end
+    if TimerManager then TimerManager:StartMapIconDetection(2) end
     
-    if self.eventFrame then
-        self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
-    end
     
     if self.phaseTimer and not self.phaseResumePending then
         self.phaseResumePending = true;
@@ -128,7 +113,6 @@ SlashCmdList.CRATETRACKERZK = HandleSlashCommand;
 CrateTrackerZK.eventFrame = CreateFrame("Frame");
 CrateTrackerZK.eventFrame:SetScript("OnEvent", OnEvent);
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_LOGIN");
-CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA");
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");

@@ -6,6 +6,7 @@
     <!-- 本地化管理 -->
     <Script file="Locales/Locales.lua"/>
     <Script file="Locales/zhCN.lua"/>
+    <Script file="Locales/enUS.lua"/>
     
     <!-- 数据管理 -->
     <Script file="Data/MapData.lua"/>

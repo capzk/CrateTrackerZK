@@ -5,10 +5,27 @@ local L = CrateTrackerZK.L;
 local Commands = BuildEnv('Commands');
 
 Commands.isInitialized = false;
+Commands.collectDataEnabled = false;
 
 function Commands:Initialize()
     if self.isInitialized then return end
     self.isInitialized = true;
+end
+
+function Commands:HandleCollectDataCommand(arg)
+    if arg == "on" or arg == "enable" then
+        self.collectDataEnabled = true;
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["CollectDataEnabled"]);
+    elseif arg == "off" or arg == "disable" then
+        self.collectDataEnabled = false;
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["CollectDataDisabled"]);
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["CollectDataUsage"]);
+    end
+end
+
+function Commands:IsCollectDataEnabled()
+    return self.collectDataEnabled == true;
 end
 
 function Commands:HandleCommand(msg)
@@ -23,6 +40,8 @@ function Commands:HandleCommand(msg)
         self:HandleClearCommand(arg);
     elseif command == "team" or command == "teamnotify" then
         self:HandleTeamNotificationCommand(arg);
+    elseif command == "collect" or command == "collectdata" then
+        self:HandleCollectDataCommand(arg);
     elseif command == "help" or command == "" or command == nil then
         self:ShowHelp();
     else

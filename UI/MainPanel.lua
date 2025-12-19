@@ -9,12 +9,13 @@ local Layout = {
     FRAME_HEIGHT = 320,
     
     TABLE = {
-        HEADER_HEIGHT = 30,
-        ROW_HEIGHT = 32,
+        HEADER_HEIGHT = 32,
+        ROW_HEIGHT = 36,
         COL_WIDTH = 90,
-        OPERATION_COL_WIDTH = 130,
+        OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
+        FONT_SIZE = 13,
         COLS = {
             { key = "map",       titleKey = "Map" },
             { key = "phase",     titleKey = "Phase" },
@@ -25,11 +26,11 @@ local Layout = {
     },
     
     BUTTONS = {
-        REFRESH_WIDTH = 52,
-        REFRESH_HEIGHT = 22,
-        NOTIFY_WIDTH = 52,
-        NOTIFY_HEIGHT = 22,
-        BUTTON_SPACING = 60,
+        REFRESH_WIDTH = 65,
+        REFRESH_HEIGHT = 26,
+        NOTIFY_WIDTH = 65,
+        NOTIFY_HEIGHT = 26,
+        BUTTON_SPACING = 70,
     },
     TITLE_BAR = {
         HEIGHT = 32,
@@ -100,6 +101,9 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
     textObj:SetAllPoints(cell);
     textObj:SetJustifyH('CENTER');
     textObj:SetJustifyV('MIDDLE');
+    -- 设置更大的字体
+    local font, size, flags = textObj:GetFont();
+    textObj:SetFont(font, Layout.TABLE.FONT_SIZE, flags);
     cell.Text = textObj;
     
     return cell;
@@ -133,11 +137,17 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     row.refreshBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.refreshBtn:SetSize(Layout.BUTTONS.REFRESH_WIDTH, Layout.BUTTONS.REFRESH_HEIGHT);
     row.refreshBtn:SetText(L["Refresh"]);
+    -- 调整按钮文字字体大小
+    local refreshFont, refreshSize, refreshFlags = row.refreshBtn.Text:GetFont();
+    row.refreshBtn.Text:SetFont(refreshFont, Layout.TABLE.FONT_SIZE, refreshFlags);
     row.refreshBtn:SetPoint('CENTER', opCell, 'CENTER', -Layout.BUTTONS.BUTTON_SPACING / 2, 0);
     
     row.notifyBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.notifyBtn:SetSize(Layout.BUTTONS.NOTIFY_WIDTH, Layout.BUTTONS.NOTIFY_HEIGHT);
     row.notifyBtn:SetText(L["Notify"]);
+    -- 调整按钮文字字体大小
+    local notifyFont, notifySize, notifyFlags = row.notifyBtn.Text:GetFont();
+    row.notifyBtn.Text:SetFont(notifyFont, Layout.TABLE.FONT_SIZE, notifyFlags);
     row.notifyBtn:SetPoint('CENTER', opCell, 'CENTER', Layout.BUTTONS.BUTTON_SPACING / 2, 0);
     
     return row;
@@ -341,7 +351,7 @@ function MainPanel:UpdateTable()
         
         row.bg:SetColorTexture(0.1, 0.1, 0.1, i % 2 == 0 and 0.5 or 0.3);
         
-        row.columns[1].Text:SetText(mapData.mapName);
+        row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
         local instanceID = mapData.instance;
         local instanceText = L["NotAcquired"];
@@ -349,15 +359,21 @@ function MainPanel:UpdateTable()
         
         if instanceID then
             instanceText = tostring(instanceID):sub(-5);
-            local isAirdrop = (TimerManager and ((TimerManager.mapIconDetected and TimerManager.mapIconDetected[mapData.id]) or (TimerManager.npcSpeechDetected and TimerManager.npcSpeechDetected[mapData.id])));
+            local isAirdrop = (TimerManager and TimerManager.mapIconDetected and TimerManager.mapIconDetected[mapData.id]);
+            local currentTime = time();
+            local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
             
-            if mapData.nextRefresh and time() >= mapData.nextRefresh then
+            if mapData.nextRefresh and currentTime >= mapData.nextRefresh then
+                -- 已刷新，显示白色
                 color = {1, 1, 1};
             elseif isAirdrop then
+                -- 空投进行中，显示绿色
                 color = {0, 1, 0};
-            elseif instanceID ~= mapData.lastInstance then
+            elseif isBeforeRefresh and instanceID ~= mapData.lastRefreshInstance then
+                -- 空投刷新前，且当前位面ID和上次空投刷新时位面ID不同，显示红色
                 color = {1, 0, 0};
             else
+                -- 其他情况，显示绿色
                 color = {0, 1, 0};
             end
         end
@@ -556,12 +572,6 @@ function MainPanel:CreateInfoButton(parentFrame)
                 if Info then
                     Info:ShowAnnouncement();
                 end
-                dropdownMenu:Hide();
-            end,
-        },
-        {
-            text = L["MenuSettings"] or "设置",
-            func = function()
                 dropdownMenu:Hide();
             end,
         },

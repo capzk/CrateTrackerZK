@@ -30,11 +30,13 @@ function Data:Initialize()
     self.maps = {};
     for i, defaultMap in ipairs(self.DEFAULT_MAPS) do
         local mapName = defaultMap.name;
+        local mapNameEn = defaultMap.nameEn or mapName;
         local savedData = CRATETRACKERZK_DB.mapData[mapName] or {};
         
         local mapData = {
             id = i,
             mapName = mapName,
+            mapNameEn = mapNameEn,
             interval = defaultMap.interval,
             instance = savedData.instance,
             lastInstance = savedData.lastInstance,
@@ -180,14 +182,16 @@ function Data:CheckAndUpdateRefreshTimes()
 end
 
 function Data:FormatTime(seconds, showOnlyMinutes)
-    if not seconds then return "无记录" end;
+    local L = CrateTrackerZK.L;
+    if not seconds then return L["DebugNoRecord"] or "No Record" end;
     
     local hours = math.floor(seconds / 3600);
     local minutes = math.floor((seconds % 3600) / 60);
     local secs = seconds % 60;
     
     if showOnlyMinutes then
-        return string.format("%d分%02d秒", minutes + hours * 60, secs);
+        local formatStr = L["MinuteSecond"] or "%dm%02ds";
+        return string.format(formatStr, minutes + hours * 60, secs);
     else
         return string.format("%02d:%02d:%02d", hours, minutes, secs);
     end
@@ -214,7 +218,6 @@ function Data:ClearAllData()
     end
     
     if TimerManager then
-        TimerManager.npcSpeechDetected = {};
         TimerManager.mapIconDetected = {};
         TimerManager.mapIconFirstDetectedTime = {};
         TimerManager.lastUpdateTime = {};
@@ -225,4 +228,35 @@ function Data:ClearAllData()
     end
     
     return true;
+end
+
+function Data:GetMapDisplayName(mapData)
+    if not mapData then return "" end;
+    local locale = GetLocale();
+    if locale == "zhCN" or locale == "zhTW" then
+        return mapData.mapName or "";
+    else
+        return mapData.mapNameEn or mapData.mapName or "";
+    end
+end
+
+function Data:IsMapNameMatch(mapData, mapName)
+    if not mapData or not mapName then return false end;
+    
+    local cleanName = string.lower(string.gsub(mapName, "[%p ]", ""));
+    local cleanMapName = string.lower(string.gsub(mapData.mapName or "", "[%p ]", ""));
+    local cleanMapNameEn = string.lower(string.gsub(mapData.mapNameEn or "", "[%p ]", ""));
+    
+    return cleanName == cleanMapName or cleanName == cleanMapNameEn;
+end
+
+function Data:IsCapitalCity(mapName)
+    if not mapName then return false end;
+    
+    local cleanName = string.lower(string.gsub(mapName, "[%p ]", ""));
+    local capitalNames = self.CAPITAL_CITY_NAMES or {};
+    local cleanCapitalZh = string.lower(string.gsub(capitalNames.zhCN or "", "[%p ]", ""));
+    local cleanCapitalEn = string.lower(string.gsub(capitalNames.enUS or "", "[%p ]", ""));
+    
+    return cleanName == cleanCapitalZh or cleanName == cleanCapitalEn;
 end
