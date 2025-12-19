@@ -198,7 +198,8 @@ function Data:FormatTime(seconds, showOnlyMinutes)
 end
 
 function Data:FormatDateTime(timestamp)
-    if not timestamp then return "无记录" end;
+    local L = CrateTrackerZK.L;
+    if not timestamp then return L["DebugNoRecord"] or "No Record" end;
     return date("%H:%M:%S", timestamp);
 end
 
