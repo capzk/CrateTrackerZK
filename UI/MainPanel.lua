@@ -10,12 +10,12 @@ local Layout = {
     
     TABLE = {
         HEADER_HEIGHT = 32,
-        ROW_HEIGHT = 36,
+        ROW_HEIGHT = 32,
         COL_WIDTH = 90,
         OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
-        FONT_SIZE = 13,
+        FONT_SIZE = 15,
         COLS = {
             { key = "map",       titleKey = "Map" },
             { key = "phase",     titleKey = "Phase" },
@@ -70,8 +70,10 @@ do
     end
     
     local titleBarHeight = Layout.TITLE_BAR.HEIGHT;
-    local bottomPadding = 20;
+    -- 底部整体预留空白（窗口内容区域与表格底部之间）
+    local bottomPadding = 40;
     local contentHeight = Layout.FRAME_HEIGHT - titleBarHeight - bottomPadding;
+    -- 表格高度等于内容高度，行高变小后自然会在底部留下更多空白
     local tableHeight = contentHeight;
     
     Layout.TABLE.PADDING_X = (Layout.FRAME_WIDTH - Layout.TABLE.WIDTH) / 2;
@@ -88,13 +90,6 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
     
     cell:SetSize(width, rowHeight);
     cell:SetPoint('LEFT', parent, 'LEFT', offsetX, 0);
-    
-    if isHeader then
-        local bg = cell:CreateTexture(nil, 'BACKGROUND');
-        bg:SetTexture([[Interface\FriendsFrame\WhoFrame-ColumnTabs]]);
-        bg:SetTexCoord(0.078125, 0.90625, 0, 0.75);
-        bg:SetAllPoints();
-    end
     
     local fontName = isHeader and 'GameFontHighlight' or 'GameFontNormal';
     local textObj = cell:CreateFontString(nil, 'ARTWORK', fontName);
@@ -137,6 +132,8 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     row.refreshBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.refreshBtn:SetSize(Layout.BUTTONS.REFRESH_WIDTH, Layout.BUTTONS.REFRESH_HEIGHT);
     row.refreshBtn:SetText(L["Refresh"]);
+    -- 放宽可点击区域，避免用户点在按钮边缘时第一次无响应
+    row.refreshBtn:SetHitRectInsets(-6, -6, -4, -4);
     -- 调整按钮文字字体大小
     local refreshFont, refreshSize, refreshFlags = row.refreshBtn.Text:GetFont();
     row.refreshBtn.Text:SetFont(refreshFont, Layout.TABLE.FONT_SIZE, refreshFlags);
@@ -145,6 +142,8 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     row.notifyBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.notifyBtn:SetSize(Layout.BUTTONS.NOTIFY_WIDTH, Layout.BUTTONS.NOTIFY_HEIGHT);
     row.notifyBtn:SetText(L["Notify"]);
+    -- 放宽可点击区域
+    row.notifyBtn:SetHitRectInsets(-6, -6, -4, -4);
     -- 调整按钮文字字体大小
     local notifyFont, notifySize, notifyFlags = row.notifyBtn.Text:GetFont();
     row.notifyBtn.Text:SetFont(notifyFont, Layout.TABLE.FONT_SIZE, notifyFlags);
@@ -161,6 +160,11 @@ local function CreateTable(frame)
     local tableHeader = CreateFrame('Frame', nil, tableContainer);
     tableHeader:SetSize(Layout.TABLE.WIDTH, Layout.TABLE.HEADER_HEIGHT);
     tableHeader:SetPoint('TOPLEFT', tableContainer, 'TOPLEFT', 0, 0);
+    
+    -- 整体表头背景，柔和区分表头区域
+    local headerBg = tableHeader:CreateTexture(nil, 'BACKGROUND');
+    headerBg:SetAllPoints();
+    headerBg:SetColorTexture(0.12, 0.12, 0.12, 0.95);
     
     local headerCells = {};
     for i = 1, Layout.TABLE.COL_COUNT do
