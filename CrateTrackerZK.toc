@@ -1,0 +1,14 @@
+## Interface: 110200, 110205, 110207
+## Version: 1.1.0
+## Title: CrateTrackerZK
+## Author: capzk
+## Title-zhCN: |cff00ff88[CrateTrackerZK]|r
+## Notes-zhCN: 帮助您追踪游戏中的战争物资空投宝箱刷新情况
+## Title-enUS: |cff00ff88[CrateTrackerZK]|r
+## Notes-enUS: Track War Supply Crate airdrop refresh times in the game
+## SavedVariables: CRATETRACKERZK_UI_DB, CRATETRACKERZK_DB
+## LoadManagers: AddonLoader
+## X-LoadOn-Always: delayed
+
+
+Load.xml
