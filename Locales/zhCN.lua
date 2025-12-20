@@ -134,10 +134,5 @@ L["IntroductionText"] = [[
 - 退出游戏数据不会丢失。
 
 
-插件更新方式：
-1. 黑盒工坊 新手盒子
-2. https://app.itcat.dev/
-
-
 感谢使用！]];
 
