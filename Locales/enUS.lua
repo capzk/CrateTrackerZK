@@ -151,6 +151,8 @@ L["TimerManagerNotInitialized"] = "Timer manager not initialized";
 L["Return"] = "Return";
 L["PluginAnnouncement"] = "|cff00ff88Plugin Announcement|r";
 L["PluginIntro"] = "|cff00ff88Plugin Introduction|r";
+-- UI Font Size Configuration (numeric type)
+L["UIFontSize"] = 15;
 
 -- Menu Items
 L["MenuHelp"] = "Help";

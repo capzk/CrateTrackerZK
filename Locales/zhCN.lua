@@ -89,6 +89,8 @@ L["TimerManagerNotInitialized"] = "计时管理器尚未初始化";
 L["Return"] = "返回";
 L["PluginAnnouncement"] = "|cff00ff88插件公告|r";
 L["PluginIntro"] = "|cff00ff88插件简介|r";
+-- UI 字体大小配置（数字类型）
+L["UIFontSize"] = 15;
 
 -- 菜单项
 L["MenuHelp"] = "帮助";

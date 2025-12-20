@@ -15,7 +15,8 @@ local Layout = {
         OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
-        FONT_SIZE = 15,
+        -- 从本地化文件读取字体大小，如果未定义则使用默认值 15
+        FONT_SIZE = tonumber(L["UIFontSize"]) or 15,
         COLS = {
             { key = "map",       titleKey = "Map" },
             { key = "phase",     titleKey = "Phase" },
