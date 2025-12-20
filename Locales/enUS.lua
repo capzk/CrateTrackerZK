@@ -178,7 +178,19 @@ L["IntroductionText"] = [[
 • /ctk team off - Disable team notification
 • /ctk clear - Clear data
 
+**Usage Notes:**
 
+* Automatic airdrop detection requires the player to be in a valid area.
+
+* Capital cities, instances, battlegrounds, and indoor areas are considered invalid areas. When the player is in these areas, the addon will automatically pause detection.
+
+* Players can cooperate in a group by camping different locations and reporting the spawn time to each other. You can then manually click the **Refresh** button to start the timer, or click the time display area and enter a time to start the timer.
+
+* Team message notifications are enabled by default. You can disable them with the command: `/ctk team off`.
+
+* The addon provides a floating button that can be used to reopen the main interface after it has been closed. Data will not be lost.
+
+* Data is saved automatically and will not be lost when exiting the game.
 
 
 Thank you for using!]];
