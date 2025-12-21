@@ -80,7 +80,7 @@
 
 如有问题或建议，欢迎反馈：
 - 作者：capzk
-- 邮箱：capzk@itcat.dev
+- 邮箱：capzk@outlook.com
 
 ---
 

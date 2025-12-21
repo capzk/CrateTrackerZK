@@ -168,7 +168,7 @@ L["AirdropMapIconName"] = "War Supply Crate";
 -- Help and About Content
 L["AnnouncementText"] = [[
 Author: capzk
-Feedback: capzk@itcat.dev
+Feedback: capzk@outlook.com
 
 
 ]];

@@ -172,7 +172,7 @@ L["AirdropMapIconName"] = "戰爭補給箱";
 L["AnnouncementText"] = [[
 
 插件作者：capzk
-回饋建議：capzk@itcat.dev
+回饋建議：capzk@outlook.com
 
 
 ]];
