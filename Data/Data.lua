@@ -52,6 +52,10 @@ function Data:Initialize()
         
         if mapData.instance and not mapData.lastInstance then
             mapData.lastInstance = mapData.instance;
+            -- 确保 CRATETRACKERZK_DB.mapData[mapName] 存在后再访问
+            if not CRATETRACKERZK_DB.mapData[mapName] then
+                CRATETRACKERZK_DB.mapData[mapName] = {};
+            end
             CRATETRACKERZK_DB.mapData[mapName].lastInstance = mapData.lastInstance;
         end
         

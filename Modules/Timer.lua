@@ -455,11 +455,17 @@ function TimerManager:DetectMapIcons()
                         -- 记录更新时间
                         self.lastUpdateTime[targetMapData.id] = firstDetectedTime;
                         
+                        -- 重新获取地图数据以确保获取最新的 nextRefresh
+                        local updatedMapData = Data:GetMap(targetMapData.id);
+                        
                         -- 记录日志（只在调试模式下输出）
                         local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
-                        SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(targetMapData.nextRefresh)));
-                        
-                        SafeDebug(string.format(L["DebugUpdatedRefreshTime"], Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(targetMapData.nextRefresh)));
+                        if updatedMapData and updatedMapData.nextRefresh then
+                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
+                            SafeDebug(string.format(L["DebugUpdatedRefreshTime"], Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(updatedMapData.nextRefresh)));
+                        else
+                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, L["NoRecord"] or "No Record"));
+                        end
                         
                         -- 更新界面显示
                         self:UpdateUI();
