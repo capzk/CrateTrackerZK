@@ -25,7 +25,7 @@ function Debug:Initialize()
     end
     
     if Utils and Utils.Debug then
-        Utils.Debug("调试模块已初始化");
+        Utils.Debug("[Debug] Debug module initialized");
     end
 end
 

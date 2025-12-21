@@ -611,7 +611,7 @@ function MainPanel:CreateInfoButton(parentFrame)
     
     local menuItems = {
         {
-            text = L["MenuHelp"] or "Help",
+            text = L["MenuHelp"],
             func = function()
                 if Info then
                     Info:ShowIntroduction();
@@ -620,7 +620,7 @@ function MainPanel:CreateInfoButton(parentFrame)
             end,
         },
         {
-            text = L["MenuAbout"] or "About",
+            text = L["MenuAbout"],
             func = function()
                 if Info then
                     Info:ShowAnnouncement();

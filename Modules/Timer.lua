@@ -392,7 +392,7 @@ function TimerManager:DetectMapIcons()
                             SafeDebugLimited("icon_vignette_name_" .. vignetteGUID, string.format("[地图图标检测] Vignette名称: %s", trimmedName));
                             
                             if Commands and Commands:IsCollectDataEnabled() then
-                                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. "|cffff0000" .. (L["CollectDataLabel"] or "[Data Collection]") .. "|r " .. (L["CollectDataVignetteName"] or "Vignette Name") .. ": |cffffff00" .. (trimmedName or "nil") .. "|r");
+                                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. "|cffff0000" .. L["CollectDataLabel"] .. "|r " .. L["CollectDataVignetteName"] .. ": |cffffff00" .. (trimmedName or "nil") .. "|r");
                             end
                             
                             if iconName and iconName ~= "" and trimmedName == iconName then
@@ -464,7 +464,7 @@ function TimerManager:DetectMapIcons()
                             SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
                             SafeDebug(string.format(L["DebugUpdatedRefreshTime"], Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(updatedMapData.nextRefresh)));
                         else
-                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, L["NoRecord"] or "No Record"));
+                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, L["NoRecord"]));
                         end
                         
                         -- 更新界面显示

@@ -10,7 +10,7 @@ local function DebugPrint(msg, ...)
 end
 
 local function OnLogin()
-    DebugPrint("【核心】玩家登录，开始初始化");
+    DebugPrint("[Core] Player logged in, starting initialization");
     
     -- 确保 UI 数据库已初始化（SavedVariables 可能未自动初始化）
     if not CRATETRACKERZK_UI_DB then
@@ -39,7 +39,7 @@ local function OnLogin()
         Area:CheckAndUpdateAreaValid();
     end
     
-    DebugPrint("【核心】初始化完成");
+    DebugPrint("[Core] Initialization completed");
 end
 
 local function OnEvent(self, event, ...)

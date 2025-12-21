@@ -2,7 +2,7 @@
 local ADDON_NAME = "CrateTrackerZK";
 local locale = GetLocale();
 
-if locale ~= "zhCN" and locale ~= "zhTW" then return end
+if locale ~= "zhCN" then return end
 
 local Namespace = BuildEnv(ADDON_NAME);
 local L = Namespace.L;
