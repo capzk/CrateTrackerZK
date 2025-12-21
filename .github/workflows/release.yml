@@ -4,28 +4,20 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'CrateTracker.toc'
-      - '*.lua'
-      - '*.xml'
-      - 'Load.xml'
 
 jobs:
   check-version:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get-version.outputs.version }}
-      should-release: ${{ steps.check-version.outputs.should-release }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 需要完整历史来比较版本
 
       - name: Get current version
         id: get-version
         run: |
-          VERSION=$(grep "^## Version:" CrateTracker.toc | sed 's/^## Version:[[:space:]]*//')
+          VERSION=$(grep "^## Version:" CrateTrackerZK.toc | sed 's/^## Version:[[:space:]]*//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
           
@@ -33,49 +25,21 @@ jobs:
           if [[ "$VERSION" =~ -(dev|alpha|beta|rc|test) ]]; then
             echo "⚠️ 检测到开发版本号: $VERSION"
             echo "正式版本号不应包含 -dev, -alpha, -beta 等后缀"
-            echo "请确保 main 分支使用正式版本号格式（如: 1.0.6）"
+            echo "请确保 main 分支使用正式版本号格式（如: 1.1.1）"
             exit 1
           fi
           
           # 验证版本号格式（应该是 x.y.z 格式）
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "⚠️ 版本号格式不正确: $VERSION"
-            echo "正式版本号应为 x.y.z 格式（如: 1.0.6）"
+            echo "正式版本号应为 x.y.z 格式（如: 1.1.1）"
             exit 1
           fi
           
           echo "✓ 版本号格式验证通过: $VERSION"
 
-      - name: Check if version changed
-        id: check-version
-        run: |
-          CURRENT_VERSION="${{ steps.get-version.outputs.version }}"
-          
-          # 获取上一个提交的版本号
-          PREV_VERSION=$(git show HEAD~1:CrateTracker.toc 2>/dev/null | grep "^## Version:" | sed 's/^## Version:[[:space:]]*//' || echo "")
-          
-          if [ -z "$PREV_VERSION" ]; then
-            echo "No previous version found, creating first release"
-            echo "should-release=true" >> $GITHUB_OUTPUT
-          elif [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
-            echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
-            echo "should-release=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version unchanged: $CURRENT_VERSION"
-            echo "should-release=false" >> $GITHUB_OUTPUT
-          fi
-          
-          # 确保当前分支是 main（双重检查）
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          if [ "$CURRENT_BRANCH" != "main" ]; then
-            echo "⚠️ 当前分支不是 main: $CURRENT_BRANCH"
-            echo "Release 只能在 main 分支创建"
-            echo "should-release=false" >> $GITHUB_OUTPUT
-          fi
-
   create-release:
     needs: check-version
-    if: needs.check-version.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -87,64 +51,54 @@ jobs:
       - name: Get version
         id: get-version
         run: |
-          VERSION=$(grep "^## Version:" CrateTracker.toc | sed 's/^## Version:[[:space:]]*//')
+          VERSION=$(grep "^## Version:" CrateTrackerZK.toc | sed 's/^## Version:[[:space:]]*//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Releasing version: $VERSION"
 
       - name: Create release package
         run: |
           VERSION="${{ steps.get-version.outputs.version }}"
-          PACKAGE_NAME="CrateTracker"
+          PACKAGE_DIR="CrateTrackerZK"
+          PACKAGE_NAME="CrateTrackerZK.zip"
           
-          # 创建临时目录
-          mkdir -p release_package
+          # 创建插件目录
+          mkdir -p "${PACKAGE_DIR}"
           
-          # 复制所有需要的文件
-          # Lua文件
-          cp *.lua release_package/ 2>/dev/null || true
+          # 复制根目录文件
+          cp CrateTrackerZK.toc "${PACKAGE_DIR}/" 2>/dev/null || true
+          cp Load.xml "${PACKAGE_DIR}/" 2>/dev/null || true
+          cp README.md "${PACKAGE_DIR}/" 2>/dev/null || true
+          cp CHANGELOG.md "${PACKAGE_DIR}/" 2>/dev/null || true
           
-          # 配置文件
-          cp *.toc release_package/ 2>/dev/null || true
-          cp *.xml release_package/ 2>/dev/null || true
-          cp Load.xml release_package/ 2>/dev/null || true
+          # 复制所有目录（排除 docs 目录）
+          for dir in Core Data Modules UI Utils Locales Media Libs; do
+            if [ -d "$dir" ]; then
+              cp -r "$dir" "${PACKAGE_DIR}/"
+            fi
+          done
           
-          # HTML文件
-          cp *.html release_package/ 2>/dev/null || true
-          
-          # 用户文档（README.md）
-          cp README.md release_package/ 2>/dev/null || true
-          
-          # 复制文件夹
-          if [ -d "Module" ]; then
-            cp -r Module release_package/
-          fi
-          
-          if [ -d "Media" ]; then
-            cp -r Media release_package/
-          fi
-          
-          # 创建ZIP文件
-          cd release_package
-          zip -r "../${PACKAGE_NAME}.zip" . -q
+          # 创建ZIP文件（压缩目录内容，不是目录本身）
+          cd "${PACKAGE_DIR}"
+          zip -r "../${PACKAGE_NAME}" . -q
           cd ..
           
-          echo "package_name=${PACKAGE_NAME}.zip" >> $GITHUB_OUTPUT
-          echo "Created package: ${PACKAGE_NAME}.zip"
+          echo "package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "Created package: ${PACKAGE_NAME}"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.get-version.outputs.version }}
-          name: CrateTracker v${{ steps.get-version.outputs.version }}
+          name: CrateTrackerZK v${{ steps.get-version.outputs.version }}
           body: |
-            ## CrateTracker v${{ steps.get-version.outputs.version }}
+            ## CrateTrackerZK v${{ steps.get-version.outputs.version }}
             
             ### 安装说明
             
-            1. 下载 `CrateTracker.zip`
+            1. 下载 `CrateTrackerZK.zip`
             2. 解压到魔兽世界插件目录：
                ```
-               World of Warcraft\_retail_\Interface\AddOns\CrateTracker
+               World of Warcraft\_retail_\Interface\AddOns\CrateTrackerZK
                ```
             3. 重启游戏或使用 `/reload` 命令
             
@@ -156,9 +110,8 @@ jobs:
             
             查看 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) 了解详细使用方法。
           files: |
-            CrateTracker.zip
+            CrateTrackerZK.zip
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
