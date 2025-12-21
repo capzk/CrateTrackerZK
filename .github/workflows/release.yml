@@ -77,10 +77,8 @@ jobs:
             fi
           done
           
-          # 创建ZIP文件（压缩目录内容，不是目录本身）
-          cd "${PACKAGE_DIR}"
-          zip -r "../${PACKAGE_NAME}" . -q
-          cd ..
+          # 创建ZIP文件（压缩目录本身，解压后得到CrateTrackerZK目录）
+          zip -r "${PACKAGE_NAME}" "${PACKAGE_DIR}" -q
           
           echo "package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
           echo "Created package: ${PACKAGE_NAME}"
