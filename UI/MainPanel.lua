@@ -9,16 +9,16 @@ local locale = GetLocale();
 local isChineseLocale = (locale == "zhCN" or locale == "zhTW");
 
 local Layout = {
-    -- 根据语言动态设置主窗口宽度：中文560px，英文590px（为地图名称列预留空间）
-    FRAME_WIDTH  = isChineseLocale and 560 or 590,
+    -- 根据语言动态设置主窗口宽度：中文550px，英文590px（英文地图名称较长，需要更多空间）
+    FRAME_WIDTH  = isChineseLocale and 550 or 590,
     FRAME_HEIGHT = 320,
     
     TABLE = {
         HEADER_HEIGHT = 32,
         ROW_HEIGHT = 32,
         COL_WIDTH = 90,
-        -- 根据语言动态设置地图名称列宽度：中文90px，英文110px（调窄以保持协调）
-        MAP_COL_WIDTH = isChineseLocale and 90 or 110,
+        -- 根据语言动态设置地图名称列宽度：中文80px，英文105px（英文地图名较长，需要更多显示空间）
+        MAP_COL_WIDTH = isChineseLocale and 80 or 105,
         OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
