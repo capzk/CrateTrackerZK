@@ -392,7 +392,7 @@ function TimerManager:DetectMapIcons()
                             SafeDebugLimited("icon_vignette_name_" .. vignetteGUID, string.format("[地图图标检测] Vignette名称: %s", trimmedName));
                             
                             if Commands and Commands:IsCollectDataEnabled() then
-                                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. "|cffff0000" .. (L["CollectDataLabel"] or "[数据收集]") .. "|r " .. (L["CollectDataVignetteName"] or "Vignette名称") .. ": |cffffff00" .. (trimmedName or "nil") .. "|r");
+                                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. "|cffff0000" .. (L["CollectDataLabel"] or "[Data Collection]") .. "|r " .. (L["CollectDataVignetteName"] or "Vignette Name") .. ": |cffffff00" .. (trimmedName or "nil") .. "|r");
                             end
                             
                             if iconName and iconName ~= "" and trimmedName == iconName then

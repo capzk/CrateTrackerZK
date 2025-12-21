@@ -12,6 +12,11 @@ end
 local function OnLogin()
     DebugPrint("【核心】玩家登录，开始初始化");
     
+    -- 确保 UI 数据库已初始化（SavedVariables 可能未自动初始化）
+    if not CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["AddonLoaded"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpCommandHint"]);
 

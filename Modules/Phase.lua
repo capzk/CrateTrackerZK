@@ -107,17 +107,17 @@ function Phase:UpdatePhaseInfo()
         elseif instanceID == targetMapData.instance and not targetMapData.lastInstance and targetMapData.instance then
             Data:UpdateMap(targetMapData.id, { lastInstance = targetMapData.instance });
         end
-    end
-    
-    -- 提示获取位面
-    if not self.anyInstanceIDAcquired then
-        local hasAny = false;
-        for _, m in ipairs(maps) do
-            if m.instance then hasAny = true; break end
-        end
-        if not hasAny then
-            DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["NoInstanceAcquiredHint"]);
-            self.anyInstanceIDAcquired = true;
+        
+        -- 提示获取位面（仅在有效区域且当前地图在列表中时提示）
+        if not self.anyInstanceIDAcquired then
+            local hasAny = false;
+            for _, m in ipairs(maps) do
+                if m.instance then hasAny = true; break end
+            end
+            if not hasAny then
+                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["NoInstanceAcquiredHint"]);
+                self.anyInstanceIDAcquired = true;
+            end
         end
     end
 end

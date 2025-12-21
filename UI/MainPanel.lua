@@ -4,14 +4,21 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local MainPanel = BuildEnv('MainPanel')
 
+-- 检测当前语言，用于动态调整列宽
+local locale = GetLocale();
+local isChineseLocale = (locale == "zhCN" or locale == "zhTW");
+
 local Layout = {
-    FRAME_WIDTH  = 560,
+    -- 根据语言动态设置主窗口宽度：中文560px，英文590px（为地图名称列预留空间）
+    FRAME_WIDTH  = isChineseLocale and 560 or 590,
     FRAME_HEIGHT = 320,
     
     TABLE = {
         HEADER_HEIGHT = 32,
         ROW_HEIGHT = 32,
         COL_WIDTH = 90,
+        -- 根据语言动态设置地图名称列宽度：中文90px，英文110px（调窄以保持协调）
+        MAP_COL_WIDTH = isChineseLocale and 90 or 110,
         OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
@@ -27,9 +34,10 @@ local Layout = {
     },
     
     BUTTONS = {
-        REFRESH_WIDTH = 65,
+        -- 根据语言动态调整按钮宽度：中文65px，英文75px（英文文字较长）
+        REFRESH_WIDTH = isChineseLocale and 65 or 75,
         REFRESH_HEIGHT = 26,
-        NOTIFY_WIDTH = 65,
+        NOTIFY_WIDTH = isChineseLocale and 65 or 75,
         NOTIFY_HEIGHT = 26,
         BUTTON_SPACING = 70,
     },
@@ -46,8 +54,13 @@ do
     Layout.TABLE.COL_WIDTHS = {};
     for i = 1, Layout.TABLE.COL_COUNT do
         if i == Layout.TABLE.COL_COUNT then
+            -- 最后一列：操作列
             Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.OPERATION_COL_WIDTH;
+        elseif i == 1 then
+            -- 第一列：地图名称列，根据语言动态设置宽度
+            Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.MAP_COL_WIDTH;
         else
+            -- 其他列：使用默认宽度
             Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.COL_WIDTH;
         end
     end
@@ -94,12 +107,33 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
     
     local fontName = isHeader and 'GameFontHighlight' or 'GameFontNormal';
     local textObj = cell:CreateFontString(nil, 'ARTWORK', fontName);
-    textObj:SetAllPoints(cell);
-    textObj:SetJustifyH('CENTER');
+    -- 第一列（地图名称）左对齐，其他列居中对齐
+    if colIndex == 1 then
+        -- 左对齐时添加左边距，避免文字贴边
+        textObj:SetPoint('LEFT', cell, 'LEFT', 4, 0);
+        textObj:SetPoint('RIGHT', cell, 'RIGHT', -2, 0);
+        textObj:SetPoint('TOP', cell, 'TOP', 0, 0);
+        textObj:SetPoint('BOTTOM', cell, 'BOTTOM', 0, 0);
+        textObj:SetJustifyH('LEFT');
+    else
+        textObj:SetAllPoints(cell);
+        textObj:SetJustifyH('CENTER');
+    end
     textObj:SetJustifyV('MIDDLE');
     -- 设置更大的字体
     local font, size, flags = textObj:GetFont();
     textObj:SetFont(font, Layout.TABLE.FONT_SIZE, flags);
+    -- 第一列（地图名称）设置文本显示：左对齐，超出部分隐藏
+    if colIndex == 1 then
+        textObj:SetNonSpaceWrap(false);
+        -- 设置文本宽度限制，超出部分隐藏（不显示"..."）
+        local textWidth = width - 6; -- 减去左右边距（4+2）
+        if textWidth > 0 then
+            textObj:SetWidth(textWidth);
+            -- 设置最大行数为1，防止换行
+            textObj:SetMaxLines(1);
+        end
+    end
     cell.Text = textObj;
     
     return cell;
@@ -223,8 +257,12 @@ function MainPanel:CreateMainFrame()
     if frame.CloseButton then
         frame.CloseButton:SetScript('OnClick', function()
             frame:Hide();
+            -- 确保悬浮按钮显示
             if CrateTrackerZKFloatingButton then
                 CrateTrackerZKFloatingButton:Show();
+            elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
+                -- 如果按钮不存在，尝试创建
+                CrateTrackerZK:CreateFloatingButton();
             end
         end);
     end
@@ -359,7 +397,7 @@ function MainPanel:UpdateTable()
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
         local instanceID = mapData.instance;
-        local instanceText = L["NotAcquired"];
+        local instanceText = "N/A";
         local color = {1, 1, 1};
         
         if instanceID then
@@ -385,11 +423,15 @@ function MainPanel:UpdateTable()
         row.columns[2].Text:SetText(instanceText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        row.columns[3].Text:SetText(Data:FormatDateTime(mapData.lastRefresh));
+        -- UI显示：如果无数据则显示 "--:--"，否则显示格式化后的时间
+        local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or "--:--";
+        row.columns[3].Text:SetText(lastRefreshText);
         row.columns[3]:SetScript('OnMouseUp', function() MainPanel:EditLastRefresh(mapData.id) end);
         
         local remaining = mapData.remaining;
-        row.columns[4].Text:SetText(Data:FormatTime(remaining, true));
+        -- UI显示：如果无数据则显示 "--:--"，否则显示格式化后的时间
+        local remainingText = remaining and Data:FormatTime(remaining, true) or "--:--";
+        row.columns[4].Text:SetText(remainingText);
         if remaining then
             if remaining < 300 then row.columns[4].Text:SetTextColor(1, 0, 0)
             elseif remaining < 900 then row.columns[4].Text:SetTextColor(1, 0.5, 0)
@@ -455,7 +497,13 @@ function MainPanel:Toggle()
     if not CrateTrackerZKFrame then self:CreateMainFrame() end
     if CrateTrackerZKFrame:IsShown() then
         CrateTrackerZKFrame:Hide();
-        if CrateTrackerZKFloatingButton then CrateTrackerZKFloatingButton:Show() end
+        -- 确保悬浮按钮显示
+        if CrateTrackerZKFloatingButton then
+            CrateTrackerZKFloatingButton:Show();
+        elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
+            -- 如果按钮不存在，尝试创建
+            CrateTrackerZK:CreateFloatingButton();
+        end
     else
         CrateTrackerZKFrame:Show();
         self:UpdateTable();
@@ -563,7 +611,7 @@ function MainPanel:CreateInfoButton(parentFrame)
     
     local menuItems = {
         {
-            text = L["MenuHelp"] or "帮助",
+            text = L["MenuHelp"] or "Help",
             func = function()
                 if Info then
                     Info:ShowIntroduction();
@@ -572,7 +620,7 @@ function MainPanel:CreateInfoButton(parentFrame)
             end,
         },
         {
-            text = L["MenuAbout"] or "关于",
+            text = L["MenuAbout"] or "About",
             func = function()
                 if Info then
                     Info:ShowAnnouncement();

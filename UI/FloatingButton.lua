@@ -18,6 +18,14 @@ function CrateTrackerZK:CreateFloatingButton()
         return;
     end
     
+    -- 确保 minimapButton 结构存在
+    if not CRATETRACKERZK_UI_DB.minimapButton then
+        CRATETRACKERZK_UI_DB.minimapButton = {};
+    end
+    if not CRATETRACKERZK_UI_DB.minimapButton.position then
+        CRATETRACKERZK_UI_DB.minimapButton.position = { point = "TOPLEFT", x = 50, y = -50 };
+    end
+    
     -- 检查按钮是否已存在
     if CrateTrackerZKFloatingButton then
         -- 如果按钮已存在，确保它在正确的位置并显示

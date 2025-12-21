@@ -183,7 +183,7 @@ end
 
 function Data:FormatTime(seconds, showOnlyMinutes)
     local L = CrateTrackerZK.L;
-    if not seconds then return L["DebugNoRecord"] or "No Record" end;
+    if not seconds then return L["NoRecord"] or "No Record" end;
     
     local hours = math.floor(seconds / 3600);
     local minutes = math.floor((seconds % 3600) / 60);
@@ -199,7 +199,7 @@ end
 
 function Data:FormatDateTime(timestamp)
     local L = CrateTrackerZK.L;
-    if not timestamp then return L["DebugNoRecord"] or "No Record" end;
+    if not timestamp then return L["NoRecord"] or "No Record" end;
     return date("%H:%M:%S", timestamp);
 end
 
