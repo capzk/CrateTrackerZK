@@ -57,7 +57,8 @@ function Area:CheckAndUpdateAreaValid()
     if isIndoors or isInstance then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            DebugPrint("【地图有效性】区域无效（副本/战场/室内），插件已自动暂停");
+            local L = CrateTrackerZK.L;
+            DebugPrint(L["DebugAreaInvalidInstance"]);
             self:PauseAllDetections();
         end
         return false;
@@ -67,7 +68,8 @@ function Area:CheckAndUpdateAreaValid()
     if not currentMapID then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            DebugPrint("【地图有效性】无法获取地图ID");
+            local L = CrateTrackerZK.L;
+            DebugPrint(L["DebugAreaCannotGetMapID"]);
             self:PauseAllDetections();
         end
         return false;
@@ -81,15 +83,6 @@ function Area:CheckAndUpdateAreaValid()
     if mapInfo.parentMapID then
         local parentMapInfo = C_Map.GetMapInfo(mapInfo.parentMapID);
         parentMapName = parentMapInfo and parentMapInfo.name or "";
-    end
-    
-    if Data and Data:IsCapitalCity(currentMapName) then
-        if self.lastAreaValidState ~= false then
-            self.lastAreaValidState = false;
-            DebugPrint("【地图有效性】区域无效（主城），插件已自动暂停: " .. currentMapName);
-            self:PauseAllDetections();
-        end
-        return false;
     end
     
     if Data then
@@ -112,14 +105,16 @@ function Area:CheckAndUpdateAreaValid()
         if isValid then
             if self.lastAreaValidState ~= true then
                 self.lastAreaValidState = true;
-                DebugPrint("【地图有效性】区域有效，插件已启用: " .. (matchedMapName or currentMapName));
+                local L = CrateTrackerZK.L;
+                DebugPrint(string.format(L["DebugAreaValid"], matchedMapName or currentMapName));
                 self:ResumeAllDetections();
             end
             return true;
         else
             if self.lastAreaValidState ~= false then
                 self.lastAreaValidState = false;
-                DebugPrint("【地图有效性】区域无效（不在有效地图列表中），插件已自动暂停: " .. currentMapName);
+                local L = CrateTrackerZK.L;
+                DebugPrint(string.format(L["DebugAreaInvalidNotInList"], currentMapName));
                 self:PauseAllDetections();
             end
             return false;

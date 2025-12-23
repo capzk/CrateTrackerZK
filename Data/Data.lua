@@ -9,6 +9,7 @@ Data.maps = {};
 Data.manualInputLock = {};
 
 function Data:Initialize()
+    -- 初始化 SavedVariables（全新安装时可能不存在）
     if not CRATETRACKERZK_DB then
         CRATETRACKERZK_DB = {
             version = 1,
@@ -16,66 +17,114 @@ function Data:Initialize()
         }
     end
     
-    if CRATETRACKER_CHARACTER_DB and CRATETRACKER_CHARACTER_DB.mapData and next(CRATETRACKER_CHARACTER_DB.mapData) then
-        if not CRATETRACKERZK_DB.mapData or not next(CRATETRACKERZK_DB.mapData) then
-            CRATETRACKERZK_DB.mapData = {};
-            for mapName, mapData in pairs(CRATETRACKER_CHARACTER_DB.mapData) do
-                CRATETRACKERZK_DB.mapData[mapName] = mapData;
-            end
-        end
+    -- 确保数据结构正确（处理旧版本或损坏的数据）
+    if type(CRATETRACKERZK_DB) ~= "table" then
+        CRATETRACKERZK_DB = {
+            version = 1,
+            mapData = {},
+        }
     end
     
-    CRATETRACKERZK_DB.mapData = CRATETRACKERZK_DB.mapData or {};
+    -- 确保 version 字段存在
+    if not CRATETRACKERZK_DB.version then
+        CRATETRACKERZK_DB.version = 1;
+    end
+    
+    -- 确保 mapData 字段存在且为表
+    if type(CRATETRACKERZK_DB.mapData) ~= "table" then
+        CRATETRACKERZK_DB.mapData = {};
+    end
     
     self.maps = {};
+    
+    -- 检查 DEFAULT_MAPS 是否存在
+    if not self.DEFAULT_MAPS or #self.DEFAULT_MAPS == 0 then
+        if Utils then
+            Utils.PrintError("Data:Initialize() - DEFAULT_MAPS is empty or nil");
+        end
+        return;
+    end
+    
     for i, defaultMap in ipairs(self.DEFAULT_MAPS) do
-        local mapName = defaultMap.name;
-        local mapNameEn = defaultMap.nameEn or mapName;
-        local mapNameZhTW = defaultMap.nameZhTW or mapName;
-        local savedData = CRATETRACKERZK_DB.mapData[mapName] or {};
-        
-        local mapData = {
-            id = i,
-            mapName = mapName,
-            mapNameEn = mapNameEn,
-            mapNameZhTW = mapNameZhTW,
-            interval = defaultMap.interval,
-            instance = savedData.instance,
-            lastInstance = savedData.lastInstance,
-            lastRefreshInstance = savedData.lastRefreshInstance,
-            lastRefresh = savedData.lastRefresh,
-            nextRefresh = nil,
-            createTime = savedData.createTime or time(),
-        }
-        
-        if mapData.lastRefresh then
-            self:UpdateNextRefresh(i, mapData);
-        end
-        
-        if mapData.instance and not mapData.lastInstance then
-            mapData.lastInstance = mapData.instance;
-            -- 确保 CRATETRACKERZK_DB.mapData[mapName] 存在后再访问
-            if not CRATETRACKERZK_DB.mapData[mapName] then
-                CRATETRACKERZK_DB.mapData[mapName] = {};
+        if not defaultMap or not defaultMap.code then
+            if Utils then
+                Utils.PrintError("Data:Initialize() - Invalid map config at index " .. i);
             end
-            CRATETRACKERZK_DB.mapData[mapName].lastInstance = mapData.lastInstance;
+        else
+            local mapCode = defaultMap.code;  -- 代号作为键（完全语言无关）
+            local savedData = CRATETRACKERZK_DB.mapData[mapCode];
+            
+            -- 验证保存的数据结构（处理旧版本或损坏的数据）
+            if savedData and type(savedData) ~= "table" then
+                savedData = {};
+            end
+            savedData = savedData or {};
+            
+            -- 验证时间戳的有效性（必须是数字且在合理范围内）
+            local lastRefresh = savedData.lastRefresh;
+            if lastRefresh and (type(lastRefresh) ~= "number" or lastRefresh < 0 or lastRefresh > time() + 86400 * 365) then
+                lastRefresh = nil;
+            end
+            
+            local createTime = savedData.createTime;
+            if createTime and (type(createTime) ~= "number" or createTime < 0 or createTime > time() + 86400 * 365) then
+                createTime = time();
+            end
+            createTime = createTime or time();
+            
+            local mapData = {
+                id = i,  -- 数组索引作为ID（可以任意调整数组顺序，ID会自动更新）
+                code = mapCode,  -- 代号作为唯一标识符（MAP_001, MAP_002等）
+                interval = defaultMap.interval or Data.DEFAULT_REFRESH_INTERVAL or 1100,
+                instance = savedData.instance,
+                lastInstance = savedData.lastInstance,
+                lastRefreshInstance = savedData.lastRefreshInstance,
+                lastRefresh = lastRefresh,
+                nextRefresh = nil,
+                createTime = createTime,
+            }
+            
+            if mapData.lastRefresh then
+                self:UpdateNextRefresh(i, mapData);
+            end
+            
+            if mapData.instance and not mapData.lastInstance then
+                mapData.lastInstance = mapData.instance;
+                -- 确保 CRATETRACKERZK_DB.mapData[mapCode] 存在后再访问
+                if not CRATETRACKERZK_DB.mapData[mapCode] then
+                    CRATETRACKERZK_DB.mapData[mapCode] = {};
+                end
+                CRATETRACKERZK_DB.mapData[mapCode].lastInstance = mapData.lastInstance;
+            end
+            
+            table.insert(self.maps, mapData);
         end
-        
-        table.insert(self.maps, mapData);
     end
 end
 
 function Data:SaveMapData(mapId)
     local mapData = self.maps[mapId];
-    if not mapData then return end
+    if not mapData or not mapData.code then return end
     
-    CRATETRACKERZK_DB.mapData = CRATETRACKERZK_DB.mapData or {};
-    CRATETRACKERZK_DB.mapData[mapData.mapName] = {
+    -- 确保数据库结构存在
+    if not CRATETRACKERZK_DB then
+        CRATETRACKERZK_DB = {
+            version = 1,
+            mapData = {},
+        }
+    end
+    
+    if type(CRATETRACKERZK_DB.mapData) ~= "table" then
+        CRATETRACKERZK_DB.mapData = {};
+    end
+    
+    -- 只保存需要持久化的字段（不保存 nextRefresh，因为它是计算得出的）
+    CRATETRACKERZK_DB.mapData[mapData.code] = {  -- 使用代号作为存储键
         instance = mapData.instance,
         lastInstance = mapData.lastInstance,
         lastRefreshInstance = mapData.lastRefreshInstance,
         lastRefresh = mapData.lastRefresh,
-        createTime = mapData.createTime,
+        createTime = mapData.createTime or time(),
     };
 end
 
@@ -139,10 +188,14 @@ end
 
 function Data:UpdateNextRefresh(mapId, mapData)
     mapData = mapData or self.maps[mapId];
-    if not mapData or not mapData.lastRefresh then 
+    if not mapData then
+        return;
+    end
+    
+    if not mapData.lastRefresh then
         mapData.nextRefresh = nil;
         return;
-    end;
+    end
     
     local interval = mapData.interval or 1100;
     local currentTime = time();
@@ -180,8 +233,10 @@ function Data:CalculateRemainingTime(nextRefresh)
 end
 
 function Data:CheckAndUpdateRefreshTimes()
+    if not self.maps then return end
+    
     for mapId, mapData in ipairs(self.maps) do
-        if mapData.lastRefresh then
+        if mapData and mapData.lastRefresh then
             self:UpdateNextRefresh(mapId, mapData);
         end
     end
@@ -213,14 +268,16 @@ function Data:ClearAllData()
     if not self.maps then return false end
     
     for i, mapData in ipairs(self.maps) do
-        mapData.lastRefresh = nil;
-        mapData.nextRefresh = nil;
-        mapData.instance = nil;
-        mapData.lastInstance = nil;
-        mapData.lastRefreshInstance = nil;
-        
-        if CRATETRACKERZK_DB.mapData then
-            CRATETRACKERZK_DB.mapData[mapData.mapName] = nil;
+        if mapData then
+            mapData.lastRefresh = nil;
+            mapData.nextRefresh = nil;
+            mapData.instance = nil;
+            mapData.lastInstance = nil;
+            mapData.lastRefreshInstance = nil;
+            
+            if CRATETRACKERZK_DB.mapData and mapData.code then
+                CRATETRACKERZK_DB.mapData[mapData.code] = nil;  -- 使用代号作为键
+            end
         end
     end
     
@@ -239,35 +296,24 @@ end
 
 function Data:GetMapDisplayName(mapData)
     if not mapData then return "" end;
-    local locale = GetLocale();
-    if locale == "zhTW" then
-        return mapData.mapNameZhTW or mapData.mapName or "";
-    elseif locale == "zhCN" then
-        return mapData.mapName or "";
-    else
-        return mapData.mapNameEn or mapData.mapName or "";
+    
+    -- 使用本地化API通过代号获取当前语言的名称
+    if Localization and mapData.code then
+        return Localization:GetMapName(mapData.code);
     end
+    
+    -- 回退到代号（格式化显示）
+    return mapData.code or "";
 end
 
 function Data:IsMapNameMatch(mapData, mapName)
     if not mapData or not mapName then return false end;
     
-    local cleanName = string.lower(string.gsub(mapName, "[%p ]", ""));
-    local cleanMapName = string.lower(string.gsub(mapData.mapName or "", "[%p ]", ""));
-    local cleanMapNameEn = string.lower(string.gsub(mapData.mapNameEn or "", "[%p ]", ""));
-    local cleanMapNameZhTW = string.lower(string.gsub(mapData.mapNameZhTW or "", "[%p ]", ""));
+    -- 使用本地化API通过代号进行多语言匹配
+    if Localization and mapData.code then
+        return Localization:IsMapNameMatch(mapData, mapName);
+    end
     
-    return cleanName == cleanMapName or cleanName == cleanMapNameEn or cleanName == cleanMapNameZhTW;
-end
-
-function Data:IsCapitalCity(mapName)
-    if not mapName then return false end;
-    
-    local cleanName = string.lower(string.gsub(mapName, "[%p ]", ""));
-    local capitalNames = self.CAPITAL_CITY_NAMES or {};
-    local cleanCapitalZhCN = string.lower(string.gsub(capitalNames.zhCN or "", "[%p ]", ""));
-    local cleanCapitalZhTW = string.lower(string.gsub(capitalNames.zhTW or "", "[%p ]", ""));
-    local cleanCapitalEn = string.lower(string.gsub(capitalNames.enUS or "", "[%p ]", ""));
-    
-    return cleanName == cleanCapitalZhCN or cleanName == cleanCapitalZhTW or cleanName == cleanCapitalEn;
+    -- 回退到简单的名称匹配（不应该到达这里）
+    return false;
 end

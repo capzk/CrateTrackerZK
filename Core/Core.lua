@@ -17,9 +17,20 @@ local function OnLogin()
         CRATETRACKERZK_UI_DB = {};
     end
     
+    -- 验证 UI 数据库结构（处理旧版本或损坏的数据）
+    if type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["AddonLoaded"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpCommandHint"]);
 
+    -- 初始化顺序：Localization -> Data -> 其他模块
+    -- 注意：Localization:Initialize() 已在文件加载时自动调用，这里确保已初始化
+    if Localization and not Localization.isInitialized then
+        Localization:Initialize();
+    end
+    
     if Data then Data:Initialize() end
     if Debug then Debug:Initialize() end
     if Notification then Notification:Initialize() end

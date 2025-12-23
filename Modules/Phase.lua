@@ -8,6 +8,7 @@ local Phase = BuildEnv("Phase");
 
 -- 状态变量
 Phase.anyInstanceIDAcquired = false;
+Phase.lastReportedInstanceID = nil;  -- 记录最后报告的位面ID，用于减少重复输出
 
 -- 调试函数
 local function DebugPrint(msg, ...)
@@ -45,7 +46,7 @@ end
 function Phase:UpdatePhaseInfo()
     -- 检查区域是否暂停（大前提）
     if Area and Area.detectionPaused then
-        DebugPrintLimited("phase_detection_paused", "【位面检测】检测功能已暂停，跳过位面检测");
+        DebugPrintLimited("phase_detection_paused", L["DebugPhaseDetectionPaused"]);
         return;
     end
     
@@ -53,7 +54,7 @@ function Phase:UpdatePhaseInfo()
     
     local currentMapID = Area:GetCurrentMapId();
     if not currentMapID then
-        DebugPrintLimited("no_map_id_phase", "无法获取当前地图ID，跳过位面信息更新");
+        DebugPrintLimited("no_map_id_phase", L["DebugPhaseNoMapID"]);
         return;
     end
     
@@ -65,11 +66,6 @@ function Phase:UpdatePhaseInfo()
     if mapInfo.parentMapID then
         local parentMapInfo = C_Map.GetMapInfo(mapInfo.parentMapID);
         parentMapName = parentMapInfo and parentMapInfo.name or "";
-    end
-    
-    if Data and Data:IsCapitalCity(currentMapName) then
-        DebugPrintLimited("capital_city_phase", "【位面检测】当前在主城（无效区域），跳过位面检测: " .. currentMapName);
-        return;
     end
     
     local maps = Data:GetAllMaps();
@@ -94,17 +90,23 @@ function Phase:UpdatePhaseInfo()
                 local oldInstance = targetMapData.instance;
                 Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
                 
+                -- 只在位面ID真正变化时输出（减少重复输出）
                 if oldInstance then
-                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
+                    -- 位面ID变化：使用限制机制，避免频繁输出
+                    DebugPrintLimited("phase_changed_" .. targetMapData.id, L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
                 else
-                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["CurrentInstanceID"], instanceID));
+                    -- 首次获取位面ID：只在首次获取时输出
+                    if not self.lastReportedInstanceID or self.lastReportedInstanceID ~= instanceID then
+                        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["CurrentInstanceID"], instanceID));
+                        self.lastReportedInstanceID = instanceID;
+                    end
                 end
                 
                 if MainPanel and MainPanel.UpdateTable then
                     MainPanel:UpdateTable();
                 end
             end
-        elseif instanceID == targetMapData.instance and not targetMapData.lastInstance and targetMapData.instance then
+        elseif instanceID and instanceID == targetMapData.instance and not targetMapData.lastInstance then
             Data:UpdateMap(targetMapData.id, { lastInstance = targetMapData.instance });
         end
         

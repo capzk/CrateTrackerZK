@@ -31,36 +31,19 @@ function CrateTrackerZK:CreateFloatingButton()
         -- 如果按钮已存在，确保它在正确的位置并显示
         local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
         
-        -- 兼容处理：检查位置结构类型
+        -- 使用新结构（point, x, y）
         local point, x, y;
-        if type(pos) == "table" then
-            if pos.point then
-                -- 新结构
-                point = pos.point;
-                x = pos.x or 0;
-                y = pos.y or 0;
-            else
-                -- 旧结构兼容处理
-                local left = pos.left or 50;
-                local top = pos.top or -50;
-                point = "TOPLEFT";
-                x = left;
-                y = top;
-                
-                -- 更新为新结构
-                pos.point = point;
-                pos.x = x;
-                pos.y = y;
-                pos.left = nil;
-                pos.top = nil;
-            end
+        if type(pos) == "table" and pos.point then
+            point = pos.point;
+            x = pos.x or 0;
+            y = pos.y or 0;
         else
-            -- pos不是表，使用默认值
+            -- 使用默认值
             point = "TOPLEFT";
             x = 50;
             y = -50;
             
-            -- 更新数据库
+            -- 更新数据库为新结构
             CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
         end
         
@@ -92,38 +75,19 @@ function CrateTrackerZK:CreateFloatingButton()
     -- 加载保存的位置
     local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
     
-    -- 兼容处理：检查位置结构类型
+    -- 使用新结构（point, x, y）
     local point, x, y;
-    if type(pos) == "table" then
-        if pos.point then
-            -- 新结构
-            point = pos.point;
-            x = pos.x or 0;
-            y = pos.y or 0;
-        else
-            -- 旧结构兼容处理
-            local left = pos.left or 50;
-            local top = pos.top or -50;
-            point = "TOPLEFT";
-            x = left;
-            y = top;
-            
-            -- 更新为新结构
-            pos.point = point;
-            pos.x = x;
-            pos.y = y;
-            pos.left = nil;
-            pos.top = nil;
-            
-            DebugPrint("转换旧位置结构为新结构: " .. point .. ", x=" .. x .. ", y=" .. y);
-        end
+    if type(pos) == "table" and pos.point then
+        point = pos.point;
+        x = pos.x or 0;
+        y = pos.y or 0;
     else
-        -- pos不是表，使用默认值
+        -- 使用默认值
         point = "TOPLEFT";
         x = 50;
         y = -50;
         
-        -- 更新数据库
+        -- 更新数据库为新结构
         CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
         DebugPrint("使用默认位置: " .. point .. ", x=" .. x .. ", y=" .. y);
     end

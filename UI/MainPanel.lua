@@ -351,7 +351,11 @@ local function CreateSortComparator(sortField, sortOrder)
 end
 
 local function PrepareTableData()
+    if not Data then return {} end
+    
     local maps = Data:GetAllMaps();
+    if not maps then return {} end
+    
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
@@ -412,11 +416,12 @@ function MainPanel:UpdateTable()
             elseif isAirdrop then
                 -- 空投进行中，显示绿色
                 color = {0, 1, 0};
-            elseif isBeforeRefresh and instanceID ~= mapData.lastRefreshInstance then
-                -- 空投刷新前，且当前位面ID和上次空投刷新时位面ID不同，显示红色
+            elseif isBeforeRefresh and mapData.lastRefreshInstance and instanceID ~= mapData.lastRefreshInstance then
+                -- 空投刷新前，且上次刷新时有位面ID记录，且当前位面ID和上次空投刷新时位面ID不同，显示红色
+                -- 注意：如果 lastRefreshInstance 为 nil（首次获取位面ID，还没有刷新记录），则显示绿色
                 color = {1, 0, 0};
             else
-                -- 其他情况，显示绿色
+                -- 其他情况（包括首次获取位面ID，还没有刷新记录的情况），显示绿色
                 color = {0, 1, 0};
             end
         end
