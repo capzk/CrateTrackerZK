@@ -62,15 +62,12 @@ localeData["DataClearFailedEmpty"] = "清除資料失敗：地圖列表為空";
 localeData["DataClearFailedModule"] = "清除資料失敗：Data模組未載入";
 localeData["ClearUsage"] = "清除命令：/ctk clear 或 /ctk reset";
 localeData["NotificationModuleNotLoaded"] = "通知模組未載入";
-localeData["TeamNotificationStatusPrefix"] = "團隊通知狀態：";
 localeData["TeamUsage1"] = "團隊通知命令：";
 localeData["TeamUsage2"] = "/ctk team on - 開啟團隊通知";
 localeData["TeamUsage3"] = "/ctk team off - 關閉團隊通知";
-localeData["TeamUsage4"] = "/ctk team status - 查看團隊通知狀態";
 localeData["HelpTitle"] = "可用命令：";
 localeData["HelpClear"] = "/ctk clear 或 /ctk reset - 清除所有時間和位面資料（保留地圖列表）";
 localeData["HelpTeam"] = "/ctk team on|off - 開啟/關閉團隊通知";
-localeData["HelpStatus"] = "/ctk team status - 查看團隊通知狀態";
 localeData["HelpHelp"] = "/ctk help - 顯示此幫助資訊";
 localeData["HelpUpdateWarning"] = "版本更新後出現任何問題，請徹底刪除此插件目錄後全新安裝！！";
 

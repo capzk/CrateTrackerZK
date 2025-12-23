@@ -62,15 +62,12 @@ localeData["DataClearFailedEmpty"] = "Clear data failed: map list is empty";
 localeData["DataClearFailedModule"] = "Clear data failed: Data module not loaded";
 localeData["ClearUsage"] = "Clear command: /ctk clear or /ctk reset";
 localeData["NotificationModuleNotLoaded"] = "Notification module not loaded";
-localeData["TeamNotificationStatusPrefix"] = "Team notification status: ";
 localeData["TeamUsage1"] = "Team notification commands:";
 localeData["TeamUsage2"] = "/ctk team on - Enable team notification";
 localeData["TeamUsage3"] = "/ctk team off - Disable team notification";
-localeData["TeamUsage4"] = "/ctk team status - View team notification status";
 localeData["HelpTitle"] = "Available commands:";
 localeData["HelpClear"] = "/ctk clear or /ctk reset - Clear all time and instance data (preserve map list)";
 localeData["HelpTeam"] = "/ctk team on|off - Enable/disable team notification";
-localeData["HelpStatus"] = "/ctk team status - View team notification status";
 localeData["HelpHelp"] = "/ctk help - Show this help information";
 localeData["HelpUpdateWarning"] = "If any problem occurs after updating, please completely delete this addon folder and reinstall it from scratch!!";
 

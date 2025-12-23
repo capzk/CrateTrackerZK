@@ -104,15 +104,10 @@ function Commands:HandleTeamNotificationCommand(arg)
         Notification:SetTeamNotificationEnabled(true);
     elseif arg == "off" or arg == "disable" then
         Notification:SetTeamNotificationEnabled(false);
-    elseif arg == "status" or arg == "check" then
-        local status = Notification:IsTeamNotificationEnabled();
-        local statusText = status and L["Enabled"] or L["Disabled"];
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["TeamNotificationStatusPrefix"] .. statusText);
     else
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["TeamUsage1"]);
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["TeamUsage2"]);
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["TeamUsage3"]);
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["TeamUsage4"]);
     end
 end
 
@@ -120,7 +115,6 @@ function Commands:ShowHelp()
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpTitle"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpClear"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpTeam"]);
-    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpStatus"]);
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpHelp"]);
     if L["HelpUpdateWarning"] then
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpUpdateWarning"]);

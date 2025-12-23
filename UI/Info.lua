@@ -37,13 +37,12 @@ Project: https://github.com/capzk/CrateTrackerZK
 License: MIT
 Contact: capzk@outlook.com
 
-Summary: Track airdrop refresh and phasing info, with timers and team notifications.]], version);
+]], version);
 end
 
 local HELP_TEXT = [[
 /ctk help        Show available commands
 /ctk team on/off Enable or disable team notifications
-/ctk team status Show team notification status
 /ctk clear       Clear local data and reinitialize
 ]];
 
