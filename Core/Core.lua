@@ -94,7 +94,6 @@ end
 function CrateTrackerZK:ResumeAllDetections()
     if TimerManager then TimerManager:StartMapIconDetection(2) end
     
-    
     if self.phaseTimer and not self.phaseResumePending then
         self.phaseResumePending = true;
         C_Timer.After(6, function()

@@ -29,7 +29,7 @@ function Info:Initialize()
         return;
     end
     self.isInitialized = true;
-    Debug:Print("信息模块已初始化");
+    Debug:Print("[Info] Info module initialized");
 end
 
 function Info:ShowAnnouncement()
@@ -56,7 +56,7 @@ function Info:ShowAnnouncement()
     self.currentFrame = 'announcement';
     
     if Debug:IsEnabled() then
-        Debug:Print("用户操作: 打开公告界面");
+        Debug:Print("[Info] User action: Open announcement interface");
     end
 end
 
@@ -84,7 +84,7 @@ function Info:ShowIntroduction()
     self.currentFrame = 'introduction';
     
     if Debug:IsEnabled() then
-        Debug:Print("用户操作: 打开插件简介界面");
+        Debug:Print("[Info] User action: Open introduction interface");
     end
 end
 
@@ -104,7 +104,7 @@ function Info:HideAll()
     self.currentFrame = nil;
     
     if Debug:IsEnabled() then
-        Debug:Print("用户操作: 返回主界面");
+        Debug:Print("[Info] User action: Return to main interface");
     end
 end
 

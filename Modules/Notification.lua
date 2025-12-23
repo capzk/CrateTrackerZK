@@ -26,7 +26,7 @@ function Notification:Initialize()
         end
     end
     
-    DebugPrint("通知模块已初始化");
+    DebugPrint("[Notification] Notification module initialized");
 end
 
 function Notification:IsTeamNotificationEnabled()

@@ -52,17 +52,17 @@ function CrateTrackerZK:CreateFloatingButton()
         
         -- 确保按钮显示
         if not (CrateTrackerZKFrame and CrateTrackerZKFrame:IsShown()) then
-            DebugPrint("显示浮动按钮");
+            DebugPrint("[FloatingButton] Show floating button");
             CrateTrackerZKFloatingButton:Show();
         else
-            DebugPrint("主窗口已显示，隐藏浮动按钮");
+            DebugPrint("[FloatingButton] Main window shown, hide floating button");
             CrateTrackerZKFloatingButton:Hide();
         end
         
         return CrateTrackerZKFloatingButton;
     end
     
-    DebugPrint("创建浮动按钮");
+    DebugPrint("[FloatingButton] Create floating button");
     
     -- 创建浮动按钮，使用UIMenuButtonStretchTemplate模板实现圆角效果
     local button = CreateFrame("Button", "CrateTrackerZKFloatingButton", UIParent, "UIMenuButtonStretchTemplate");
@@ -89,7 +89,7 @@ function CrateTrackerZK:CreateFloatingButton()
         
         -- 更新数据库为新结构
         CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
-        DebugPrint("使用默认位置: " .. point .. ", x=" .. x .. ", y=" .. y);
+        DebugPrint("[FloatingButton] Using default position: " .. point .. ", x=" .. x .. ", y=" .. y);
     end
     
     -- 设置按钮到保存的位置
@@ -148,7 +148,7 @@ function CrateTrackerZK:CreateFloatingButton()
     
     -- 设置拖动事件
     button:SetScript("OnDragStart", function(self)
-        DebugPrint("用户操作: 开始拖动浮动按钮");
+        DebugPrint("[FloatingButton] User action: Start dragging floating button");
         self:StartMoving();
     end);
     button:SetScript("OnDragStop", function(self)
@@ -223,7 +223,7 @@ function CrateTrackerZK:CreateFloatingButton()
             pos.point = point;
             pos.x = x;
             pos.y = y;
-            DebugPrint("用户操作: 拖动浮动按钮结束", "锚点=" .. point, "x=" .. x, "y=" .. y);
+            DebugPrint("[FloatingButton] User action: Stop dragging floating button", "Point=" .. point, "x=" .. x, "y=" .. y);
         end
         
         -- 应用最终位置
@@ -233,7 +233,7 @@ function CrateTrackerZK:CreateFloatingButton()
     
     -- 设置点击事件
     button:SetScript("OnClick", function()
-        DebugPrint("点击了浮动按钮");
+        DebugPrint("[FloatingButton] User action: Click floating button");
         if MainPanel then
             MainPanel:Toggle();
         end

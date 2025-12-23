@@ -35,6 +35,17 @@ localeData["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
 
 -- 错误/提示
 localeData["CommandModuleNotLoaded"] = "命令模块未加载，请重新加载插件";
+localeData["LocalizationWarning"] = "警告";
+localeData["LocalizationCritical"] = "严重";
+localeData["LocalizationMissingTranslation"] = "[本地化%s] 缺失翻译: %s.%s";
+localeData["LocalizationFallbackWarning"] = "警告：未找到 %s 本地化文件，已回退到 %s";
+localeData["LocalizationNoLocaleError"] = "错误：未找到任何可用的本地化文件";
+localeData["LocalizationMissingTranslationsWarning"] = "警告：发现 %d 个缺失的关键翻译 (%s)";
+localeData["LocalizationMissingMapNames"] = "缺失的地图名称: %s";
+localeData["LocalizationMissingCrateNames"] = "缺失的空投箱子名称: %s";
+localeData["LocalizationFailedLocalesWarning"] = "警告：%d 个语言文件加载失败";
+localeData["MapNamesCount"] = "地图名称: %d 个";
+localeData["AirdropCratesCount"] = "空投箱子: %d 个";
 
 -- 通知
 localeData["TeamNotificationStatus"] = "团队通知%s";
@@ -108,6 +119,8 @@ localeData["DebugPhaseNoMapID"] = "无法获取当前地图ID，跳过位面信�
 
 -- 空投检测调试信息
 localeData["DebugIconDetectionStart"] = "[地图图标检测] 开始检测，地图=%s，空投箱子名称=%s";
+localeData["DebugCMapAPINotAvailable"] = "[Map API] C_Map API 不可用";
+localeData["DebugCMapGetMapInfoNotAvailable"] = "[Map API] C_Map.GetMapInfo 不可用";
 
 
 -- UI

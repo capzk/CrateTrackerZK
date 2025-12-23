@@ -36,6 +36,17 @@ localeData["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
 
 -- Errors/Hints
 localeData["CommandModuleNotLoaded"] = "Модуль команд не загружен, пожалуйста, перезагрузите аддон";
+localeData["LocalizationWarning"] = "Предупреждение";
+localeData["LocalizationCritical"] = "Критично";
+localeData["LocalizationMissingTranslation"] = "[Локализация %s] Отсутствует перевод: %s.%s";
+localeData["LocalizationFallbackWarning"] = "Предупреждение: Файл локализации для %s не найден, используется %s";
+localeData["LocalizationNoLocaleError"] = "Ошибка: Не найден доступный файл локализации";
+localeData["LocalizationMissingTranslationsWarning"] = "Предупреждение: Найдено %d отсутствующих критических переводов (%s)";
+localeData["LocalizationMissingMapNames"] = "Отсутствующие названия карт: %s";
+localeData["LocalizationMissingCrateNames"] = "Отсутствующие названия ящиков с припасами: %s";
+localeData["LocalizationFailedLocalesWarning"] = "Предупреждение: %d файлов локализации не удалось загрузить";
+localeData["MapNamesCount"] = "Названия карт: %d";
+localeData["AirdropCratesCount"] = "Ящики с припасами: %d";
 
 -- Notifications
 localeData["TeamNotificationStatus"] = "Уведомления в группу %s";
@@ -109,6 +120,8 @@ localeData["DebugPhaseNoMapID"] = "Не удалось получить теку
 
 -- Icon Detection Debug Messages
 localeData["DebugIconDetectionStart"] = "[Обнаружение иконки карты] Начало обнаружения, карта=%s, название ящика с припасами=%s";
+localeData["DebugCMapAPINotAvailable"] = "[Map API] C_Map API недоступен";
+localeData["DebugCMapGetMapInfoNotAvailable"] = "[Map API] C_Map.GetMapInfo недоступен";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";

@@ -35,6 +35,17 @@ localeData["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
 
 -- Errors/Hints
 localeData["CommandModuleNotLoaded"] = "Command module not loaded, please reload addon";
+localeData["LocalizationWarning"] = "Warning";
+localeData["LocalizationCritical"] = "Critical";
+localeData["LocalizationMissingTranslation"] = "[Localization %s] Missing translation: %s.%s";
+localeData["LocalizationFallbackWarning"] = "Warning: Locale file for %s not found, fallback to %s";
+localeData["LocalizationNoLocaleError"] = "Error: No available locale file found";
+localeData["LocalizationMissingTranslationsWarning"] = "Warning: Found %d missing critical translations (%s)";
+localeData["LocalizationMissingMapNames"] = "Missing map names: %s";
+localeData["LocalizationMissingCrateNames"] = "Missing airdrop crate names: %s";
+localeData["LocalizationFailedLocalesWarning"] = "Warning: %d locale files failed to load";
+localeData["MapNamesCount"] = "Map names: %d";
+localeData["AirdropCratesCount"] = "Airdrop crates: %d";
 
 -- Notifications
 localeData["TeamNotificationStatus"] = "Team notification %s";
@@ -108,6 +119,8 @@ localeData["DebugPhaseNoMapID"] = "Cannot get current map ID, skipping phase inf
 
 -- Icon Detection Debug Messages
 localeData["DebugIconDetectionStart"] = "[Map Icon Detection] Starting detection, map=%s, airdrop crate name=%s";
+localeData["DebugCMapAPINotAvailable"] = "[Map API] C_Map API not available";
+localeData["DebugCMapGetMapInfoNotAvailable"] = "[Map API] C_Map.GetMapInfo not available";
 
 
 -- UI

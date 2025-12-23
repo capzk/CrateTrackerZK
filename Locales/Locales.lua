@@ -140,8 +140,10 @@ C_Timer.After(0.2, function()
     -- 如果有加载失败的语言文件，在调试模式下报告
     if #LocaleLoadStatus.failedLocales > 0 and Debug and Debug.IsEnabled and Debug:IsEnabled() then
         local prefix = "|cff00ff88[CrateTrackerZK]|r ";
+        local L = GetL();
+        local warningFormat = (L and L["LocalizationFailedLocalesWarning"]) or "Warning: %d locale files failed to load";
         DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
-            "警告：%d 个语言文件加载失败",
+            warningFormat,
             #LocaleLoadStatus.failedLocales
         ));
         for _, failed in ipairs(LocaleLoadStatus.failedLocales) do

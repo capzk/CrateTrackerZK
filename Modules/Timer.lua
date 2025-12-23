@@ -70,7 +70,7 @@ function TimerManager:Initialize()
     self.mapIconDetected = self.mapIconDetected or {};
     -- 记录每个地图首次检测到图标的时间（用于连续检测验证，防止误报）
     self.mapIconFirstDetectedTime = self.mapIconFirstDetectedTime or {};
-    -- 记录每个地图最近一次通过NPC喊话或地图图标更新时间的时刻（用于防止重复更新）
+    -- 记录每个地图最近一次通过地图图标更新时间的时刻（用于防止重复更新）
     self.lastUpdateTime = self.lastUpdateTime or {};
     -- 调试信息输出时间记录（用于限制输出频率）
     self.lastDebugMessage = self.lastDebugMessage or {};
@@ -324,7 +324,7 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 查找对应的地图数据（使用与Main.lua相同的模糊匹配逻辑，支持父地图匹配）
+    -- 查找对应的地图数据（使用与Core.lua相同的模糊匹配逻辑，支持父地图匹配）
     local targetMapData = nil
     local validMaps = Data:GetAllMaps()
     local parentMapName = "";
@@ -377,9 +377,8 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 注意：即使已经通过NPC喊话检测到空投，我们仍然需要检测地图图标
-    -- 因为判断空投是否进行中的唯一标准是地图图标标记（mapIconDetected）
-    -- 所以这里不再跳过地图图标检测，而是始终执行检测以更新mapIconDetected标记
+    -- 注意：判断空投是否进行中的唯一标准是地图图标标记（mapIconDetected）
+    -- 所以这里始终执行检测以更新mapIconDetected标记
     
     -- 记录本次检测是否发现地图图标
     local foundMapIcon = false;
@@ -389,8 +388,20 @@ function TimerManager:DetectMapIcons()
     if Localization then
         crateName = Localization:GetAirdropCrateName();
     else
-        -- 回退到默认值
-        crateName = "War Supply Crate";
+        -- 回退到本地化表
+        local L = CrateTrackerZK.L;
+        if L and L.AirdropCrateNames and L.AirdropCrateNames["AIRDROP_CRATE_001"] then
+            crateName = L.AirdropCrateNames["AIRDROP_CRATE_001"];
+        else
+            -- 最后回退：尝试获取英文本地化
+            local LocaleManager = BuildEnv("LocaleManager");
+            if LocaleManager and LocaleManager.GetEnglishLocale then
+                local enL = LocaleManager.GetEnglishLocale();
+                if enL and enL.AirdropCrateNames and enL.AirdropCrateNames["AIRDROP_CRATE_001"] then
+                    crateName = enL.AirdropCrateNames["AIRDROP_CRATE_001"];
+                end
+            end
+        end
     end
     
     if not crateName or crateName == "" then
@@ -442,7 +453,6 @@ function TimerManager:DetectMapIcons()
     local wasDetectedBefore = (self.mapIconDetected[targetMapData.id] == true);
     local currentTime = getCurrentTimestamp();
     local firstDetectedTime = self.mapIconFirstDetectedTime[targetMapData.id];
-    local lastUpdateTime = self.lastUpdateTime[targetMapData.id];
     
     
     if foundMapIcon then
@@ -523,11 +533,12 @@ function TimerManager:DetectMapIcons()
         end
     end
     
-    return false
+    -- 返回是否检测到地图图标（用于调试）
+    return foundMapIcon;
 end
 
 -- 开始地图图标检测（定期检查）
--- @param interval 检测间隔（秒，默认10秒）
+-- @param interval 检测间隔（秒，默认2秒）
 function TimerManager:StartMapIconDetection(interval)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
@@ -537,8 +548,8 @@ function TimerManager:StartMapIconDetection(interval)
     -- 停止现有的检测计时器（如果有）
     self:StopMapIconDetection();
     
-    -- 设置默认检测间隔
-    interval = interval or 10;
+    -- 设置默认检测间隔（根据文档要求，默认2秒）
+    interval = interval or 2;
     
     -- 创建检测计时器
     -- 注意：在定时器回调中先检查有效区域，无效时不调用检测函数（避免不必要的函数调用和调试信息输出）

@@ -131,9 +131,12 @@ function Localization:LogMissingTranslation(key, category, critical)
     
     -- 调试模式下输出
     if self.missingLogEnabled then
-        local level = critical and "严重" or "警告";
+        local L = GetL();
+        local levelKey = critical and "LocalizationCritical" or "LocalizationWarning";
+        local level = (L and L[levelKey]) or (critical and "Critical" or "Warning");
         local prefix = "|cff00ff88[CrateTrackerZK]|r ";
-        print(prefix .. string.format("[本地化%s] 缺失翻译: %s.%s", level, category, key));
+        local formatStr = (L and L["LocalizationMissingTranslation"]) or "[Localization %s] Missing translation: %s.%s";
+        print(prefix .. string.format(formatStr, level, category, key));
     end
 end
 
@@ -164,6 +167,7 @@ function Localization:ReportInitializationStatus()
     end
     
     local status = LocaleManager.GetLoadStatus();
+    local L = GetL();
     local prefix = "|cff00ff88[CrateTrackerZK]|r ";
     
     -- 报告当前使用的语言
@@ -172,15 +176,17 @@ function Localization:ReportInitializationStatus()
             -- 使用当前语言，正常情况
         elseif status.fallbackUsed then
             -- 使用了回退
+            local formatStr = (L and L["LocalizationFallbackWarning"]) or "Warning: Locale file for %s not found, fallback to %s";
             DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
-                "警告：未找到 %s 本地化文件，已回退到 %s",
+                formatStr,
                 GetLocale(),
                 status.activeLocale
             ));
         end
     else
         -- 没有激活的语言
-        DEFAULT_CHAT_FRAME:AddMessage(prefix .. "错误：未找到任何可用的本地化文件");
+        local errorMsg = (L and L["LocalizationNoLocaleError"]) or "Error: No available locale file found";
+        DEFAULT_CHAT_FRAME:AddMessage(prefix .. errorMsg);
     end
     
     -- 报告缺失的翻译（只报告关键翻译：地图名称和空投箱子名称）
@@ -189,26 +195,31 @@ function Localization:ReportInitializationStatus()
     
     if missingCount > 0 then
         local missingList = {};
+        local mapNamesFormat = (L and L["MapNamesCount"]) or "Map names: %d";
+        local crateNamesFormat = (L and L["AirdropCratesCount"]) or "Airdrop crates: %d";
         if #missing.mapNames > 0 then
-            table.insert(missingList, string.format("地图名称: %d 个", #missing.mapNames));
+            table.insert(missingList, string.format(mapNamesFormat, #missing.mapNames));
         end
         if #missing.airdropCrateNames > 0 then
-            table.insert(missingList, string.format("空投箱子: %d 个", #missing.airdropCrateNames));
+            table.insert(missingList, string.format(crateNamesFormat, #missing.airdropCrateNames));
         end
         
+        local warningFormat = (L and L["LocalizationMissingTranslationsWarning"]) or "Warning: Found %d missing critical translations (%s)";
         DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
-            "警告：发现 %d 个缺失的关键翻译 (%s)",
+            warningFormat,
             missingCount,
             table.concat(missingList, ", ")
         ));
         
         -- 调试模式下显示详细信息
         if Debug and Debug:IsEnabled() then
+            local mapNamesMsg = (L and L["LocalizationMissingMapNames"]) or "Missing map names: %s";
+            local crateNamesMsg = (L and L["LocalizationMissingCrateNames"]) or "Missing airdrop crate names: %s";
             if #missing.mapNames > 0 then
-                DEFAULT_CHAT_FRAME:AddMessage(prefix .. "缺失的地图名称: " .. table.concat(missing.mapNames, ", "));
+                DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(mapNamesMsg, table.concat(missing.mapNames, ", ")));
             end
             if #missing.airdropCrateNames > 0 then
-                DEFAULT_CHAT_FRAME:AddMessage(prefix .. "缺失的空投箱子名称: " .. table.concat(missing.airdropCrateNames, ", "));
+                DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(crateNamesMsg, table.concat(missing.airdropCrateNames, ", ")));
             end
         end
     end
@@ -255,6 +266,7 @@ end
 function Localization:FormatMapCode(mapCode)
     if not mapCode then return "" end;
     -- 将 MAP_001 转换为 "Map 001"
+    -- 将 AIRDROP_CRATE_001 转换为 "Airdrop Crate 001"
     return mapCode:gsub("_", " "):gsub("(%a+)(%d+)", function(prefix, number)
         return prefix:sub(1,1):upper() .. prefix:sub(2):lower() .. " " .. number;
     end);
@@ -309,9 +321,14 @@ function Localization:GetAirdropCrateName()
     local L = GetL();
     
     if not L then
-        -- 如果L还没有初始化，回退到英文
+        -- 如果L还没有初始化，尝试获取英文本地化
         self:LogMissingTranslation(crateCode, "AirdropCrateNames", false);
-        return "War Supply Crate";
+        local enL = self:GetEnglishLocale();
+        if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
+            return enL.AirdropCrateNames[crateCode];
+        end
+        -- 如果英文也没有，返回格式化代号（不应该到达这里）
+        return self:FormatMapCode(crateCode);
     end
     
     -- 使用代号系统
@@ -329,9 +346,9 @@ function Localization:GetAirdropCrateName()
         return enL.AirdropCrateNames[crateCode];
     end
     
-    -- 最后回退到默认值
+    -- 最后回退到格式化代号（不应该到达这里，因为英文本地化文件应该总是存在）
     self:LogMissingTranslation(crateCode, "AirdropCrateNames", true);
-    return "War Supply Crate";
+    return self:FormatMapCode(crateCode);
 end
 
 -- ============================================================================
