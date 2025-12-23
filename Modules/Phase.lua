@@ -8,7 +8,7 @@ local Phase = BuildEnv("Phase");
 
 -- 状态变量
 Phase.anyInstanceIDAcquired = false;
-Phase.lastReportedInstanceID = nil;  -- 记录最后报告的位面ID，用于减少重复输出
+Phase.lastReportedInstanceID = nil;  -- 记录最后报告的位面ID，用于减少重复输出（仅用于首次获取）
 
 -- 调试函数
 local function DebugPrint(msg, ...)
@@ -90,9 +90,11 @@ function Phase:UpdatePhaseInfo()
                 local oldInstance = targetMapData.instance;
                 Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
                 
-                -- 只在位面ID真正变化时输出（减少重复输出）
+                -- 只在位面ID真正变化时输出
                 if oldInstance then
-                    -- 位面ID变化：使用限制机制，避免频繁输出
+                    -- 位面ID变化：只要发生变化就报告，无变化不报告
+                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
+                    -- 调试模式下也输出
                     DebugPrintLimited("phase_changed_" .. targetMapData.id, L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
                 else
                     -- 首次获取位面ID：只在首次获取时输出
