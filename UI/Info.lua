@@ -17,12 +17,35 @@ end
 Info.isInitialized = false;
 Info.currentFrame = nil;
 
-local function RemoveColorCodes(text)
-    if not text then return "" end;
-    text = text:gsub('|c[0-9a-fA-F]+', '');
-    text = text:gsub('|r', '');
-    return text;
+local ADDON_NAME = "CrateTrackerZK";
+
+local function GetAddonVersion()
+    if GetAddOnMetadata then
+        return GetAddOnMetadata(ADDON_NAME, "Version") or "Unknown";
+    end
+    return "Unknown";
 end
+
+local function BuildAboutText()
+    local version = GetAddonVersion();
+    return string.format([[
+CrateTrackerZK
+
+Author: capzk
+Version: %s
+Project: https://github.com/capzk/CrateTrackerZK
+License: MIT
+Contact: capzk@outlook.com
+
+Summary: Track airdrop refresh and phasing info, with timers and team notifications.]], version);
+end
+
+local HELP_TEXT = [[
+/ctk help        Show available commands
+/ctk team on/off Enable or disable team notifications
+/ctk team status Show team notification status
+/ctk clear       Clear local data and reinitialize
+]];
 
 function Info:Initialize()
     if self.isInitialized then
@@ -135,8 +158,7 @@ function Info:CreateAnnouncementFrame()
     contentText:SetWordWrap(true);
     contentText:SetSpacing(2);
     
-    local plainText = RemoveColorCodes(L["AnnouncementText"]);
-    contentText:SetText(plainText);
+    contentText:SetText(BuildAboutText());
     
     scrollFrame:SetScript('OnSizeChanged', function(self)
         self:GetScrollChild():SetWidth(self:GetWidth() - 10);
@@ -192,8 +214,7 @@ function Info:CreateIntroductionFrame()
     contentText:SetWordWrap(true);
     contentText:SetSpacing(2);
     
-    local plainText = RemoveColorCodes(L["IntroductionText"]);
-    contentText:SetText(plainText);
+    contentText:SetText(HELP_TEXT);
     
     scrollFrame:SetScript('OnSizeChanged', function(self)
         self:GetScrollChild():SetWidth(self:GetWidth() - 10);

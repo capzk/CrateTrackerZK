@@ -32,27 +32,63 @@ function Commands:HandleCommand(msg)
 end
 
 function Commands:HandleDebugCommand(arg)
-    if arg == "on" then
-        if Debug then Debug:SetEnabled(true) end
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DebugEnabled"]);
-    elseif arg == "off" then
-        if Debug then Debug:SetEnabled(false) end
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DebugDisabled"]);
-    else
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DebugUsage"]);
+    if not Debug then
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["CommandModuleNotLoaded"]);
+        return;
     end
+    local enableDebug = (arg == "on");
+    Debug:SetEnabled(enableDebug);
+    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. (enableDebug and "已开启调试" or "已关闭调试"));
 end
 
 function Commands:HandleClearCommand(arg)
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["ClearingData"]);
     
-    if Data and Data.ClearAllData then
-        local success = Data:ClearAllData();
-        if success then
-            DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DataCleared"]);
-        else
-            DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DataClearFailedEmpty"]);
-        end
+    -- 停止检测和计时器
+    if TimerManager then TimerManager:StopMapIconDetection() end
+    if CrateTrackerZK and CrateTrackerZK.phaseTimer then
+        CrateTrackerZK.phaseTimer:SetScript("OnUpdate", nil);
+    end
+
+    -- 隐藏并销毁现有 UI，以便重建默认布局
+    if CrateTrackerZKFrame then
+        CrateTrackerZKFrame:Hide();
+        CrateTrackerZKFrame = nil;
+    end
+    if CrateTrackerZKFloatingButton then
+        CrateTrackerZKFloatingButton:Hide();
+        CrateTrackerZKFloatingButton = nil;
+    end
+
+    -- 彻底清除持久化数据（SavedVariables）
+    CRATETRACKERZK_DB = nil;
+    CRATETRACKERZK_UI_DB = nil;
+
+    -- 重置模块状态，确保重新初始化
+    if Data then
+        Data.maps = {};
+        Data.manualInputLock = {};
+    end
+    if TimerManager then
+        TimerManager.isInitialized = false;
+        TimerManager.mapIconDetected = {};
+        TimerManager.mapIconFirstDetectedTime = {};
+        TimerManager.lastUpdateTime = {};
+        TimerManager.lastDebugMessage = {};
+    end
+    if Notification then
+        Notification.isInitialized = false;
+    end
+    if Debug then
+        Debug.isInitialized = false;
+        Debug.enabled = false;
+        Debug.lastDebugMessage = {};
+    end
+
+    -- 重新初始化（等同于全新安装）
+    if CrateTrackerZK and CrateTrackerZK.Reinitialize then
+        CrateTrackerZK:Reinitialize();
+        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DataCleared"]);
     else
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DataClearFailedModule"]);
     end

@@ -3,93 +3,76 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 
-local Data = BuildEnv('Data')
+local Data = BuildEnv('Data');
 
+-- Defaults
+Data.DEFAULT_REFRESH_INTERVAL = (Data.MAP_CONFIG and Data.MAP_CONFIG.defaults and Data.MAP_CONFIG.defaults.interval) or 1100;
 Data.maps = {};
 Data.manualInputLock = {};
 
-function Data:Initialize()
-    if not CRATETRACKERZK_DB then
-        CRATETRACKERZK_DB = {
-            version = 1,
-            mapData = {},
-        }
-    end
-    
+local function ensureDB()
     if type(CRATETRACKERZK_DB) ~= "table" then
-        CRATETRACKERZK_DB = {
-            version = 1,
-            mapData = {},
-        }
+        CRATETRACKERZK_DB = {};
     end
-    
-    if not CRATETRACKERZK_DB.version then
-        CRATETRACKERZK_DB.version = 1;
-    end
-    
     if type(CRATETRACKERZK_DB.mapData) ~= "table" then
         CRATETRACKERZK_DB.mapData = {};
     end
-    
+end
+
+local function sanitizeTimestamp(ts, allowFuture)
+    if not ts or type(ts) ~= "number" then return nil end
+    local maxFuture = allowFuture and (time() + 86400 * 365) or time() + 86400 * 365;
+    if ts < 0 or ts > maxFuture then return nil end
+    return ts;
+end
+
+function Data:Initialize()
+    ensureDB();
     self.maps = {};
-    
-    if not self.DEFAULT_MAPS or #self.DEFAULT_MAPS == 0 then
-        if Utils then
-            Utils.PrintError("Data:Initialize() - DEFAULT_MAPS is empty or nil");
-        end
+
+    local mapConfig = self.MAP_CONFIG and self.MAP_CONFIG.current_maps or {};
+    if not mapConfig or #mapConfig == 0 then
+        if Utils then Utils.PrintError("Data:Initialize() - MAP_CONFIG.current_maps is empty or nil"); end
         return;
     end
-    
-    for i, defaultMap in ipairs(self.DEFAULT_MAPS) do
-        if not defaultMap or not defaultMap.code then
-            if Utils then
-                Utils.PrintError("Data:Initialize() - Invalid map config at index " .. i);
-            end
-        else
-            local mapCode = defaultMap.code;
+
+    local defaults = (self.MAP_CONFIG and self.MAP_CONFIG.defaults) or {};
+    local nextId = 1;
+
+    for _, cfg in ipairs(mapConfig) do
+        if cfg and cfg.code and (cfg.enabled ~= false) then
+            local mapCode = cfg.code;
             local savedData = CRATETRACKERZK_DB.mapData[mapCode];
-            
-            if savedData and type(savedData) ~= "table" then
-                savedData = {};
-            end
-            savedData = savedData or {};
-            
-            local lastRefresh = savedData.lastRefresh;
-            if lastRefresh and (type(lastRefresh) ~= "number" or lastRefresh < 0 or lastRefresh > time() + 86400 * 365) then
-                lastRefresh = nil;
-            end
-            
-            local createTime = savedData.createTime;
-            if createTime and (type(createTime) ~= "number" or createTime < 0 or createTime > time() + 86400 * 365) then
-                createTime = time();
-            end
-            createTime = createTime or time();
-            
+            if type(savedData) ~= "table" then savedData = {}; end
+
+            local lastRefresh = sanitizeTimestamp(savedData.lastRefresh, true);
+            local createTime = sanitizeTimestamp(savedData.createTime, true) or time();
+            local interval = cfg.interval or defaults.interval or self.DEFAULT_REFRESH_INTERVAL;
+
             local mapData = {
-                id = i,
+                id = nextId,
                 code = mapCode,
-                interval = defaultMap.interval or Data.DEFAULT_REFRESH_INTERVAL or 1100,
+                interval = interval,
                 instance = savedData.instance,
                 lastInstance = savedData.lastInstance,
                 lastRefreshInstance = savedData.lastRefreshInstance,
                 lastRefresh = lastRefresh,
                 nextRefresh = nil,
                 createTime = createTime,
-            }
-            
+            };
+
             if mapData.lastRefresh then
-                self:UpdateNextRefresh(i, mapData);
+                self:UpdateNextRefresh(nextId, mapData);
             end
-            
+
             if mapData.instance and not mapData.lastInstance then
                 mapData.lastInstance = mapData.instance;
-                if not CRATETRACKERZK_DB.mapData[mapCode] then
-                    CRATETRACKERZK_DB.mapData[mapCode] = {};
-                end
+                CRATETRACKERZK_DB.mapData[mapCode] = CRATETRACKERZK_DB.mapData[mapCode] or {};
                 CRATETRACKERZK_DB.mapData[mapCode].lastInstance = mapData.lastInstance;
             end
-            
+
             table.insert(self.maps, mapData);
+            nextId = nextId + 1;
         end
     end
 end
@@ -97,18 +80,9 @@ end
 function Data:SaveMapData(mapId)
     local mapData = self.maps[mapId];
     if not mapData or not mapData.code then return end
-    
-    if not CRATETRACKERZK_DB then
-        CRATETRACKERZK_DB = {
-            version = 1,
-            mapData = {},
-        }
-    end
-    
-    if type(CRATETRACKERZK_DB.mapData) ~= "table" then
-        CRATETRACKERZK_DB.mapData = {};
-    end
-    
+
+    ensureDB();
+
     CRATETRACKERZK_DB.mapData[mapData.code] = {
         instance = mapData.instance,
         lastInstance = mapData.lastInstance,

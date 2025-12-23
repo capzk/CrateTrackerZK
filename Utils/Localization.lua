@@ -41,11 +41,11 @@ function Localization:ValidateCompleteness()
         airdropCrateNames = {}
     };
     
-    if Data and Data.DEFAULT_MAPS then
+    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
         local L = GetL();
         local enL = self:GetEnglishLocale();
         
-        for _, mapData in ipairs(Data.DEFAULT_MAPS) do
+        for _, mapData in ipairs(Data.MAP_CONFIG.current_maps) do
             local mapCode = mapData.code;
             if mapCode then
                 local hasTranslation = false;
@@ -243,8 +243,8 @@ end
 function Localization:GetAllMapNames()
     local result = {};
     
-    if Data and Data.DEFAULT_MAPS then
-        for _, mapData in ipairs(Data.DEFAULT_MAPS) do
+    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
+        for _, mapData in ipairs(Data.MAP_CONFIG.current_maps) do
             local mapCode = mapData.code;
             result[mapCode] = self:GetMapName(mapCode);
         end

@@ -53,6 +53,11 @@ local function OnLogin()
     DebugPrint("[Core] Initialization completed");
 end
 
+-- 允许运行时重新初始化（用于 /ctk clear 后的全新初始化）
+function CrateTrackerZK:Reinitialize()
+    OnLogin();
+end
+
 local function OnEvent(self, event, ...)
     if event == "PLAYER_LOGIN" then
         OnLogin();

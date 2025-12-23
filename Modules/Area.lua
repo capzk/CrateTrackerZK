@@ -16,6 +16,13 @@ local function DebugPrint(msg, ...)
     end
 end
 
+local function DT(key)
+    if Debug and Debug.GetText then
+        return Debug:GetText(key);
+    end
+    return key;
+end
+
 -- 获取当前地图ID
 function Area:GetCurrentMapId()
     return C_Map.GetBestMapForUnit("player");
@@ -57,8 +64,7 @@ function Area:CheckAndUpdateAreaValid()
     if isIndoors or isInstance then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            local L = CrateTrackerZK.L;
-            DebugPrint(L["DebugAreaInvalidInstance"]);
+            DebugPrint(DT("DebugAreaInvalidInstance"));
             self:PauseAllDetections();
         end
         return false;
@@ -68,8 +74,7 @@ function Area:CheckAndUpdateAreaValid()
     if not currentMapID then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            local L = CrateTrackerZK.L;
-            DebugPrint(L["DebugAreaCannotGetMapID"]);
+            DebugPrint(DT("DebugAreaCannotGetMapID"));
             self:PauseAllDetections();
         end
         return false;
@@ -105,16 +110,14 @@ function Area:CheckAndUpdateAreaValid()
         if isValid then
             if self.lastAreaValidState ~= true then
                 self.lastAreaValidState = true;
-                local L = CrateTrackerZK.L;
-                DebugPrint(string.format(L["DebugAreaValid"], matchedMapName or currentMapName));
+                DebugPrint(string.format(DT("DebugAreaValid"), matchedMapName or currentMapName));
                 self:ResumeAllDetections();
             end
             return true;
         else
             if self.lastAreaValidState ~= false then
                 self.lastAreaValidState = false;
-                local L = CrateTrackerZK.L;
-                DebugPrint(string.format(L["DebugAreaInvalidNotInList"], currentMapName));
+                DebugPrint(string.format(DT("DebugAreaInvalidNotInList"), currentMapName));
                 self:PauseAllDetections();
             end
             return false;

@@ -2,7 +2,6 @@
 -- This file contains only translation data, no logic
 local LocaleManager = BuildEnv("LocaleManager");
 if not LocaleManager or not LocaleManager.RegisterLocale then
-    -- 记录加载失败（如果 LocaleManager 已存在但 RegisterLocale 不存在）
     if LocaleManager then
         LocaleManager.failedLocales = LocaleManager.failedLocales or {};
         table.insert(LocaleManager.failedLocales, {
@@ -10,7 +9,7 @@ if not LocaleManager or not LocaleManager.RegisterLocale then
             reason = "RegisterLocale function not available"
         });
     end
-    return; -- Locales.lua not loaded yet
+    return;
 end
 
 local localeData = {};
@@ -57,9 +56,6 @@ localeData["Disabled"] = "Disabled";
 
 -- Commands
 localeData["UnknownCommand"] = "Unknown command: %s";
-localeData["DebugEnabled"] = "Debug information enabled";
-localeData["DebugDisabled"] = "Debug information disabled";
-localeData["DebugUsage"] = "Debug command: /ctk debug on|off";
 localeData["ClearingData"] = "Clearing all time and instance data...";
 localeData["DataCleared"] = "All time and instance data cleared, map list preserved";
 localeData["DataClearFailedEmpty"] = "Clear data failed: map list is empty";
@@ -78,50 +74,12 @@ localeData["HelpStatus"] = "/ctk team status - View team notification status";
 localeData["HelpHelp"] = "/ctk help - Show this help information";
 localeData["HelpUpdateWarning"] = "If any problem occurs after updating, please completely delete this addon folder and reinstall it from scratch!!";
 
--- Debug Messages
-localeData["DebugTimerStarted"] = "Timer started via %s, next refresh: %s";
-localeData["DebugDetectionSourceManual"] = "Manual Input";
-localeData["DebugDetectionSourceRefresh"] = "Refresh Button";
-localeData["DebugDetectionSourceAPI"] = "API Interface";
-localeData["DebugDetectionSourceMapIcon"] = "Map Icon Detection";
-localeData["DebugNoRecord"] = "No Record";
-localeData["DebugCannotGetMapName2"] = "Cannot get current map name";
-localeData["DebugMapListEmpty"] = "Map list is empty, skipping map icon detection";
-localeData["DebugMapNotInList"] = "[Airdrop Detection] Current map not in valid list, skipping detection: %s (Parent=%s Map ID=%s)";
-localeData["DebugMapMatchSuccess"] = "[Airdrop Detection] Map match successful: %s";
-localeData["DebugParentMapMatchSuccess"] = "[Airdrop Detection] Parent map match successful (sub-zone): %s (Parent=%s)";
-localeData["DebugDetectedMapIconVignette"] = "[Airdrop Detection] Detected map icon (Vignette): %s (Airdrop Crate Name: %s)";
-localeData["DebugUpdatedRefreshTime"] = "[Airdrop Detection] Updated refresh time: %s next refresh=%s";
-localeData["DebugUpdateRefreshTimeFailed"] = "[Airdrop Detection] Update refresh time failed: Map ID=%s";
-localeData["DebugMapIconNameNotConfigured"] = "[Map Icon Detection] Airdrop crate name not configured, skipping detection";
-localeData["DebugAirdropActive"] = "[Airdrop Detection] Detected crate, airdrop event active: %s";
-localeData["DebugWaitingForConfirmation"] = "[Airdrop Detection] Waiting for continuous detection confirmation: %s (interval=%s seconds)";
-localeData["DebugClearedFirstDetectionTime"] = "[Airdrop Detection] Cleared first detection time record (icon not detected): %s";
-localeData["DebugAirdropEnded"] = "[Airdrop Detection] Icon not detected, airdrop event ended: %s";
-localeData["DebugFirstDetectionWait"] = "[Airdrop Detection] First icon detection, waiting for continuous detection confirmation: %s";
-localeData["DebugContinuousDetectionConfirmed"] = "[Airdrop Detection] Continuous detection confirmed valid, updating refresh time and sending notification: %s (interval=%s seconds)";
 localeData["ErrorTimerManagerNotInitialized"] = "Timer manager not initialized";
 localeData["ErrorInvalidMapID"] = "Invalid map ID:";
 localeData["ErrorTimerStartFailedMapID"] = "Timer start failed: Map ID=";
 localeData["ErrorInvalidMapIDList"] = "Invalid map ID list";
 localeData["ErrorMapNotFound"] = "Map not found:";
 localeData["ErrorInvalidSourceParam"] = "Invalid detection source parameter";
-
--- Area Detection Debug Messages
-localeData["DebugAreaInvalidInstance"] = "[Area Validity] Area invalid (instance/battleground/indoor), addon auto-paused";
-localeData["DebugAreaCannotGetMapID"] = "[Area Validity] Cannot get map ID";
-localeData["DebugAreaValid"] = "[Area Validity] Area valid, addon enabled: %s";
-localeData["DebugAreaInvalidNotInList"] = "[Area Validity] Area invalid (not in valid map list), addon auto-paused: %s";
-
--- Phase Detection Debug Messages
-localeData["DebugPhaseDetectionPaused"] = "[Phase Detection] Detection paused, skipping phase detection";
-localeData["DebugPhaseNoMapID"] = "Cannot get current map ID, skipping phase info update";
-
--- Icon Detection Debug Messages
-localeData["DebugIconDetectionStart"] = "[Map Icon Detection] Starting detection, map=%s, airdrop crate name=%s";
-localeData["DebugCMapAPINotAvailable"] = "[Map API] C_Map API not available";
-localeData["DebugCMapGetMapInfoNotAvailable"] = "[Map API] C_Map.GetMapInfo not available";
-
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";
@@ -147,9 +105,6 @@ localeData["InfoModuleNotLoaded"] = "Info module not loaded";
 localeData["DataModuleNotLoaded"] = "Data module not loaded";
 localeData["TimerManagerNotInitialized"] = "Timer manager not initialized";
 localeData["Return"] = "Return";
-localeData["PluginAnnouncement"] = "|cff00ff88Plugin Announcement|r";
-localeData["PluginIntro"] = "|cff00ff88Plugin Introduction|r";
--- UI Font Size Configuration (numeric type)
 localeData["UIFontSize"] = 15;
 
 -- Menu Items
@@ -157,11 +112,7 @@ localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
 localeData["MenuSettings"] = "Settings";
 
--- ============================================================================
--- 地图名称翻译映射表（使用代号系统，完全语言无关）
--- ============================================================================
--- 格式：[地图代号] = "英文名称"
--- 注意：添加新语言只需创建新的本地化文件，添加代号到名称的映射即可
+-- Map names
 localeData.MapNames = {
     ["MAP_001"] = "Isle of Dorn",
     ["MAP_002"] = "K'aresh",
@@ -172,44 +123,10 @@ localeData.MapNames = {
     ["MAP_007"] = "Siren Isle",
 };
 
--- ============================================================================
--- 空投箱子名称本地化
--- ============================================================================
+-- Airdrop crate names
 localeData.AirdropCrateNames = {
     ["AIRDROP_CRATE_001"] = "War Supply Crate",
 };
-
--- Help and About Content
-localeData["AnnouncementText"] = [[
-Author: capzk
-Feedback: capzk@outlook.com
-
-
-]];
-
-localeData["IntroductionText"] = [[
-• /ctk team on - Enable team notification
-• /ctk team off - Disable team notification
-• /ctk clear - Clear data
-
-**Usage Notes:**
-
-* Automatic airdrop detection requires the player to be in a valid area.
-
-* Instances, battlegrounds, and indoor areas are considered invalid areas. When the player is in these areas, the addon will automatically pause detection.
-
-* Only areas where the current map name matches the valid map list are considered valid areas.
-
-* Players can cooperate in a group by camping different locations and reporting the spawn time to each other. You can then manually click the **Refresh** button to start the timer, or click the time display area and enter a time to start the timer.
-
-* Team message notifications are enabled by default. You can disable them with the command: `/ctk team off`.
-
-* The addon provides a floating button that can be used to reopen the main interface after it has been closed. Data will not be lost.
-
-* Data is saved automatically and will not be lost when exiting the game.
-
-
-Thank you for using!]];
 
 -- Register this locale
 LocaleManager.RegisterLocale("enUS", localeData);

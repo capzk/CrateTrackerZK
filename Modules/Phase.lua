@@ -17,6 +17,13 @@ local function DebugPrint(msg, ...)
     end
 end
 
+local function DT(key)
+    if Debug and Debug.GetText then
+        return Debug:GetText(key);
+    end
+    return key;
+end
+
 local function DebugPrintLimited(key, msg, ...)
     if Debug and Debug:IsEnabled() then
         Debug:PrintLimited(key, msg, ...);
@@ -46,7 +53,7 @@ end
 function Phase:UpdatePhaseInfo()
     -- 检查区域是否暂停（大前提）
     if Area and Area.detectionPaused then
-        DebugPrintLimited("phase_detection_paused", L["DebugPhaseDetectionPaused"]);
+        DebugPrintLimited("phase_detection_paused", DT("DebugPhaseDetectionPaused"));
         return;
     end
     
@@ -54,7 +61,7 @@ function Phase:UpdatePhaseInfo()
     
     local currentMapID = Area:GetCurrentMapId();
     if not currentMapID then
-        DebugPrintLimited("no_map_id_phase", L["DebugPhaseNoMapID"]);
+        DebugPrintLimited("no_map_id_phase", DT("DebugPhaseNoMapID"));
         return;
     end
     

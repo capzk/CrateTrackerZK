@@ -70,6 +70,13 @@ local function SafeDebugLimited(messageKey, ...)
     end
 end
 
+local function DT(key)
+    if Debug and Debug.GetText then
+        return Debug:GetText(key);
+    end
+    return key;
+end
+
 local function getCurrentTimestamp()
     return time();
 end
@@ -105,7 +112,7 @@ function TimerManager:StartTimer(mapId, source, timestamp)
             local updatedMapData = Data:GetMap(mapId);
             if updatedMapData then
                 local sourceText = self:GetSourceDisplayName(source);
-                SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
+                SafeDebug(string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
                 
                 SafeDebug("[Timer] Manual update", "Map=" .. Data:GetMapDisplayName(updatedMapData), "Source=" .. source, "Last=" .. Data:FormatDateTime(updatedMapData.lastRefresh), "Next=" .. Data:FormatDateTime(updatedMapData.nextRefresh));
             end
@@ -199,17 +206,17 @@ function TimerManager:StartCurrentMapTimer(source, timestamp)
         return self:StartTimerByName(currentMapName, source, timestamp);
     else
         SafeDebug("[Timer] Cannot get map name", "MapID=" .. (currentMapID or "nil"));
-        Utils.PrintError(L["DebugCannotGetMapName2"]);
+        Utils.PrintError(DT("DebugCannotGetMapName2"));
         return false;
     end
 end
 
 function TimerManager:GetSourceDisplayName(source)
     local displayNames = {
-        [self.detectionSources.MANUAL_INPUT] = L["DebugDetectionSourceManual"],
-        [self.detectionSources.REFRESH_BUTTON] = L["DebugDetectionSourceRefresh"],
-        [self.detectionSources.API_INTERFACE] = L["DebugDetectionSourceAPI"],
-        [self.detectionSources.MAP_ICON] = L["DebugDetectionSourceMapIcon"]
+        [self.detectionSources.MANUAL_INPUT] = DT("DebugDetectionSourceManual"),
+        [self.detectionSources.REFRESH_BUTTON] = DT("DebugDetectionSourceRefresh"),
+        [self.detectionSources.API_INTERFACE] = DT("DebugDetectionSourceAPI"),
+        [self.detectionSources.MAP_ICON] = DT("DebugDetectionSourceMapIcon")
     };
     
     return displayNames[source] or "Unknown";
@@ -234,24 +241,24 @@ end
 
 function TimerManager:DetectMapIcons()
     if not C_Map or not C_Map.GetBestMapForUnit then
-        SafeDebug(L["DebugCMapAPINotAvailable"])
+        SafeDebug(DT("DebugCMapAPINotAvailable"))
         return false;
     end
     
     local currentMapID = C_Map.GetBestMapForUnit("player")
     if not currentMapID then
-        SafeDebug(L["DebugCannotGetMapID"])
+        SafeDebug(DT("DebugCannotGetMapID"))
         return false;
     end
     
     if not C_Map.GetMapInfo then
-        SafeDebug(L["DebugCMapGetMapInfoNotAvailable"])
+        SafeDebug(DT("DebugCMapGetMapInfoNotAvailable"))
         return false;
     end
     
     local mapInfo = C_Map.GetMapInfo(currentMapID)
     if not mapInfo or not mapInfo.name then
-        SafeDebug(L["DebugCannotGetMapName2"])
+        SafeDebug(DT("DebugCannotGetMapName2"))
         return false;
     end
     
@@ -260,7 +267,7 @@ function TimerManager:DetectMapIcons()
     local parentMapName = "";
     
     if not validMaps or #validMaps == 0 then
-        SafeDebug(L["DebugMapListEmpty"])
+        SafeDebug(DT("DebugMapListEmpty"))
         return false;
     end
     
@@ -275,7 +282,7 @@ function TimerManager:DetectMapIcons()
         if Data:IsMapNameMatch(mapData, mapInfo.name) then
             targetMapData = mapData;
             if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
-                SafeDebugLimited("icon_map_match_" .. tostring(currentMapID), string.format(L["DebugMapMatchSuccess"], mapInfo.name));
+                SafeDebugLimited("icon_map_match_" .. tostring(currentMapID), string.format(DT("DebugMapMatchSuccess"), mapInfo.name));
                 self.lastMatchedMapID = currentMapID;
             end
             break;
@@ -288,7 +295,7 @@ function TimerManager:DetectMapIcons()
                 targetMapData = mapData;
                 -- 只在首次匹配时输出（减少重复输出）
                 if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
-                    SafeDebugLimited("icon_parent_match_" .. tostring(currentMapID), string.format(L["DebugParentMapMatchSuccess"], mapInfo.name, parentMapName));
+                    SafeDebugLimited("icon_parent_match_" .. tostring(currentMapID), string.format(DT("DebugParentMapMatchSuccess"), mapInfo.name, parentMapName));
                     self.lastMatchedMapID = currentMapID;
                 end
                 break;
@@ -298,7 +305,7 @@ function TimerManager:DetectMapIcons()
     
     if not targetMapData then
         if not self.lastUnmatchedMapID or self.lastUnmatchedMapID ~= currentMapID then
-            SafeDebugLimited("map_not_in_list_" .. tostring(currentMapID), string.format(L["DebugMapNotInList"], mapInfo.name, parentMapName or L["DebugNoRecord"], currentMapID))
+            SafeDebugLimited("map_not_in_list_" .. tostring(currentMapID), string.format(DT("DebugMapNotInList"), mapInfo.name, parentMapName or DT("DebugNoRecord"), currentMapID))
             self.lastUnmatchedMapID = currentMapID;
         end
         return false;
@@ -326,7 +333,7 @@ function TimerManager:DetectMapIcons()
     
     if not crateName or crateName == "" then
         local L = CrateTrackerZK.L;
-        SafeDebug(L["DebugMapIconNameNotConfigured"]);
+        SafeDebug(DT("DebugMapIconNameNotConfigured"));
         return false;
     end
     
@@ -345,8 +352,8 @@ function TimerManager:DetectMapIcons()
                             
                             if crateName and crateName ~= "" and trimmedName == crateName then
                                 foundMapIcon = true;
-                                SafeDebugLimited("icon_detection_start", string.format(L["DebugIconDetectionStart"], Data:GetMapDisplayName(targetMapData), crateName));
-                                SafeDebugLimited("icon_vignette_" .. targetMapData.id, string.format(L["DebugDetectedMapIconVignette"], Data:GetMapDisplayName(targetMapData), crateName))
+                                SafeDebugLimited("icon_detection_start", string.format(DT("DebugIconDetectionStart"), Data:GetMapDisplayName(targetMapData), crateName));
+                                SafeDebugLimited("icon_vignette_" .. targetMapData.id, string.format(DT("DebugDetectedMapIconVignette"), Data:GetMapDisplayName(targetMapData), crateName))
                                 break
                             end
                         end
@@ -371,13 +378,13 @@ function TimerManager:DetectMapIcons()
     if foundMapIcon then
         if not firstDetectedTime then
             self.mapIconFirstDetectedTime[targetMapData.id] = currentTime;
-                SafeDebug(string.format(L["DebugFirstDetectionWait"], Data:GetMapDisplayName(targetMapData)));
+                SafeDebug(string.format(DT("DebugFirstDetectionWait"), Data:GetMapDisplayName(targetMapData)));
         else
             local timeSinceFirstDetection = currentTime - firstDetectedTime;
             
             if timeSinceFirstDetection >= 2 then
                 if not wasDetectedBefore then
-                    SafeDebug(string.format(L["DebugContinuousDetectionConfirmed"], Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
+                    SafeDebug(string.format(DT("DebugContinuousDetectionConfirmed"), Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
                     
                     self.mapIconDetected[targetMapData.id] = true;
                     
@@ -393,36 +400,36 @@ function TimerManager:DetectMapIcons()
                         
                         local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
                         if updatedMapData and updatedMapData.nextRefresh then
-                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
-                            SafeDebug(string.format(L["DebugUpdatedRefreshTime"], Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(updatedMapData.nextRefresh)));
+                            SafeDebug(string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
+                            SafeDebug(string.format(DT("DebugUpdatedRefreshTime"), Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(updatedMapData.nextRefresh)));
                         else
-                            SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, L["NoRecord"]));
+                            SafeDebug(string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(targetMapData), sourceText, DT("DebugNoRecord")));
                         end
                         
                         self:UpdateUI();
                     else
-                        SafeDebug(string.format(L["DebugUpdateRefreshTimeFailed"], targetMapData.id));
+                        SafeDebug(string.format(DT("DebugUpdateRefreshTimeFailed"), targetMapData.id));
                     end
                     
                     if Notification then
                         Notification:NotifyAirdropDetected(Data:GetMapDisplayName(targetMapData), self.detectionSources.MAP_ICON);
                     end
                 else
-                    SafeDebugLimited("icon_detected_" .. targetMapData.id, string.format(L["DebugAirdropActive"], Data:GetMapDisplayName(targetMapData)));
+                    SafeDebugLimited("icon_detected_" .. targetMapData.id, string.format(DT("DebugAirdropActive"), Data:GetMapDisplayName(targetMapData)));
                 end
             else
-                SafeDebug(string.format(L["DebugWaitingForConfirmation"], Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
+                SafeDebug(string.format(DT("DebugWaitingForConfirmation"), Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
             end
         end
     else
         if self.mapIconFirstDetectedTime[targetMapData.id] then
             self.mapIconFirstDetectedTime[targetMapData.id] = nil;
-            SafeDebug(string.format(L["DebugClearedFirstDetectionTime"], Data:GetMapDisplayName(targetMapData)));
+            SafeDebug(string.format(DT("DebugClearedFirstDetectionTime"), Data:GetMapDisplayName(targetMapData)));
         end
         
         if self.mapIconDetected[targetMapData.id] then
             self.mapIconDetected[targetMapData.id] = nil;
-            SafeDebugLimited("icon_cleared_" .. targetMapData.id, string.format(L["DebugAirdropEnded"], Data:GetMapDisplayName(targetMapData)));
+            SafeDebugLimited("icon_cleared_" .. targetMapData.id, string.format(DT("DebugAirdropEnded"), Data:GetMapDisplayName(targetMapData)));
         end
     end
     

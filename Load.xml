@@ -14,9 +14,8 @@
     <Script file="Locales/enUS.lua"/>
     
     <!-- 数据管理（代号系统配置优先） -->
-    <Script file="Data/MapConfig.lua"/>
-    <Script file="Data/MapData.lua"/>
-    <Script file="Data/Data.lua"/>
+        <Script file="Data/MapConfig.lua"/>
+        <Script file="Data/Data.lua"/>
     
     <!-- 功能模块 -->
     <Script file="Modules/Notification.lua"/>
