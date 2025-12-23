@@ -3,7 +3,7 @@
 -- This file contains only translation data, no logic
 local LocaleManager = BuildEnv("LocaleManager");
 if not LocaleManager or not LocaleManager.RegisterLocale then
-    -- 记录加载失败（如果 LocaleManager 已存在但 RegisterLocale 不存在）
+    -- Record load failure if LocaleManager exists but cannot register locales
     if LocaleManager then
         LocaleManager.failedLocales = LocaleManager.failedLocales or {};
         table.insert(LocaleManager.failedLocales, {
@@ -158,23 +158,21 @@ localeData["MenuAbout"] = "О аддоне";
 localeData["MenuSettings"] = "Настройки";
 
 -- ============================================================================
--- 地图名称翻译映射表（使用代号系统，完全语言无关）
+-- Map name translations (code -> Russian name)
 -- ============================================================================
--- 格式：[地图代号] = "俄语名称"
--- 注意：添加新语言只需创建新的本地化文件，添加代号到名称的映射即可
--- 注意：以下地图名称需要翻译者根据游戏内实际名称进行翻译
+-- NOTE: These values should match in-game Russian map names
 localeData.MapNames = {
-    ["MAP_001"] = "Isle of Dorn",           -- 需要翻译
-    ["MAP_002"] = "K'aresh",                -- 需要翻译
-    ["MAP_003"] = "Hallowfall",             -- 需要翻译
-    ["MAP_004"] = "Azj-Kahet",              -- 需要翻译
-    ["MAP_005"] = "Undermine",              -- 需要翻译
-    ["MAP_006"] = "The Ringing Deeps",      -- 需要翻译
-    ["MAP_007"] = "Siren Isle",             -- 需要翻译
+    ["MAP_001"] = "Isle of Dorn",
+    ["MAP_002"] = "K'aresh",
+    ["MAP_003"] = "Hallowfall",
+    ["MAP_004"] = "Azj-Kahet",
+    ["MAP_005"] = "Undermine",
+    ["MAP_006"] = "The Ringing Deeps",
+    ["MAP_007"] = "Siren Isle",
 };
 
 -- ============================================================================
--- 空投箱子名称本地化
+-- Airdrop crate name translations
 -- ============================================================================
 localeData.AirdropCrateNames = {
     ["AIRDROP_CRATE_001"] = "Ящик с военными припасами",
@@ -183,7 +181,7 @@ localeData.AirdropCrateNames = {
 -- Help and About Content
 localeData["AnnouncementText"] = [[
 Автор: capzk
-Обратная связь: capzk@itcat.dev
+Обратная связь: capzk@outlook.com
 
 
 ]];

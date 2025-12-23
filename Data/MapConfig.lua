@@ -1,81 +1,68 @@
--- CrateTrackerZK - 地图配置文件（代号系统）
+-- CrateTrackerZK - 地图配置
 local ADDON_NAME = "CrateTrackerZK";
 local Data = BuildEnv("Data");
 
--- ============================================================================
--- 地图配置（代号系统）
--- ============================================================================
-
 Data.MAP_CONFIG = {
-    -- 配置版本（用于兼容性检查）
     version = "1.0.0",
     
-    -- 当前启用的地图列表（使用代号系统）
     current_maps = {
         {
-            code = "MAP_001",               -- 多恩岛/Isle of Dorn/多恩島
-            interval = 1100,                -- 刷新间隔（秒）
-            enabled = true,                 -- 是否启用
-            priority = 1,                   -- 显示优先级
+            code = "MAP_001",
+            interval = 1100,
+            enabled = true,
+            priority = 1,
         },
         {
-            code = "MAP_002",               -- 卡雷什/K'aresh/凱瑞西
+            code = "MAP_002",
             interval = 1100,
             enabled = true,
             priority = 2,
         },
         {
-            code = "MAP_003",               -- 陨圣峪/Hallowfall/聖落之地
+            code = "MAP_003",
             interval = 1100,
             enabled = true,
             priority = 3,
         },
         {
-            code = "MAP_004",               -- 艾基-卡赫特/Azj-Kahet/阿茲-卡罕特
+            code = "MAP_004",
             interval = 1100,
             enabled = true,
             priority = 4,
         },
         {
-            code = "MAP_005",               -- 安德麦/Undermine/幽坑城
+            code = "MAP_005",
             interval = 1100,
             enabled = true,
             priority = 5,
         },
         {
-            code = "MAP_006",               -- 喧鸣深窟/The Ringing Deeps/鳴響深淵
+            code = "MAP_006",
             interval = 1100,
             enabled = true,
             priority = 6,
         },
         {
-            code = "MAP_007",               -- 海妖岛/Siren Isle/海妖島
+            code = "MAP_007",
             interval = 1100,
             enabled = true,
             priority = 7,
         },
     },
     
-    -- 空投箱子配置（代号系统）
     airdrop_crates = {
         {
-            code = "AIRDROP_CRATE_001",      -- 战争物资箱/War Supply Crate
+            code = "AIRDROP_CRATE_001",
             enabled = true,
         },
     },
     
-    -- 默认配置
     defaults = {
-        interval = 1100,                    -- 默认刷新间隔
-        enabled = true,                     -- 默认启用状态
+        interval = 1100,
+        enabled = true,
     },
 };
 
--- ============================================================================
--- 配置访问API
--- ============================================================================
-
--- 获取地图配置
 function Data:GetMapConfig(mapCode)
     for _, mapConfig in ipairs(self.MAP_CONFIG.current_maps) do
         if mapConfig.code == mapCode then
@@ -85,7 +72,6 @@ function Data:GetMapConfig(mapCode)
     return nil;
 end
 
--- 获取所有启用的地图
 function Data:GetEnabledMaps()
     local enabledMaps = {};
     for _, mapConfig in ipairs(self.MAP_CONFIG.current_maps) do
@@ -96,7 +82,6 @@ function Data:GetEnabledMaps()
     return enabledMaps;
 end
 
--- 获取空投箱子配置
 function Data:GetAirdropCrateConfig(crateCode)
     for _, crateConfig in ipairs(self.MAP_CONFIG.airdrop_crates) do
         if crateConfig.code == crateCode then
@@ -106,11 +91,6 @@ function Data:GetAirdropCrateConfig(crateCode)
     return nil;
 end
 
--- ============================================================================
--- 动态配置管理
--- ============================================================================
-
--- 启用/禁用地图
 function Data:SetMapEnabled(mapCode, enabled)
     local mapConfig = self:GetMapConfig(mapCode);
     if mapConfig then
@@ -120,7 +100,6 @@ function Data:SetMapEnabled(mapCode, enabled)
     return false;
 end
 
--- 设置地图刷新间隔
 function Data:SetMapInterval(mapCode, interval)
     local mapConfig = self:GetMapConfig(mapCode);
     if mapConfig then
@@ -130,9 +109,7 @@ function Data:SetMapInterval(mapCode, interval)
     return false;
 end
 
--- 添加新地图配置
 function Data:AddMapConfig(mapCode, interval, enabled, priority)
-    -- 检查是否已存在
     if self:GetMapConfig(mapCode) then
         return false, "地图代号已存在";
     end

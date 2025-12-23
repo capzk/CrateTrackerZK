@@ -1,4 +1,4 @@
--- CrateTrackerZK - 数据管理模块
+-- CrateTrackerZK - 数据
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -9,7 +9,6 @@ Data.maps = {};
 Data.manualInputLock = {};
 
 function Data:Initialize()
-    -- 初始化 SavedVariables（全新安装时可能不存在）
     if not CRATETRACKERZK_DB then
         CRATETRACKERZK_DB = {
             version = 1,
@@ -17,7 +16,6 @@ function Data:Initialize()
         }
     end
     
-    -- 确保数据结构正确（处理旧版本或损坏的数据）
     if type(CRATETRACKERZK_DB) ~= "table" then
         CRATETRACKERZK_DB = {
             version = 1,
@@ -25,19 +23,16 @@ function Data:Initialize()
         }
     end
     
-    -- 确保 version 字段存在
     if not CRATETRACKERZK_DB.version then
         CRATETRACKERZK_DB.version = 1;
     end
     
-    -- 确保 mapData 字段存在且为表
     if type(CRATETRACKERZK_DB.mapData) ~= "table" then
         CRATETRACKERZK_DB.mapData = {};
     end
     
     self.maps = {};
     
-    -- 检查 DEFAULT_MAPS 是否存在
     if not self.DEFAULT_MAPS or #self.DEFAULT_MAPS == 0 then
         if Utils then
             Utils.PrintError("Data:Initialize() - DEFAULT_MAPS is empty or nil");
@@ -51,16 +46,14 @@ function Data:Initialize()
                 Utils.PrintError("Data:Initialize() - Invalid map config at index " .. i);
             end
         else
-            local mapCode = defaultMap.code;  -- 代号作为键（完全语言无关）
+            local mapCode = defaultMap.code;
             local savedData = CRATETRACKERZK_DB.mapData[mapCode];
             
-            -- 验证保存的数据结构（处理旧版本或损坏的数据）
             if savedData and type(savedData) ~= "table" then
                 savedData = {};
             end
             savedData = savedData or {};
             
-            -- 验证时间戳的有效性（必须是数字且在合理范围内）
             local lastRefresh = savedData.lastRefresh;
             if lastRefresh and (type(lastRefresh) ~= "number" or lastRefresh < 0 or lastRefresh > time() + 86400 * 365) then
                 lastRefresh = nil;
@@ -73,8 +66,8 @@ function Data:Initialize()
             createTime = createTime or time();
             
             local mapData = {
-                id = i,  -- 数组索引作为ID（可以任意调整数组顺序，ID会自动更新）
-                code = mapCode,  -- 代号作为唯一标识符（MAP_001, MAP_002等）
+                id = i,
+                code = mapCode,
                 interval = defaultMap.interval or Data.DEFAULT_REFRESH_INTERVAL or 1100,
                 instance = savedData.instance,
                 lastInstance = savedData.lastInstance,
@@ -90,7 +83,6 @@ function Data:Initialize()
             
             if mapData.instance and not mapData.lastInstance then
                 mapData.lastInstance = mapData.instance;
-                -- 确保 CRATETRACKERZK_DB.mapData[mapCode] 存在后再访问
                 if not CRATETRACKERZK_DB.mapData[mapCode] then
                     CRATETRACKERZK_DB.mapData[mapCode] = {};
                 end
@@ -106,7 +98,6 @@ function Data:SaveMapData(mapId)
     local mapData = self.maps[mapId];
     if not mapData or not mapData.code then return end
     
-    -- 确保数据库结构存在
     if not CRATETRACKERZK_DB then
         CRATETRACKERZK_DB = {
             version = 1,
@@ -118,8 +109,7 @@ function Data:SaveMapData(mapId)
         CRATETRACKERZK_DB.mapData = {};
     end
     
-    -- 只保存需要持久化的字段（不保存 nextRefresh，因为它是计算得出的）
-    CRATETRACKERZK_DB.mapData[mapData.code] = {  -- 使用代号作为存储键
+    CRATETRACKERZK_DB.mapData[mapData.code] = {
         instance = mapData.instance,
         lastInstance = mapData.lastInstance,
         lastRefreshInstance = mapData.lastRefreshInstance,
@@ -150,8 +140,6 @@ function Data:UpdateMap(mapId, mapData)
     return false;
 end
 
--- 计算离当前时间最近的下一次刷新时间
--- 无论lastRefresh是过去时间还是未来时间，都找到离currentTime最近且大于currentTime的刷新点
 local function CalculateNextRefreshTime(lastRefresh, interval, currentTime)
     if not lastRefresh or not interval or interval <= 0 then
         return nil;
@@ -297,23 +285,19 @@ end
 function Data:GetMapDisplayName(mapData)
     if not mapData then return "" end;
     
-    -- 使用本地化API通过代号获取当前语言的名称
     if Localization and mapData.code then
         return Localization:GetMapName(mapData.code);
     end
     
-    -- 回退到代号（格式化显示）
     return mapData.code or "";
 end
 
 function Data:IsMapNameMatch(mapData, mapName)
     if not mapData or not mapName then return false end;
     
-    -- 使用本地化API通过代号进行多语言匹配
     if Localization and mapData.code then
         return Localization:IsMapNameMatch(mapData, mapName);
     end
     
-    -- 回退到简单的名称匹配（不应该到达这里）
     return false;
 end

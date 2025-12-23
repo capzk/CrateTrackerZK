@@ -1,7 +1,5 @@
--- 空投物资追踪器计时管理器模块
--- 提供统一的计时启动接口，支持多种检测手段
+-- 空投计时管理器
 
--- 确保BuildEnv函数存在
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -9,29 +7,23 @@ if not BuildEnv then
     end
 end
 
--- 定义TimerManager命名空间
 local TimerManager = BuildEnv('TimerManager')
 
--- 获取命名空间和本地化
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local L = CrateTrackerZK.L;
 
--- 确保Data命名空间存在
 if not Data then
     Data = BuildEnv('Data')
 end
 
--- 确保Utils命名空间存在
 if not Utils then
     Utils = BuildEnv('Utils')
 end
 
--- 安全的调试函数包装
 local function SafeDebug(...)
     if Utils and Utils.Debug and type(Utils.Debug) == "function" then
         Utils.Debug(...);
     elseif Utils and Utils.debugEnabled then
-        -- 如果Utils.Debug不存在但debugEnabled存在，使用简单的打印
         local message = "";
         for i = 1, select("#", ...) do
             local arg = select(i, ...);
@@ -43,10 +35,8 @@ local function SafeDebug(...)
         end
         print('|cff00ff00[CrateTrackerZK]|r' .. message);
     end
-    -- 如果Utils.Debug不存在且debugEnabled为false，则静默忽略
 end
 
--- 记录已注册的检测源
 TimerManager.detectionSources = {
     MANUAL_INPUT = "manual_input",
     REFRESH_BUTTON = "refresh_button",
@@ -54,55 +44,36 @@ TimerManager.detectionSources = {
     MAP_ICON = "map_icon"
 }
 
--- 调试信息输出限制：避免刷屏，相同信息每30秒最多输出一次
 TimerManager.lastDebugMessage = TimerManager.lastDebugMessage or {};
 TimerManager.DEBUG_MESSAGE_INTERVAL = 30; -- 30秒
 
--- 初始化TimerManager
 function TimerManager:Initialize()
-    -- 可以在这里添加初始化代码
     self.isInitialized = true;
-    -- 记录每个地图的最后检测时间（用于位面变化时清除标记）
     self.lastDetectionTime = self.lastDetectionTime or {};
-    -- 记录每个地图的通知发送次数，用于限制通知数量
     self.notificationCount = self.notificationCount or {};
-    -- 记录每个地图是否检测到地图图标（用于判断空投事件是否进行中，不用于更新时间）
     self.mapIconDetected = self.mapIconDetected or {};
-    -- 记录每个地图首次检测到图标的时间（用于连续检测验证，防止误报）
     self.mapIconFirstDetectedTime = self.mapIconFirstDetectedTime or {};
-    -- 记录每个地图最近一次通过地图图标更新时间的时刻（用于防止重复更新）
     self.lastUpdateTime = self.lastUpdateTime or {};
-    -- 调试信息输出时间记录（用于限制输出频率）
     self.lastDebugMessage = self.lastDebugMessage or {};
-    -- 记录最后匹配的地图ID（用于减少重复的匹配成功消息）
     self.lastMatchedMapID = self.lastMatchedMapID or nil;
-    -- 记录最后不匹配的地图ID（用于减少重复的不匹配消息）
     self.lastUnmatchedMapID = self.lastUnmatchedMapID or nil;
     SafeDebug("[Timer] Timer manager initialized");
 end
 
--- 限制调试信息输出频率，避免刷屏
 local function SafeDebugLimited(messageKey, ...)
     local currentTime = time();
     local lastTime = TimerManager.lastDebugMessage[messageKey] or 0;
     
-    -- 如果距离上次输出超过间隔时间，才输出
     if (currentTime - lastTime) >= TimerManager.DEBUG_MESSAGE_INTERVAL then
         TimerManager.lastDebugMessage[messageKey] = currentTime;
         SafeDebug(...);
     end
 end
 
--- 获取当前时间戳
 local function getCurrentTimestamp()
     return time();
 end
 
--- 更新指定地图的计时
--- @param mapId 地图ID
--- @param source 检测源（可选，用于记录是哪种方式触发的计时）
--- @param timestamp 时间戳（可选，默认为当前时间）
--- @return boolean 操作是否成功
 function TimerManager:StartTimer(mapId, source, timestamp)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
@@ -115,60 +86,42 @@ function TimerManager:StartTimer(mapId, source, timestamp)
         return false;
     end
     
-    -- 设置默认值
     source = source or self.detectionSources.API_INTERFACE;
     timestamp = timestamp or getCurrentTimestamp();
     
     SafeDebug("[Timer] StartTimer", "MapID=" .. mapId, "Map=" .. Data:GetMapDisplayName(mapData), "Source=" .. source, "Time=" .. timestamp);
     
-    -- 检测源分类：
-    -- 1. 手动刷新按钮/手动输入：更新刷新时间，不设置空投进行中标记，不发送通知
-    -- 2. 地图图标检测：首次检测到图标时更新刷新时间，设置空投进行中标记，发送通知（在DetectMapIcons函数中处理）
     local isManualOperation = (source == self.detectionSources.REFRESH_BUTTON or source == self.detectionSources.MANUAL_INPUT);
     local success = false;
     
     if isManualOperation then
-        -- 手动刷新按钮/手动输入：更新刷新时间，不设置空投进行中标记，不发送通知
-        -- 更新刷新时间
         success = Data:SetLastRefresh(mapId, timestamp);
         
         if success then
-            -- 对于手动输入，设置时间锁定标志以防止自动更新修改这个时间
             if source == self.detectionSources.MANUAL_INPUT and Data.manualInputLock then
                 Data.manualInputLock[mapId] = timestamp;
             end
             
-            -- 重新获取地图数据以确保获取最新的值
             local updatedMapData = Data:GetMap(mapId);
             if updatedMapData then
-                -- 记录日志（只在调试模式下输出）
                 local sourceText = self:GetSourceDisplayName(source);
                 SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
                 
                 SafeDebug("[Timer] Manual update", "Map=" .. Data:GetMapDisplayName(updatedMapData), "Source=" .. source, "Last=" .. Data:FormatDateTime(updatedMapData.lastRefresh), "Next=" .. Data:FormatDateTime(updatedMapData.nextRefresh));
             end
             
-            -- 更新界面显示
             self:UpdateUI();
         else
-            -- 更新刷新时间失败
             SafeDebug("[Timer] Timer start failed, MapID=" .. mapId .. ", reason=Data:SetLastRefresh returned false");
             Utils.PrintError(L["ErrorTimerStartFailedMapID"] .. tostring(mapId));
         end
     else
-        -- 其他检测源（如地图图标检测、API接口等）：不更新刷新时间
-        -- 注意：地图图标检测在DetectMapIcons函数中处理，这里不需要处理
         success = true;
     end
     
     return success;
 end
 
--- 批量更新多个地图的计时
--- @param mapIds 地图ID列表
--- @param source 检测源
--- @param timestamp 时间戳（可选，默认为当前时间）
--- @return boolean 操作是否成功
 function TimerManager:StartTimers(mapIds, source, timestamp)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
@@ -222,10 +175,6 @@ function TimerManager:StartTimerByName(mapName, source, timestamp)
     end
 end
 
--- 启动当前地图的计时
--- @param source 检测源
--- @param timestamp 时间戳（可选，默认为当前时间）
--- @return boolean 操作是否成功
 function TimerManager:StartCurrentMapTimer(source, timestamp)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
@@ -234,7 +183,6 @@ function TimerManager:StartCurrentMapTimer(source, timestamp)
     
     SafeDebug("[Timer] StartCurrentMapTimer", "Source=" .. (source or "nil"));
     
-    -- 获取当前地图信息
     local currentMapID = C_Map.GetBestMapForUnit("player");
     local currentMapName = "";
     
@@ -243,7 +191,6 @@ function TimerManager:StartCurrentMapTimer(source, timestamp)
         currentMapName = mapInfo.name;
         SafeDebug("[Timer] Got map info", "MapID=" .. currentMapID, "Map=" .. currentMapName);
     else
-        -- 备选方案：使用GetInstanceInfo
         currentMapName = select(1, GetInstanceInfo());
         SafeDebug("[Timer] Using GetInstanceInfo", "Map=" .. (currentMapName or "nil"));
     end
@@ -257,9 +204,6 @@ function TimerManager:StartCurrentMapTimer(source, timestamp)
     end
 end
 
--- 获取检测源的显示名称
--- @param source 检测源标识符
--- @return string 显示名称
 function TimerManager:GetSourceDisplayName(source)
     local displayNames = {
         [self.detectionSources.MANUAL_INPUT] = L["DebugDetectionSourceManual"],
@@ -271,17 +215,12 @@ function TimerManager:GetSourceDisplayName(source)
     return displayNames[source] or "Unknown";
 end
 
--- 更新UI显示
 function TimerManager:UpdateUI()
-    -- 检查MainPanel是否存在且有UpdateTable方法
     if MainPanel and MainPanel.UpdateTable then
         MainPanel:UpdateTable();
     end
 end
 
--- 注册新的检测源（用于扩展）
--- @param sourceId 检测源标识符
--- @param displayName 显示名称
 function TimerManager:RegisterDetectionSource(sourceId, displayName)
     if not sourceId or not displayName then
         Utils.PrintError(L["ErrorInvalidSourceParam"]);
@@ -290,17 +229,10 @@ function TimerManager:RegisterDetectionSource(sourceId, displayName)
     
     self.detectionSources[sourceId:upper()] = sourceId;
     
-    -- 可以在这里添加更多处理
     return true;
 end
 
--- 检测地图上的空投箱子
--- @return boolean 是否检测到空投箱子
 function TimerManager:DetectMapIcons()
-    -- 注意：此函数只在区域有效时被调用（定时器已暂停时不会调用）
-    -- 区域有效性检测只在区域变化时执行一次，如果区域无效，定时器已暂停
-    
-    -- 获取当前地图ID
     if not C_Map or not C_Map.GetBestMapForUnit then
         SafeDebug(L["DebugCMapAPINotAvailable"])
         return false;
@@ -312,7 +244,6 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 获取当前地图名称
     if not C_Map.GetMapInfo then
         SafeDebug(L["DebugCMapGetMapInfoNotAvailable"])
         return false;
@@ -324,7 +255,6 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 查找对应的地图数据（使用与Core.lua相同的模糊匹配逻辑，支持父地图匹配）
     local targetMapData = nil
     local validMaps = Data:GetAllMaps()
     local parentMapName = "";
@@ -334,7 +264,6 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 获取父地图信息（用于子区域匹配）
     if mapInfo.parentMapID then
         local parentMapInfo = C_Map.GetMapInfo(mapInfo.parentMapID);
         if parentMapInfo and parentMapInfo.name then
@@ -345,7 +274,6 @@ function TimerManager:DetectMapIcons()
     for _, mapData in ipairs(validMaps) do
         if Data:IsMapNameMatch(mapData, mapInfo.name) then
             targetMapData = mapData;
-            -- 只在首次匹配时输出（减少重复输出）
             if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
                 SafeDebugLimited("icon_map_match_" .. tostring(currentMapID), string.format(L["DebugMapMatchSuccess"], mapInfo.name));
                 self.lastMatchedMapID = currentMapID;
@@ -369,7 +297,6 @@ function TimerManager:DetectMapIcons()
     end
     
     if not targetMapData then
-        -- 地图不在列表中：只在首次检测到或地图变化时输出（减少重复输出）
         if not self.lastUnmatchedMapID or self.lastUnmatchedMapID ~= currentMapID then
             SafeDebugLimited("map_not_in_list_" .. tostring(currentMapID), string.format(L["DebugMapNotInList"], mapInfo.name, parentMapName or L["DebugNoRecord"], currentMapID))
             self.lastUnmatchedMapID = currentMapID;
@@ -377,23 +304,16 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 注意：判断空投是否进行中的唯一标准是地图图标标记（mapIconDetected）
-    -- 所以这里始终执行检测以更新mapIconDetected标记
-    
-    -- 记录本次检测是否发现地图图标
     local foundMapIcon = false;
     
-    -- 使用本地化API获取空投箱子名称
     local crateName = "";
     if Localization then
         crateName = Localization:GetAirdropCrateName();
     else
-        -- 回退到本地化表
         local L = CrateTrackerZK.L;
         if L and L.AirdropCrateNames and L.AirdropCrateNames["AIRDROP_CRATE_001"] then
             crateName = L.AirdropCrateNames["AIRDROP_CRATE_001"];
         else
-            -- 最后回退：尝试获取英文本地化
             local LocaleManager = BuildEnv("LocaleManager");
             if LocaleManager and LocaleManager.GetEnglishLocale then
                 local enL = LocaleManager.GetEnglishLocale();
@@ -410,23 +330,19 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 检查地图上的Vignettes (特殊标记) - 唯一有效的检测方式
     if C_VignetteInfo and C_VignetteInfo.GetVignettes and C_VignetteInfo.GetVignetteInfo and C_VignetteInfo.GetVignettePosition then
         local vignettes = C_VignetteInfo.GetVignettes()
         if vignettes then
             for _, vignetteGUID in ipairs(vignettes) do
                 local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID)
                 if vignetteInfo then
-                    -- 获取Vignette在地图上的位置
                     local position = C_VignetteInfo.GetVignettePosition(vignetteGUID, currentMapID)
                     if position then
-                        -- 获取Vignette的名称或类型信息
                         local vignetteName = vignetteInfo.name or ""
                         
                         if vignetteName ~= "" then
                             local trimmedName = vignetteName:match("^%s*(.-)%s*$");
                             
-                            -- 只输出匹配空投箱子名称的Vignette（减少无效输出）
                             if crateName and crateName ~= "" and trimmedName == crateName then
                                 foundMapIcon = true;
                                 SafeDebugLimited("icon_detection_start", string.format(L["DebugIconDetectionStart"], Data:GetMapDisplayName(targetMapData), crateName));
@@ -444,9 +360,6 @@ function TimerManager:DetectMapIcons()
         SafeDebugLimited("icon_vignette_api_unavailable", "[Timer] C_VignetteInfo API not available");
     end
     
-    -- 设置地图图标检测标记（用于判断空投事件是否进行中）
-    -- 地图图标检测：连续两次检测到图标（或连续2秒内检测到）才认为是有效的，防止误报
-    -- 判断空投是否进行中的唯一标准是地图图标：检测到图标=进行中，未检测到图标=已结束
     self.mapIconDetected = self.mapIconDetected or {};
     self.mapIconFirstDetectedTime = self.mapIconFirstDetectedTime or {};
     self.lastUpdateTime = self.lastUpdateTime or {};
@@ -456,41 +369,28 @@ function TimerManager:DetectMapIcons()
     
     
     if foundMapIcon then
-        -- 检测到地图图标
         if not firstDetectedTime then
-            -- 首次检测到图标，记录时间，但不立即更新和通知（等待连续检测确认）
             self.mapIconFirstDetectedTime[targetMapData.id] = currentTime;
                 SafeDebug(string.format(L["DebugFirstDetectionWait"], Data:GetMapDisplayName(targetMapData)));
         else
-            -- 之前已经检测到过，检查是否满足连续检测条件
             local timeSinceFirstDetection = currentTime - firstDetectedTime;
             
-            -- 连续检测条件：距离首次检测时间 >= 2秒
-            -- 这样可以确保是连续检测，而不是单次误报
             if timeSinceFirstDetection >= 2 then
-                -- 满足连续检测条件，认为是有效的检测
                 if not wasDetectedBefore then
-                    -- 这是首次确认有效，更新刷新时间并发送通知
                     SafeDebug(string.format(L["DebugContinuousDetectionConfirmed"], Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
                     
-                    -- 设置标记（空投进行中）
                     self.mapIconDetected[targetMapData.id] = true;
                     
-                    -- 系统检测的时间是权威时间，清除手动输入的时间锁定
                     if Data.manualInputLock then
                         Data.manualInputLock[targetMapData.id] = nil;
                     end
-                    -- 更新刷新时间（使用首次检测到的时间，更准确）
                     local success = Data:SetLastRefresh(targetMapData.id, firstDetectedTime);
                     
                     if success then
-                        -- 记录更新时间
                         self.lastUpdateTime[targetMapData.id] = firstDetectedTime;
                         
-                        -- 重新获取地图数据以确保获取最新的 nextRefresh
                         local updatedMapData = Data:GetMap(targetMapData.id);
                         
-                        -- 记录日志（只在调试模式下输出）
                         local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
                         if updatedMapData and updatedMapData.nextRefresh then
                             SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
@@ -499,7 +399,6 @@ function TimerManager:DetectMapIcons()
                             SafeDebug(string.format(L["DebugTimerStarted"], Data:GetMapDisplayName(targetMapData), sourceText, L["NoRecord"]));
                         end
                         
-                        -- 更新界面显示
                         self:UpdateUI();
                     else
                         SafeDebug(string.format(L["DebugUpdateRefreshTimeFailed"], targetMapData.id));
@@ -509,63 +408,47 @@ function TimerManager:DetectMapIcons()
                         Notification:NotifyAirdropDetected(Data:GetMapDisplayName(targetMapData), self.detectionSources.MAP_ICON);
                     end
                 else
-                    -- 已经确认过，只保持标记
                     SafeDebugLimited("icon_detected_" .. targetMapData.id, string.format(L["DebugAirdropActive"], Data:GetMapDisplayName(targetMapData)));
                 end
             else
-                -- 距离首次检测时间 < 2秒，继续等待连续检测确认
                 SafeDebug(string.format(L["DebugWaitingForConfirmation"], Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection));
             end
         end
     else
-        -- 未检测到地图图标
-        -- 清除首次检测时间记录（如果存在）
         if self.mapIconFirstDetectedTime[targetMapData.id] then
             self.mapIconFirstDetectedTime[targetMapData.id] = nil;
             SafeDebug(string.format(L["DebugClearedFirstDetectionTime"], Data:GetMapDisplayName(targetMapData)));
         end
         
-        -- 清除标记（空投已结束）
-        -- 地图图标消失，说明空投已结束
         if self.mapIconDetected[targetMapData.id] then
             self.mapIconDetected[targetMapData.id] = nil;
             SafeDebugLimited("icon_cleared_" .. targetMapData.id, string.format(L["DebugAirdropEnded"], Data:GetMapDisplayName(targetMapData)));
         end
     end
     
-    -- 返回是否检测到地图图标（用于调试）
     return foundMapIcon;
 end
 
--- 开始地图图标检测（定期检查）
--- @param interval 检测间隔（秒，默认2秒）
 function TimerManager:StartMapIconDetection(interval)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
         return false;
     end
     
-    -- 停止现有的检测计时器（如果有）
     self:StopMapIconDetection();
     
-    -- 设置默认检测间隔（根据文档要求，默认2秒）
     interval = interval or 2;
     
-    -- 创建检测计时器
-    -- 注意：在定时器回调中先检查有效区域，无效时不调用检测函数（避免不必要的函数调用和调试信息输出）
     self.mapIconDetectionTimer = C_Timer.NewTicker(interval, function()
-        -- 先检查有效区域，无效时不调用检测函数（避免不必要的函数调用和调试信息输出）
         if Area and not Area.detectionPaused then
             self:DetectMapIcons();
         end
-        -- 如果区域无效，静默跳过，不输出任何信息（避免刷屏）
     end);
     
     SafeDebug("[Timer] Map icon detection started", "Interval=" .. interval .. "s");
     return true;
 end
 
--- 停止地图图标检测
 function TimerManager:StopMapIconDetection()
     if self.mapIconDetectionTimer then
         self.mapIconDetectionTimer:Cancel();
@@ -575,8 +458,6 @@ function TimerManager:StopMapIconDetection()
     return true;
 end
 
--- 获取所有已注册的检测源
--- @return table 检测源列表
 function TimerManager:GetAllDetectionSources()
     local sources = {};
     for name, id in pairs(self.detectionSources) do

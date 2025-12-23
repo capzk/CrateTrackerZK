@@ -1,11 +1,10 @@
--- CrateTrackerZK - 本地化管理模块
+-- CrateTrackerZK - 本地化
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 
 -- 定义 Localization 命名空间
 local Localization = BuildEnv('Localization');
 
--- 安全获取本地化表（延迟获取，因为可能在本地化文件加载之前执行）
 local function GetL()
     return CrateTrackerZK.L;
 end
@@ -18,13 +17,6 @@ Localization.currentLocale = GetLocale();
 Localization.missingTranslations = {};
 Localization.missingLogEnabled = false;
 
--- 英文回退映射表（已移除，因为现在直接使用英文作为键）
--- 注意：现在 mapName 本身就是英文，所以不需要回退映射
-
--- ============================================================================
--- 初始化
--- ============================================================================
-
 function Localization:Initialize()
     if self.isInitialized then
         return;
@@ -33,30 +25,22 @@ function Localization:Initialize()
     self.currentLocale = GetLocale();
     self.isInitialized = true;
     
-    -- 如果调试模式开启，自动启用缺失翻译日志
     if Debug and Debug.IsEnabled and Debug:IsEnabled() then
         self.missingLogEnabled = Debug:IsEnabled();
     end
     
-    -- 延迟验证，确保所有模块都已加载
     C_Timer.After(0.1, function()
         self:ValidateCompleteness();
         self:ReportInitializationStatus();
     end);
 end
 
--- ============================================================================
--- 完整性验证
--- ============================================================================
-
--- 验证翻译完整性（只验证地图名称和空投箱子名称）
 function Localization:ValidateCompleteness()
     local missing = {
         mapNames = {},
         airdropCrateNames = {}
     };
     
-    -- 验证地图名称翻译
     if Data and Data.DEFAULT_MAPS then
         local L = GetL();
         local enL = self:GetEnglishLocale();
@@ -82,7 +66,6 @@ function Localization:ValidateCompleteness()
         end
     end
     
-    -- 验证空投箱子名称翻译
     if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.airdrop_crates then
         local L = GetL();
         local enL = self:GetEnglishLocale();
@@ -111,11 +94,6 @@ function Localization:ValidateCompleteness()
     return missing;
 end
 
--- ============================================================================
--- 缺失翻译日志
--- ============================================================================
-
--- 记录缺失的翻译
 function Localization:LogMissingTranslation(key, category, critical)
     if not key or not category then return end;
     
@@ -129,7 +107,6 @@ function Localization:LogMissingTranslation(key, category, critical)
     
     table.insert(self.missingTranslations, entry);
     
-    -- 调试模式下输出
     if self.missingLogEnabled then
         local L = GetL();
         local levelKey = critical and "LocalizationCritical" or "LocalizationWarning";
@@ -140,26 +117,18 @@ function Localization:LogMissingTranslation(key, category, critical)
     end
 end
 
--- 启用缺失翻译日志
 function Localization:EnableMissingLog(enabled)
     self.missingLogEnabled = enabled or false;
 end
 
--- 获取缺失翻译列表
 function Localization:GetMissingTranslations()
     return self.missingTranslations;
 end
 
--- 清除缺失翻译日志
 function Localization:ClearMissingLog()
     self.missingTranslations = {};
 end
 
--- ============================================================================
--- 初始化状态报告
--- ============================================================================
-
--- 报告初始化状态
 function Localization:ReportInitializationStatus()
     local LocaleManager = BuildEnv("LocaleManager");
     if not LocaleManager or not LocaleManager.GetLoadStatus then
@@ -170,12 +139,9 @@ function Localization:ReportInitializationStatus()
     local L = GetL();
     local prefix = "|cff00ff88[CrateTrackerZK]|r ";
     
-    -- 报告当前使用的语言
     if status.activeLocale then
         if status.activeLocale == GetLocale() then
-            -- 使用当前语言，正常情况
         elseif status.fallbackUsed then
-            -- 使用了回退
             local formatStr = (L and L["LocalizationFallbackWarning"]) or "Warning: Locale file for %s not found, fallback to %s";
             DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
                 formatStr,
@@ -184,12 +150,10 @@ function Localization:ReportInitializationStatus()
             ));
         end
     else
-        -- 没有激活的语言
         local errorMsg = (L and L["LocalizationNoLocaleError"]) or "Error: No available locale file found";
         DEFAULT_CHAT_FRAME:AddMessage(prefix .. errorMsg);
     end
     
-    -- 报告缺失的翻译（只报告关键翻译：地图名称和空投箱子名称）
     local missing = self:ValidateCompleteness();
     local missingCount = #missing.mapNames + #missing.airdropCrateNames;
     
@@ -211,7 +175,6 @@ function Localization:ReportInitializationStatus()
             table.concat(missingList, ", ")
         ));
         
-        -- 调试模式下显示详细信息
         if Debug and Debug:IsEnabled() then
             local mapNamesMsg = (L and L["LocalizationMissingMapNames"]) or "Missing map names: %s";
             local crateNamesMsg = (L and L["LocalizationMissingCrateNames"]) or "Missing airdrop crate names: %s";
@@ -225,13 +188,6 @@ function Localization:ReportInitializationStatus()
     end
 end
 
--- ============================================================================
--- 地图名称本地化（使用代号系统，完全语言无关）
--- ============================================================================
-
--- 获取本地化地图名称
--- @param mapCode 地图代号（MAP_001, MAP_002等）
--- @return string 当前语言的本地化名称
 function Localization:GetMapName(mapCode)
     if not mapCode then return "" end;
     
@@ -242,67 +198,54 @@ function Localization:GetMapName(mapCode)
         return self:FormatMapCode(mapCode);
     end
     
-    -- 如果本地化文件中有 MapNames 映射表，使用映射表
     if L.MapNames and L.MapNames[mapCode] then
         return L.MapNames[mapCode];
     end
     
-    -- 回退到英文（国际化，默认使用英文）
     local enL = self:GetEnglishLocale();
     if enL and enL.MapNames and enL.MapNames[mapCode] then
-        -- 使用英文回退，记录但不标记为严重（因为英文是默认语言）
         if GetLocale() ~= "enUS" then
             self:LogMissingTranslation(mapCode, "MapNames", false);
         end
         return enL.MapNames[mapCode];
     end
     
-    -- 最后回退到格式化代号（如 MAP_001 -> "Map 001"）
     self:LogMissingTranslation(mapCode, "MapNames", true);
     return self:FormatMapCode(mapCode);
 end
 
--- 格式化代号为可读名称（回退用）
 function Localization:FormatMapCode(mapCode)
     if not mapCode then return "" end;
-    -- 将 MAP_001 转换为 "Map 001"
-    -- 将 AIRDROP_CRATE_001 转换为 "Airdrop Crate 001"
     return mapCode:gsub("_", " "):gsub("(%a+)(%d+)", function(prefix, number)
         return prefix:sub(1,1):upper() .. prefix:sub(2):lower() .. " " .. number;
     end);
 end
 
--- 获取英文本地化数据（用于回退）
 function Localization:GetEnglishLocale()
     local L = GetL();
     if not L then
         return nil;
     end
     
-    -- 如果当前是英文环境，直接返回L
     local currentLocale = GetLocale();
     if currentLocale:sub(1, 2) == "en" then
         return L;
     end
     
-    -- 如果不是英文环境，尝试从 LocaleManager 获取英文数据
-    -- 新系统：所有语言文件都会注册，可以从注册表中获取
     local LocaleManager = BuildEnv("LocaleManager");
     if LocaleManager and LocaleManager.GetEnglishLocale then
         return LocaleManager.GetEnglishLocale();
     end
     
-    -- 如果 LocaleManager 没有提供方法，返回 nil（会使用格式化代号作为回退）
     return nil;
 end
 
--- 获取所有地图的本地化名称
 function Localization:GetAllMapNames()
     local result = {};
     
     if Data and Data.DEFAULT_MAPS then
         for _, mapData in ipairs(Data.DEFAULT_MAPS) do
-            local mapCode = mapData.code; -- 代号作为键
+            local mapCode = mapData.code;
             result[mapCode] = self:GetMapName(mapCode);
         end
     end
