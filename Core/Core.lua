@@ -32,7 +32,7 @@ local function OnLogin()
     
     if TimerManager then
         TimerManager:Initialize();
-        TimerManager:StartMapIconDetection(2);
+        TimerManager:StartMapIconDetection(1);
     end
     
     if MainPanel then MainPanel:CreateMainFrame() end
@@ -80,8 +80,9 @@ local function OnEvent(self, event, ...)
 end
 
 function CrateTrackerZK:PauseAllDetections()
-    if self.phaseTimer then
-        self.phaseTimer:SetScript("OnUpdate", nil);
+    if self.phaseTimerTicker then
+        self.phaseTimerTicker:Cancel();
+        self.phaseTimerTicker = nil;
         self.phaseTimerPaused = true;
     end
     
@@ -90,23 +91,21 @@ function CrateTrackerZK:PauseAllDetections()
 end
 
 function CrateTrackerZK:ResumeAllDetections()
-    if TimerManager then TimerManager:StartMapIconDetection(2) end
+    if TimerManager then TimerManager:StartMapIconDetection(1) end
     
-    if self.phaseTimer and not self.phaseResumePending then
+    if not self.phaseResumePending then
         self.phaseResumePending = true;
         C_Timer.After(6, function()
             self.phaseResumePending = false;
-            if self.phaseTimer then
-                local phaseLastTime = 0;
-                self.phaseTimer:SetScript("OnUpdate", function(sf, elapsed)
-                    phaseLastTime = phaseLastTime + elapsed;
-                    if phaseLastTime >= 10 then
-                        phaseLastTime = 0;
-                        if Phase then Phase:UpdatePhaseInfo() end
-                    end
-                end);
-                self.phaseTimerPaused = false;
+            if self.phaseTimerTicker then
+                self.phaseTimerTicker:Cancel();
             end
+            self.phaseTimerTicker = C_Timer.NewTicker(10, function()
+                if Phase and Area and not Area.detectionPaused then
+                    Phase:UpdatePhaseInfo();
+                end
+            end);
+            self.phaseTimerPaused = false;
         end)
     end
 end
@@ -129,8 +128,6 @@ CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_LOGIN");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA");
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
-
-CrateTrackerZK.phaseTimer = CreateFrame("Frame");
 
 if TooltipDataProcessor then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function()

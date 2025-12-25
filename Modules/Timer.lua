@@ -53,8 +53,6 @@ function TimerManager:Initialize()
     self.mapIconFirstDetectedTime = self.mapIconFirstDetectedTime or {};
     self.lastUpdateTime = self.lastUpdateTime or {};
     self.lastDebugMessage = self.lastDebugMessage or {};
-    self.lastMatchedMapID = self.lastMatchedMapID or nil;
-    self.lastUnmatchedMapID = self.lastUnmatchedMapID or nil;
     SafeDebug("[Timer] Timer manager initialized");
 end
 
@@ -348,7 +346,6 @@ function TimerManager:DetectMapIcons()
     local currentTime = getCurrentTimestamp();
     local firstDetectedTime = self.mapIconFirstDetectedTime[targetMapData.id];
     
-    
     if foundMapIcon then
         if not firstDetectedTime then
             self.mapIconFirstDetectedTime[targetMapData.id] = currentTime;
@@ -418,10 +415,10 @@ function TimerManager:StartMapIconDetection(interval)
     
     self:StopMapIconDetection();
     
-    interval = interval or 2;
+    interval = interval or 1;
     
     self.mapIconDetectionTimer = C_Timer.NewTicker(interval, function()
-        if Area and not Area.detectionPaused then
+        if Area and not Area.detectionPaused and Area.lastAreaValidState == true then
             self:DetectMapIcons();
         end
     end);

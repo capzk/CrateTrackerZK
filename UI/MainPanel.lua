@@ -303,7 +303,7 @@ function MainPanel:CreateMainFrame()
     frame.sortField = nil;
     frame.sortOrder = 'asc';
     
-    MainPanel.updateTimer = C_Timer.NewTicker(1, function() MainPanel:UpdateTable() end);
+    MainPanel.updateTimer = C_Timer.NewTicker(2, function() MainPanel:UpdateTable() end);
     
     function frame:Toggle() MainPanel:Toggle() end
     MainPanel.mainFrame = frame;
@@ -361,15 +361,11 @@ local function PrepareTableData()
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
-            -- 创建数据副本，避免修改原始数据
-            -- 使用浅拷贝保留所有字段，同时添加计算字段
             local mapDataCopy = {};
             for k, v in pairs(mapData) do
                 mapDataCopy[k] = v;
             end
-            -- 计算剩余时间（不修改原始数据）
             mapDataCopy.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
-            -- 保存原始数据引用（用于需要原始数据的场景）
             mapDataCopy._original = mapData;
             table.insert(mapArray, mapDataCopy);
         end
@@ -407,13 +403,10 @@ function MainPanel:UpdateTable()
         row:ClearAllPoints();
         row:SetPoint('TOPLEFT', frame.tableContent, 'TOPLEFT', 0, -(i - 1) * rowHeight);
         
-        -- 更新 mapData 引用（用于事件处理器）
-        -- 确保 mapDataRef 存在（兼容旧代码或异常情况）
         if not row.mapDataRef then
             row.mapDataRef = {};
         end
         row.mapDataRef.mapId = mapData.id;
-        -- 保存原始数据引用（如果存在），否则使用当前数据
         row.mapDataRef.mapData = mapData._original or mapData;
         
         row.bg:SetColorTexture(0.1, 0.1, 0.1, i % 2 == 0 and 0.5 or 0.3);
@@ -456,8 +449,6 @@ function MainPanel:UpdateTable()
         else
             row.columns[4].Text:SetTextColor(1, 1, 1)
         end
-        
-        -- 注意：按钮事件处理器已在 CreateTableRow 中设置，这里不再重复设置
         
         row:Show();
     end
