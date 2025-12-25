@@ -44,8 +44,9 @@ function Commands:HandleClearCommand(arg)
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["ClearingData"]);
     
     if TimerManager then TimerManager:StopMapIconDetection() end
-    if CrateTrackerZK and CrateTrackerZK.phaseTimer then
-        CrateTrackerZK.phaseTimer:SetScript("OnUpdate", nil);
+    if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
+        CrateTrackerZK.phaseTimerTicker:Cancel();
+        CrateTrackerZK.phaseTimerTicker = nil;
     end
     if MainPanel and MainPanel.updateTimer then
         MainPanel.updateTimer:Cancel();
