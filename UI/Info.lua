@@ -72,6 +72,11 @@ Available Commands:
 /ctk clear       Clear local data and reinitialize
 
 
+How to Get Phasing ID:
+
+To get the current phasing ID, point your mouse at any NPC. The phasing ID will be automatically detected and displayed in the main panel.
+
+
 Important Notes:
 
 If you encounter any issues after updating the addon, please completely delete the addon folder and reinstall it from scratch.
@@ -84,6 +89,11 @@ Due to significant code refactoring, old saved data is no longer compatible. If 
 /ctk help        显示可用命令
 /ctk team on/off 开启/关闭团队通知
 /ctk clear       清除本地数据并重新初始化
+
+
+如何获取位面ID：
+
+要获取当前位面ID，您只需将鼠标指向任意NPC。位面ID将自动检测并显示在主面板中。
 
 
 重要提示：
