@@ -16,6 +16,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     
     - name: Extract version
       id: get_version
@@ -34,11 +36,17 @@ jobs:
     - name: Create tag
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        if ! git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+        TAG_NAME="v${VERSION}"
+        # 获取远程tags
+        git fetch --tags
+        # 检查远程是否已存在tag
+        if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+          echo "Tag ${TAG_NAME} already exists, skipping creation"
+        else
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git tag -a "v${VERSION}" -m "Release v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
         fi
     
     - name: Create Release
