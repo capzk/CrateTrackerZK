@@ -303,7 +303,7 @@ function MainPanel:CreateMainFrame()
     frame.sortField = nil;
     frame.sortOrder = 'asc';
     
-    MainPanel.updateTimer = C_Timer.NewTicker(2, function() MainPanel:UpdateTable() end);
+    MainPanel.updateTimer = C_Timer.NewTicker(1, function() MainPanel:UpdateTable() end);
     
     function frame:Toggle() MainPanel:Toggle() end
     MainPanel.mainFrame = frame;
