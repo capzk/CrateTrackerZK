@@ -80,10 +80,25 @@ jobs:
         git tag -a "v${VERSION}" -m "Release version ${VERSION}"
         git push origin "v${VERSION}"
     
-    - name: Create or Update GitHub Release
-      uses: softprops/action-ghrelease@v1
+    - name: Delete existing release if exists
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        TAG_NAME="v${VERSION}"
+        
+        # 检查Release是否存在并删除
+        if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+          echo "Deleting existing release: ${TAG_NAME}"
+          gh release delete "${TAG_NAME}" --yes
+        else
+          echo "No existing release found for ${TAG_NAME}"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create GitHub Release
+      uses: ncipollo/create-release@v1
       with:
-        tag_name: v${{ steps.get_version.outputs.version }}
+        tag: v${{ steps.get_version.outputs.version }}
         name: Release v${{ steps.get_version.outputs.version }}
         body: |
           ## CrateTrackerZK v${{ steps.get_version.outputs.version }}
@@ -96,11 +111,8 @@ jobs:
           
           ### Changes
           See commit history for detailed changes.
-        files: |
-          CrateTrackerZK.zip
         draft: false
         prerelease: false
-        overwrite: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: CrateTrackerZK.zip
+        token: ${{ secrets.GITHUB_TOKEN }}
 
