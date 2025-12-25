@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:  # 允许手动触发
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -39,7 +42,7 @@ jobs:
           --exclude='CHANGELOG.md' \
           ./ release_temp/CrateTrackerZK/
         
-        # 确保README.md和LICENSE存在（如果不存在rsync可能已复制）
+        # 确保README.md和LICENSE存在
         if [ ! -f release_temp/CrateTrackerZK/README.md ] && [ -f README.md ]; then
           cp README.md release_temp/CrateTrackerZK/
         fi
@@ -85,10 +88,11 @@ jobs:
         VERSION="${{ steps.get_version.outputs.version }}"
         TAG_NAME="v${VERSION}"
         
-        # 检查Release是否存在并删除
-        if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
-          echo "Deleting existing release: ${TAG_NAME}"
-          gh release delete "${TAG_NAME}" --yes
+        # 使用GitHub API删除已存在的Release
+        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${TAG_NAME} --jq '.id' 2>/dev/null || echo "")
+        if [ -n "$RELEASE_ID" ]; then
+          echo "Deleting existing release: ${TAG_NAME} (ID: ${RELEASE_ID})"
+          gh api -X DELETE repos/${{ github.repository }}/releases/${RELEASE_ID}
         else
           echo "No existing release found for ${TAG_NAME}"
         fi
@@ -96,9 +100,10 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Create GitHub Release
-      uses: ncipollo/create-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        tag: v${{ steps.get_version.outputs.version }}
+        files: CrateTrackerZK.zip
+        tag_name: v${{ steps.get_version.outputs.version }}
         name: Release v${{ steps.get_version.outputs.version }}
         body: |
           ## CrateTrackerZK v${{ steps.get_version.outputs.version }}
@@ -113,6 +118,6 @@ jobs:
           See commit history for detailed changes.
         draft: false
         prerelease: false
-        artifacts: CrateTrackerZK.zip
-        token: ${{ secrets.GITHUB_TOKEN }}
-
+        overwrite: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
