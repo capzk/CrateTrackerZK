@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,90 +16,32 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
     
-    - name: Extract version from .toc file
+    - name: Extract version
       id: get_version
       run: |
         VERSION=$(grep -E "^## Version:" CrateTrackerZK.toc | sed 's/## Version: //' | tr -d ' ')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Extracted version: $VERSION"
     
-    - name: Create release package
+    - name: Build package
       run: |
-        # 创建临时目录
         mkdir -p release_temp/CrateTrackerZK
-        
-        # 复制文件，排除git相关和开发文档
-        rsync -av \
-          --exclude='.git' \
-          --exclude='.github' \
-          --exclude='.gitignore' \
-          --exclude='.gitattributes' \
-          --exclude='docs' \
-          --exclude='PERFORMANCE_ANALYSIS.md' \
-          --exclude='CHANGELOG.md' \
+        rsync -av --exclude='.git' --exclude='.github' --exclude='.gitignore' --exclude='.gitattributes' \
+          --exclude='docs' --exclude='PERFORMANCE_ANALYSIS.md' --exclude='CHANGELOG.md' \
           ./ release_temp/CrateTrackerZK/
-        
-        # 确保README.md和LICENSE存在
-        if [ ! -f release_temp/CrateTrackerZK/README.md ] && [ -f README.md ]; then
-          cp README.md release_temp/CrateTrackerZK/
-        fi
-        if [ ! -f release_temp/CrateTrackerZK/LICENSE ] && [ -f LICENSE ]; then
-          cp LICENSE release_temp/CrateTrackerZK/
-        fi
-        
-        # 创建压缩包（确保压缩包内是CrateTrackerZK目录）
-        cd release_temp
-        zip -r ../CrateTrackerZK.zip CrateTrackerZK/
-        cd ..
-        
-        # 验证压缩包结构
-        echo "=== Package structure verification ==="
-        unzip -l CrateTrackerZK.zip | head -30
-        echo ""
-        echo "=== First level directory check ==="
-        unzip -l CrateTrackerZK.zip | grep "CrateTrackerZK/" | head -5
+        cd release_temp && zip -r ../CrateTrackerZK.zip CrateTrackerZK/
     
-    - name: Check if tag exists
-      id: check_tag
+    - name: Create tag
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-          echo "Tag v${VERSION} already exists"
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-          echo "Tag v${VERSION} does not exist"
+        if ! git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
         fi
     
-    - name: Create Git tag
-      if: steps.check_tag.outputs.exists == 'false'
-      run: |
-        VERSION="${{ steps.get_version.outputs.version }}"
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git tag -a "v${VERSION}" -m "Release version ${VERSION}"
-        git push origin "v${VERSION}"
-    
-    - name: Delete existing release if exists
-      run: |
-        VERSION="${{ steps.get_version.outputs.version }}"
-        TAG_NAME="v${VERSION}"
-        
-        # 使用GitHub API删除已存在的Release
-        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/${TAG_NAME} --jq '.id' 2>/dev/null || echo "")
-        if [ -n "$RELEASE_ID" ]; then
-          echo "Deleting existing release: ${TAG_NAME} (ID: ${RELEASE_ID})"
-          gh api -X DELETE repos/${{ github.repository }}/releases/${RELEASE_ID}
-        else
-          echo "No existing release found for ${TAG_NAME}"
-        fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Create GitHub Release
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         files: CrateTrackerZK.zip
@@ -113,11 +55,7 @@ jobs:
           2. Extract the zip file
           3. Copy the `CrateTrackerZK` folder to your `World of Warcraft/_retail_/Interface/AddOns/` directory
           4. Restart the game or use `/reload` command
-          
-          ### Changes
-          See commit history for detailed changes.
         draft: false
         prerelease: false
         overwrite: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        make_latest: true
