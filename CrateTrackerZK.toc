@@ -9,6 +9,7 @@
 ## Notes-zhTW: 幫助您追蹤遊戲中的戰爭補給空投寶箱刷新情況
 ## Title-enUS: |cff00ff88[CrateTrackerZK]|r
 ## Notes-enUS: Track War Supply Crate airdrop refresh times in the game
+## Notes-ruRU: Отслеживайте время появления ящиков с военными припасами в игре
 ## SavedVariables: CRATETRACKERZK_UI_DB, CRATETRACKERZK_DB
 ## LoadManagers: AddonLoader
 ## X-LoadOn-Always: delayed
