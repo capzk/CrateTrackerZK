@@ -85,11 +85,11 @@ localeData["AnnouncementButton"] = "Анонс";
 localeData["IntroButton"] = "Введение";
 localeData["Map"] = "Карта";
 localeData["Phase"] = "Фаза";
-localeData["LastRefresh"] = "Последнее обновление";
-localeData["NextRefresh"] = "Следующее обновление";
-localeData["Operation"] = "Операция";
-localeData["Refresh"] = "Обновить";
-localeData["Notify"] = "Уведомить";
+localeData["LastRefresh"] = "Последний";
+localeData["NextRefresh"] = "Следующий";
+localeData["Operation"] = "Действия";
+localeData["Refresh"] = "Обнов.";
+localeData["Notify"] = "Увед.";
 localeData["NotAcquired"] = "Не получено";
 localeData["NoRecord"] = "Нет записи";
 localeData["MinuteSecond"] = "%dм%02dс";
@@ -111,13 +111,13 @@ localeData["MenuSettings"] = "Настройки";
 
 -- Map name translations (using map ID as key)
 localeData.MapNames = {
-    [2248] = "Isle of Dorn",      -- 多恩岛
-    [2369] = "Siren Isle",        -- 海妖岛
-    [2371] = "K'aresh",            -- 卡雷什
-    [2346] = "Undermine",         -- 安德麦
-    [2215] = "Hallowfall",        -- 陨圣峪
-    [2214] = "The Ringing Deeps", -- 喧鸣深窟
-    [2255] = "Azj-Kahet",         -- 艾基-卡赫特
+    [2248] = "Остров Дорн",      -- 多恩岛
+    [2369] = "Остров Сирен",        -- 海妖岛
+    [2371] = "К'ареш",            -- 卡雷什
+    [2346] = "Нижняя Шахта",         -- 安德麦
+    [2215] = "Тайносводье",        -- 陨圣峪
+    [2214] = "Гулкие глубины", -- 喧鸣深窟
+    [2255] = "Аз-Кахет",         -- 艾基-卡赫特
 };
 
 -- Airdrop crate name translations
