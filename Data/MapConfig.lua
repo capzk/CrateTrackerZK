@@ -1,4 +1,3 @@
--- CrateTrackerZK - 地图配置
 local ADDON_NAME = "CrateTrackerZK";
 local Data = BuildEnv("Data");
 
@@ -7,43 +6,43 @@ Data.MAP_CONFIG = {
     
     current_maps = {
         {
-            code = "MAP_001",
+            mapID = 2248,  -- 多恩岛
             interval = 1100,
             enabled = true,
             priority = 1,
         },
         {
-            code = "MAP_002",
+            mapID = 2369,  -- 海妖岛
             interval = 1100,
             enabled = true,
             priority = 2,
         },
         {
-            code = "MAP_003",
+            mapID = 2371,  -- 卡雷什
             interval = 1100,
             enabled = true,
             priority = 3,
         },
         {
-            code = "MAP_004",
+            mapID = 2346,  -- 安德麦
             interval = 1100,
             enabled = true,
             priority = 4,
         },
         {
-            code = "MAP_005",
+            mapID = 2215,  -- 陨圣峪
             interval = 1100,
             enabled = true,
             priority = 5,
         },
         {
-            code = "MAP_006",
+            mapID = 2214,  -- 喧鸣深窟
             interval = 1100,
             enabled = true,
             priority = 6,
         },
         {
-            code = "MAP_007",
+            mapID = 2255,  -- 艾基-卡赫特
             interval = 1100,
             enabled = true,
             priority = 7,
@@ -52,7 +51,7 @@ Data.MAP_CONFIG = {
     
     airdrop_crates = {
         {
-            code = "AIRDROP_CRATE_001",
+            code = "WarSupplyCrate",
             enabled = true,
         },
     },
@@ -63,9 +62,9 @@ Data.MAP_CONFIG = {
     },
 };
 
-function Data:GetMapConfig(mapCode)
+function Data:GetMapConfig(mapID)
     for _, mapConfig in ipairs(self.MAP_CONFIG.current_maps) do
-        if mapConfig.code == mapCode then
+        if mapConfig.mapID == mapID then
             return mapConfig;
         end
     end
@@ -91,8 +90,8 @@ function Data:GetAirdropCrateConfig(crateCode)
     return nil;
 end
 
-function Data:SetMapEnabled(mapCode, enabled)
-    local mapConfig = self:GetMapConfig(mapCode);
+function Data:SetMapEnabled(mapID, enabled)
+    local mapConfig = self:GetMapConfig(mapID);
     if mapConfig then
         mapConfig.enabled = enabled;
         return true;
@@ -100,8 +99,8 @@ function Data:SetMapEnabled(mapCode, enabled)
     return false;
 end
 
-function Data:SetMapInterval(mapCode, interval)
-    local mapConfig = self:GetMapConfig(mapCode);
+function Data:SetMapInterval(mapID, interval)
+    local mapConfig = self:GetMapConfig(mapID);
     if mapConfig then
         mapConfig.interval = interval;
         return true;
@@ -109,13 +108,13 @@ function Data:SetMapInterval(mapCode, interval)
     return false;
 end
 
-function Data:AddMapConfig(mapCode, interval, enabled, priority)
-    if self:GetMapConfig(mapCode) then
-        return false, "地图代号已存在";
+function Data:AddMapConfig(mapID, interval, enabled, priority)
+    if self:GetMapConfig(mapID) then
+        return false, "地图ID已存在";
     end
     
     local newConfig = {
-        code = mapCode,
+        mapID = mapID,
         interval = interval or self.MAP_CONFIG.defaults.interval,
         enabled = enabled ~= false, -- 默认启用
         priority = priority or (#self.MAP_CONFIG.current_maps + 1),
@@ -125,42 +124,35 @@ function Data:AddMapConfig(mapCode, interval, enabled, priority)
     return true;
 end
 
--- ============================================================================
--- 配置验证
--- ============================================================================
-
--- 验证配置完整性
 function Data:ValidateMapConfig()
     local issues = {};
     
-    -- 检查重复的代号
-    local seenCodes = {};
+    local seenMapIDs = {};
     for _, mapConfig in ipairs(self.MAP_CONFIG.current_maps) do
-        if seenCodes[mapConfig.code] then
+        if seenMapIDs[mapConfig.mapID] then
             table.insert(issues, {
-                type = "duplicate_code",
-                code = mapConfig.code,
-                message = "重复的地图代号"
+                type = "duplicate_mapID",
+                mapID = mapConfig.mapID,
+                message = "重复的地图ID"
             });
         else
-            seenCodes[mapConfig.code] = true;
+            seenMapIDs[mapConfig.mapID] = true;
         end
     end
     
-    -- 检查必需字段
     for _, mapConfig in ipairs(self.MAP_CONFIG.current_maps) do
-        if not mapConfig.code or mapConfig.code == "" then
+        if not mapConfig.mapID or type(mapConfig.mapID) ~= "number" then
             table.insert(issues, {
-                type = "missing_code",
+                type = "missing_mapID",
                 config = mapConfig,
-                message = "缺少地图代号"
+                message = "缺少或无效的地图ID"
             });
         end
         
         if not mapConfig.interval or mapConfig.interval <= 0 then
             table.insert(issues, {
                 type = "invalid_interval",
-                code = mapConfig.code,
+                mapID = mapConfig.mapID,
                 message = "无效的刷新间隔"
             });
         end

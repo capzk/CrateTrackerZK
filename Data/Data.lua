@@ -1,11 +1,8 @@
--- CrateTrackerZK - 数据
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
-
 local Data = BuildEnv('Data');
 
--- Defaults
 Data.DEFAULT_REFRESH_INTERVAL = (Data.MAP_CONFIG and Data.MAP_CONFIG.defaults and Data.MAP_CONFIG.defaults.interval) or 1100;
 Data.maps = {};
 Data.manualInputLock = {};
@@ -19,9 +16,9 @@ local function ensureDB()
     end
 end
 
-local function sanitizeTimestamp(ts, allowFuture)
+local function sanitizeTimestamp(ts)
     if not ts or type(ts) ~= "number" then return nil end
-    local maxFuture = allowFuture and (time() + 86400 * 365) or time() + 86400 * 365;
+    local maxFuture = time() + 86400 * 365;
     if ts < 0 or ts > maxFuture then return nil end
     return ts;
 end
@@ -40,18 +37,18 @@ function Data:Initialize()
     local nextId = 1;
 
     for _, cfg in ipairs(mapConfig) do
-        if cfg and cfg.code and (cfg.enabled ~= false) then
-            local mapCode = cfg.code;
-            local savedData = CRATETRACKERZK_DB.mapData[mapCode];
+        if cfg and cfg.mapID and (cfg.enabled ~= false) then
+            local mapID = cfg.mapID;
+            local savedData = CRATETRACKERZK_DB.mapData[mapID];
             if type(savedData) ~= "table" then savedData = {}; end
 
-            local lastRefresh = sanitizeTimestamp(savedData.lastRefresh, true);
-            local createTime = sanitizeTimestamp(savedData.createTime, true) or time();
+            local lastRefresh = sanitizeTimestamp(savedData.lastRefresh);
+            local createTime = sanitizeTimestamp(savedData.createTime) or time();
             local interval = cfg.interval or defaults.interval or self.DEFAULT_REFRESH_INTERVAL;
 
             local mapData = {
                 id = nextId,
-                code = mapCode,
+                mapID = mapID,
                 interval = interval,
                 instance = savedData.instance,
                 lastInstance = savedData.lastInstance,
@@ -67,8 +64,8 @@ function Data:Initialize()
 
             if mapData.instance and not mapData.lastInstance then
                 mapData.lastInstance = mapData.instance;
-                CRATETRACKERZK_DB.mapData[mapCode] = CRATETRACKERZK_DB.mapData[mapCode] or {};
-                CRATETRACKERZK_DB.mapData[mapCode].lastInstance = mapData.lastInstance;
+                CRATETRACKERZK_DB.mapData[mapID] = CRATETRACKERZK_DB.mapData[mapID] or {};
+                CRATETRACKERZK_DB.mapData[mapID].lastInstance = mapData.lastInstance;
             end
 
             table.insert(self.maps, mapData);
@@ -79,11 +76,11 @@ end
 
 function Data:SaveMapData(mapId)
     local mapData = self.maps[mapId];
-    if not mapData or not mapData.code then return end
+    if not mapData or not mapData.mapID then return end
 
     ensureDB();
 
-    CRATETRACKERZK_DB.mapData[mapData.code] = {
+    CRATETRACKERZK_DB.mapData[mapData.mapID] = {
         instance = mapData.instance,
         lastInstance = mapData.lastInstance,
         lastRefreshInstance = mapData.lastRefreshInstance,
@@ -237,8 +234,8 @@ function Data:ClearAllData()
             mapData.lastInstance = nil;
             mapData.lastRefreshInstance = nil;
             
-            if CRATETRACKERZK_DB.mapData and mapData.code then
-                CRATETRACKERZK_DB.mapData[mapData.code] = nil;  -- 使用代号作为键
+            if CRATETRACKERZK_DB.mapData and mapData.mapID then
+                CRATETRACKERZK_DB.mapData[mapData.mapID] = nil;
             end
         end
     end
@@ -259,19 +256,21 @@ end
 function Data:GetMapDisplayName(mapData)
     if not mapData then return "" end;
     
-    if Localization and mapData.code then
-        return Localization:GetMapName(mapData.code);
+    if Localization and mapData.mapID then
+        return Localization:GetMapName(mapData.mapID);
     end
     
-    return mapData.code or "";
+    return mapData.mapID and ("Map " .. tostring(mapData.mapID)) or "";
 end
 
-function Data:IsMapNameMatch(mapData, mapName)
-    if not mapData or not mapName then return false end;
+function Data:GetMapByMapID(gameMapID)
+    if not gameMapID then return nil end;
     
-    if Localization and mapData.code then
-        return Localization:IsMapNameMatch(mapData, mapName);
+    for _, mapData in ipairs(self.maps) do
+        if mapData.mapID == gameMapID then
+            return mapData;
+        end
     end
     
-    return false;
+    return nil;
 end

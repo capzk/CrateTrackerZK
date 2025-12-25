@@ -1,15 +1,12 @@
--- CrateTrackerZK - 主面板
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local MainPanel = BuildEnv('MainPanel')
 
--- 检测当前语言，用于动态调整列宽
 local locale = GetLocale();
 local isChineseLocale = (locale == "zhCN" or locale == "zhTW");
 
 local Layout = {
-    -- 根据语言动态设置主窗口宽度：中文550px，英文590px（英文地图名称较长，需要更多空间）
     FRAME_WIDTH  = isChineseLocale and 550 or 590,
     FRAME_HEIGHT = 320,
     
@@ -17,12 +14,10 @@ local Layout = {
         HEADER_HEIGHT = 32,
         ROW_HEIGHT = 32,
         COL_WIDTH = 90,
-        -- 根据语言动态设置地图名称列宽度：中文80px，英文105px（英文地图名较长，需要更多显示空间）
         MAP_COL_WIDTH = isChineseLocale and 80 or 105,
         OPERATION_COL_WIDTH = 150,
         COL_SPACING = 5,
         COL_COUNT = 5,
-        -- 从本地化文件读取字体大小，如果未定义则使用默认值 15
         FONT_SIZE = tonumber(L["UIFontSize"]) or 15,
         COLS = {
             { key = "map",       titleKey = "Map" },
@@ -34,7 +29,6 @@ local Layout = {
     },
     
     BUTTONS = {
-        -- 根据语言动态调整按钮宽度：中文65px，英文75px（英文文字较长）
         REFRESH_WIDTH = isChineseLocale and 65 or 75,
         REFRESH_HEIGHT = 26,
         NOTIFY_WIDTH = isChineseLocale and 65 or 75,
@@ -54,13 +48,10 @@ do
     Layout.TABLE.COL_WIDTHS = {};
     for i = 1, Layout.TABLE.COL_COUNT do
         if i == Layout.TABLE.COL_COUNT then
-            -- 最后一列：操作列
             Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.OPERATION_COL_WIDTH;
         elseif i == 1 then
-            -- 第一列：地图名称列，根据语言动态设置宽度
             Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.MAP_COL_WIDTH;
         else
-            -- 其他列：使用默认宽度
             Layout.TABLE.COL_WIDTHS[i] = Layout.TABLE.COL_WIDTH;
         end
     end
@@ -84,10 +75,8 @@ do
     end
     
     local titleBarHeight = Layout.TITLE_BAR.HEIGHT;
-    -- 底部整体预留空白（窗口内容区域与表格底部之间）
     local bottomPadding = 40;
     local contentHeight = Layout.FRAME_HEIGHT - titleBarHeight - bottomPadding;
-    -- 表格高度等于内容高度，行高变小后自然会在底部留下更多空白
     local tableHeight = contentHeight;
     
     Layout.TABLE.PADDING_X = (Layout.FRAME_WIDTH - Layout.TABLE.WIDTH) / 2;
@@ -107,9 +96,7 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
     
     local fontName = isHeader and 'GameFontHighlight' or 'GameFontNormal';
     local textObj = cell:CreateFontString(nil, 'ARTWORK', fontName);
-    -- 第一列（地图名称）左对齐，其他列居中对齐
     if colIndex == 1 then
-        -- 左对齐时添加左边距，避免文字贴边
         textObj:SetPoint('LEFT', cell, 'LEFT', 4, 0);
         textObj:SetPoint('RIGHT', cell, 'RIGHT', -2, 0);
         textObj:SetPoint('TOP', cell, 'TOP', 0, 0);
@@ -120,17 +107,13 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
         textObj:SetJustifyH('CENTER');
     end
     textObj:SetJustifyV('MIDDLE');
-    -- 设置更大的字体
     local font, size, flags = textObj:GetFont();
     textObj:SetFont(font, Layout.TABLE.FONT_SIZE, flags);
-    -- 第一列（地图名称）设置文本显示：左对齐，超出部分隐藏
     if colIndex == 1 then
         textObj:SetNonSpaceWrap(false);
-        -- 设置文本宽度限制，超出部分隐藏（不显示"..."）
-        local textWidth = width - 6; -- 减去左右边距（4+2）
+        local textWidth = width - 6;
         if textWidth > 0 then
             textObj:SetWidth(textWidth);
-            -- 设置最大行数为1，防止换行
             textObj:SetMaxLines(1);
         end
     end
@@ -142,7 +125,6 @@ end
 local function CreateTableRow(parent, rowIndex, rowHeight)
     local row = CreateFrame('Frame', nil, parent);
     row:SetSize(Layout.TABLE.WIDTH, rowHeight);
-    row:SetPoint('TOPLEFT', parent, 'TOPLEFT', 0, -(rowIndex - 1) * rowHeight);
     
     row.bg = row:CreateTexture(nil, 'BACKGROUND');
     row.bg:SetAllPoints();
@@ -183,6 +165,28 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     local notifyFont, notifySize, notifyFlags = row.notifyBtn.Text:GetFont();
     row.notifyBtn.Text:SetFont(notifyFont, Layout.TABLE.FONT_SIZE, notifyFlags);
     row.notifyBtn:SetPoint('CENTER', opCell, 'CENTER', Layout.BUTTONS.BUTTON_SPACING / 2, 0);
+    
+    -- 存储当前 mapData 引用，用于事件处理器
+    row.mapDataRef = {};
+    
+    -- 在创建时设置事件处理器（只设置一次，避免重复创建闭包）
+    row.columns[3]:SetScript('OnMouseUp', function()
+        if row.mapDataRef.mapId then
+            MainPanel:EditLastRefresh(row.mapDataRef.mapId);
+        end
+    end);
+    
+    row.refreshBtn:SetScript('OnClick', function()
+        if row.mapDataRef.mapId then
+            MainPanel:RefreshMap(row.mapDataRef.mapId);
+        end
+    end);
+    
+    row.notifyBtn:SetScript('OnClick', function()
+        if row.mapDataRef.mapData then
+            MainPanel:NotifyMapRefresh(row.mapDataRef.mapData);
+        end
+    end);
     
     return row;
 end
@@ -257,11 +261,9 @@ function MainPanel:CreateMainFrame()
     if frame.CloseButton then
         frame.CloseButton:SetScript('OnClick', function()
             frame:Hide();
-            -- 确保悬浮按钮显示
             if CrateTrackerZKFloatingButton then
                 CrateTrackerZKFloatingButton:Show();
             elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
-                -- 如果按钮不存在，尝试创建
                 CrateTrackerZK:CreateFloatingButton();
             end
         end);
@@ -359,8 +361,17 @@ local function PrepareTableData()
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
-            mapData.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
-            table.insert(mapArray, mapData);
+            -- 创建数据副本，避免修改原始数据
+            -- 使用浅拷贝保留所有字段，同时添加计算字段
+            local mapDataCopy = {};
+            for k, v in pairs(mapData) do
+                mapDataCopy[k] = v;
+            end
+            -- 计算剩余时间（不修改原始数据）
+            mapDataCopy.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
+            -- 保存原始数据引用（用于需要原始数据的场景）
+            mapDataCopy._original = mapData;
+            table.insert(mapArray, mapDataCopy);
         end
     end
     return mapArray;
@@ -396,6 +407,15 @@ function MainPanel:UpdateTable()
         row:ClearAllPoints();
         row:SetPoint('TOPLEFT', frame.tableContent, 'TOPLEFT', 0, -(i - 1) * rowHeight);
         
+        -- 更新 mapData 引用（用于事件处理器）
+        -- 确保 mapDataRef 存在（兼容旧代码或异常情况）
+        if not row.mapDataRef then
+            row.mapDataRef = {};
+        end
+        row.mapDataRef.mapId = mapData.id;
+        -- 保存原始数据引用（如果存在），否则使用当前数据
+        row.mapDataRef.mapData = mapData._original or mapData;
+        
         row.bg:SetColorTexture(0.1, 0.1, 0.1, i % 2 == 0 and 0.5 or 0.3);
         
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
@@ -411,30 +431,22 @@ function MainPanel:UpdateTable()
             local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
             
             if mapData.nextRefresh and currentTime >= mapData.nextRefresh then
-                -- 已刷新，显示白色
                 color = {1, 1, 1};
             elseif isAirdrop then
-                -- 空投进行中，显示绿色
                 color = {0, 1, 0};
             elseif isBeforeRefresh and mapData.lastRefreshInstance and instanceID ~= mapData.lastRefreshInstance then
-                -- 空投刷新前，且上次刷新时有位面ID记录，且当前位面ID和上次空投刷新时位面ID不同，显示红色
-                -- 注意：如果 lastRefreshInstance 为 nil（首次获取位面ID，还没有刷新记录），则显示绿色
                 color = {1, 0, 0};
             else
-                -- 其他情况（包括首次获取位面ID，还没有刷新记录的情况），显示绿色
                 color = {0, 1, 0};
             end
         end
         row.columns[2].Text:SetText(instanceText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        -- UI显示：如果无数据则显示 "--:--"，否则显示格式化后的时间
         local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or "--:--";
         row.columns[3].Text:SetText(lastRefreshText);
-        row.columns[3]:SetScript('OnMouseUp', function() MainPanel:EditLastRefresh(mapData.id) end);
         
         local remaining = mapData.remaining;
-        -- UI显示：如果无数据则显示 "--:--"，否则显示格式化后的时间
         local remainingText = remaining and Data:FormatTime(remaining, true) or "--:--";
         row.columns[4].Text:SetText(remainingText);
         if remaining then
@@ -445,8 +457,7 @@ function MainPanel:UpdateTable()
             row.columns[4].Text:SetTextColor(1, 1, 1)
         end
         
-        row.refreshBtn:SetScript('OnClick', function() MainPanel:RefreshMap(mapData.id) end);
-        row.notifyBtn:SetScript('OnClick', function() MainPanel:NotifyMapRefresh(mapData) end);
+        -- 注意：按钮事件处理器已在 CreateTableRow 中设置，这里不再重复设置
         
         row:Show();
     end
@@ -474,6 +485,13 @@ function MainPanel:EditLastRefresh(mapId)
             local input = sf.EditBox:GetText();
             MainPanel:ProcessInput(mapId, input);
         end,
+        EditBoxOnEnterPressed = function(editBox)
+            local input = editBox:GetText();
+            local success = MainPanel:ProcessInput(mapId, input);
+            if success then
+                StaticPopup_Hide('CRATETRACKERZK_EDIT_LASTREFRESH');
+            end
+        end,
         timeout = 0, whileDead = true, hideOnEscape = true,
     };
     StaticPopup_Show('CRATETRACKERZK_EDIT_LASTREFRESH');
@@ -481,10 +499,16 @@ end
 
 function MainPanel:ProcessInput(mapId, input)
     local hh, mm, ss = Utils.ParseTimeInput(input);
-    if not hh then Utils.PrintError(L["TimeFormatError"]); return end
+    if not hh then 
+        Utils.PrintError(L["TimeFormatError"]); 
+        return false;
+    end
     
     local ts = Utils.GetTimestampFromTime(hh, mm, ss);
-    if not ts then Utils.PrintError(L["TimestampError"]); return end
+    if not ts then 
+        Utils.PrintError(L["TimestampError"]); 
+        return false;
+    end
     
     if TimerManager then
         TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
@@ -492,6 +516,7 @@ function MainPanel:ProcessInput(mapId, input)
         Data:SetLastRefresh(mapId, ts);
     end
     self:UpdateTable();
+    return true;
 end
 
 function MainPanel:NotifyMapRefresh(mapData)
@@ -516,11 +541,6 @@ function MainPanel:Toggle()
     end
 end
 
--- ============================================================================
--- 标题栏按钮创建
--- ============================================================================
-
--- 创建帮助按钮（使用问号图标，简单可点击元素）
 function MainPanel:CreateInfoButton(parentFrame)
     local config = Layout.TITLE_BAR;
     
@@ -674,26 +694,31 @@ function MainPanel:CreateInfoButton(parentFrame)
         end
     end
     
-    local clickFrame = CreateFrame('Frame', nil, UIParent);
-    clickFrame:SetScript('OnMouseDown', function(self, button)
-        if button == 'LeftButton' and dropdownMenu:IsShown() then
-            local x, y = GetCursorPosition();
-            local scale = UIParent:GetEffectiveScale();
-            x = x / scale;
-            y = y / scale;
-            
-            local menuX, menuY = dropdownMenu:GetCenter();
-            local menuWidth = dropdownMenu:GetWidth();
-            local menuHeight = dropdownMenu:GetHeight();
-            
-            if menuX and menuY then
-                if not (x >= menuX - menuWidth/2 and x <= menuX + menuWidth/2 and
-                        y >= menuY - menuHeight/2 and y <= menuY + menuHeight/2) then
-                    CloseMenu();
+    -- 创建全局点击检测帧（用于检测点击外部区域关闭菜单）
+    -- 保存引用到 parentFrame，避免内存泄漏
+    if not parentFrame.clickFrame then
+        local clickFrame = CreateFrame('Frame', nil, UIParent);
+        clickFrame:SetScript('OnMouseDown', function(self, button)
+            if button == 'LeftButton' and dropdownMenu:IsShown() then
+                local x, y = GetCursorPosition();
+                local scale = UIParent:GetEffectiveScale();
+                x = x / scale;
+                y = y / scale;
+                
+                local menuX, menuY = dropdownMenu:GetCenter();
+                local menuWidth = dropdownMenu:GetWidth();
+                local menuHeight = dropdownMenu:GetHeight();
+                
+                if menuX and menuY then
+                    if not (x >= menuX - menuWidth/2 and x <= menuX + menuWidth/2 and
+                            y >= menuY - menuHeight/2 and y <= menuY + menuHeight/2) then
+                        CloseMenu();
+                    end
                 end
             end
-        end
-    end);
+        end);
+        parentFrame.clickFrame = clickFrame;
+    end
     
     parentFrame.menuButton = menuButton;
     parentFrame.dropdownMenu = dropdownMenu;

@@ -1,4 +1,3 @@
--- CrateTrackerZK - 信息界面模块
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -51,7 +50,7 @@ function Info:Initialize()
         return;
     end
     self.isInitialized = true;
-    Debug:Print("[Info] Info module initialized");
+    Debug:Print("[信息界面] 信息模块已初始化");
 end
 
 function Info:ShowAnnouncement()
@@ -78,7 +77,7 @@ function Info:ShowAnnouncement()
     self.currentFrame = 'announcement';
     
     if Debug:IsEnabled() then
-        Debug:Print("[Info] User action: Open announcement interface");
+        Debug:Print("[信息界面] 用户操作：打开关于界面");
     end
 end
 
@@ -106,7 +105,7 @@ function Info:ShowIntroduction()
     self.currentFrame = 'introduction';
     
     if Debug:IsEnabled() then
-        Debug:Print("[Info] User action: Open introduction interface");
+        Debug:Print("[信息界面] 用户操作：打开帮助界面");
     end
 end
 
@@ -126,7 +125,7 @@ function Info:HideAll()
     self.currentFrame = nil;
     
     if Debug:IsEnabled() then
-        Debug:Print("[Info] User action: Return to main interface");
+        Debug:Print("[信息界面] 用户操作：返回主界面");
     end
 end
 

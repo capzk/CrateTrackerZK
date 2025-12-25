@@ -1,5 +1,3 @@
--- 空投计时管理器
-
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -45,7 +43,7 @@ TimerManager.detectionSources = {
 }
 
 TimerManager.lastDebugMessage = TimerManager.lastDebugMessage or {};
-TimerManager.DEBUG_MESSAGE_INTERVAL = 30; -- 30秒
+TimerManager.DEBUG_MESSAGE_INTERVAL = 30;
 
 function TimerManager:Initialize()
     self.isInitialized = true;
@@ -153,35 +151,6 @@ function TimerManager:StartTimers(mapIds, source, timestamp)
     return allSuccess;
 end
 
--- 更新指定地图的计时（通过地图名称）
--- @param mapName 地图名称
--- @param source 检测源
--- @param timestamp 时间戳（可选，默认为当前时间）
--- @return boolean 操作是否成功
-function TimerManager:StartTimerByName(mapName, source, timestamp)
-    if not self.isInitialized then
-        Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
-        return false;
-    end
-    
-    local maps = Data:GetAllMaps();
-    local targetMapId = nil;
-    
-    for _, mapData in ipairs(maps) do
-        if Data:IsMapNameMatch(mapData, mapName) then
-            targetMapId = mapData.id;
-            break;
-        end
-    end
-    
-    if targetMapId then
-        return self:StartTimer(targetMapId, source, timestamp);
-    else
-        Utils.PrintError(L["ErrorMapNotFound"] .. " " .. mapName);
-        return false;
-    end
-end
-
 function TimerManager:StartCurrentMapTimer(source, timestamp)
     if not self.isInitialized then
         Utils.PrintError(L["ErrorTimerManagerNotInitialized"]);
@@ -191,22 +160,30 @@ function TimerManager:StartCurrentMapTimer(source, timestamp)
     SafeDebug("[Timer] StartCurrentMapTimer", "Source=" .. (source or "nil"));
     
     local currentMapID = C_Map.GetBestMapForUnit("player");
-    local currentMapName = "";
-    
-    local mapInfo = C_Map.GetMapInfo(currentMapID);
-    if mapInfo and mapInfo.name then
-        currentMapName = mapInfo.name;
-        SafeDebug("[Timer] Got map info", "MapID=" .. currentMapID, "Map=" .. currentMapName);
-    else
-        currentMapName = select(1, GetInstanceInfo());
-        SafeDebug("[Timer] Using GetInstanceInfo", "Map=" .. (currentMapName or "nil"));
+    if not currentMapID then
+        SafeDebug("[Timer] Cannot get map ID");
+        Utils.PrintError(DT("DebugCannotGetMapID"));
+        return false;
     end
     
-    if currentMapName then
-        return self:StartTimerByName(currentMapName, source, timestamp);
+    local targetMapData = Data:GetMapByMapID(currentMapID);
+    
+    if not targetMapData then
+        local mapInfo = C_Map.GetMapInfo(currentMapID);
+        if mapInfo and mapInfo.parentMapID then
+            targetMapData = Data:GetMapByMapID(mapInfo.parentMapID);
+            if targetMapData then
+                SafeDebug("[Timer] Matched parent map", "CurrentMapID=" .. currentMapID, "ParentMapID=" .. mapInfo.parentMapID);
+            end
+        end
+    end
+    
+    if targetMapData then
+        SafeDebug("[Timer] Found map data", "MapID=" .. currentMapID, "Map=" .. Data:GetMapDisplayName(targetMapData));
+        return self:StartTimer(targetMapData.id, source, timestamp);
     else
-        SafeDebug("[Timer] Cannot get map name", "MapID=" .. (currentMapID or "nil"));
-        Utils.PrintError(DT("DebugCannotGetMapName2"));
+        SafeDebug("[Timer] Map not in list", "MapID=" .. currentMapID);
+        Utils.PrintError(L["ErrorMapNotFound"] .. " (MapID: " .. tostring(currentMapID) .. ")");
         return false;
     end
 end
@@ -257,45 +234,39 @@ function TimerManager:DetectMapIcons()
     end
     
     local mapInfo = C_Map.GetMapInfo(currentMapID)
-    if not mapInfo or not mapInfo.name then
+    if not mapInfo then
         SafeDebug(DT("DebugCannotGetMapName2"))
         return false;
     end
     
     local targetMapData = nil
     local validMaps = Data:GetAllMaps()
-    local parentMapName = "";
     
     if not validMaps or #validMaps == 0 then
         SafeDebug(DT("DebugMapListEmpty"))
         return false;
     end
     
-    if mapInfo.parentMapID then
-        local parentMapInfo = C_Map.GetMapInfo(mapInfo.parentMapID);
-        if parentMapInfo and parentMapInfo.name then
-            parentMapName = parentMapInfo.name;
-        end
-    end
-    
     for _, mapData in ipairs(validMaps) do
-        if Data:IsMapNameMatch(mapData, mapInfo.name) then
+        if mapData.mapID == currentMapID then
             targetMapData = mapData;
             if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
-                SafeDebugLimited("icon_map_match_" .. tostring(currentMapID), string.format(DT("DebugMapMatchSuccess"), mapInfo.name));
+                local mapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
+                SafeDebugLimited("icon_map_match_" .. tostring(currentMapID), string.format(DT("DebugMapMatchSuccess"), mapDisplayName));
                 self.lastMatchedMapID = currentMapID;
             end
             break;
         end
     end
     
-    if not targetMapData and parentMapName ~= "" then
+    if not targetMapData and mapInfo.parentMapID then
         for _, mapData in ipairs(validMaps) do
-            if Data:IsMapNameMatch(mapData, parentMapName) then
+            if mapData.mapID == mapInfo.parentMapID then
                 targetMapData = mapData;
-                -- 只在首次匹配时输出（减少重复输出）
                 if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
-                    SafeDebugLimited("icon_parent_match_" .. tostring(currentMapID), string.format(DT("DebugParentMapMatchSuccess"), mapInfo.name, parentMapName));
+                    local currentMapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
+                    local parentMapDisplayName = Localization and Localization:GetMapName(mapInfo.parentMapID) or tostring(mapInfo.parentMapID);
+                    SafeDebugLimited("icon_parent_match_" .. tostring(currentMapID), string.format(DT("DebugParentMapMatchSuccess"), currentMapDisplayName, parentMapDisplayName));
                     self.lastMatchedMapID = currentMapID;
                 end
                 break;
@@ -305,7 +276,9 @@ function TimerManager:DetectMapIcons()
     
     if not targetMapData then
         if not self.lastUnmatchedMapID or self.lastUnmatchedMapID ~= currentMapID then
-            SafeDebugLimited("map_not_in_list_" .. tostring(currentMapID), string.format(DT("DebugMapNotInList"), mapInfo.name, parentMapName or DT("DebugNoRecord"), currentMapID))
+            local mapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
+            local parentMapDisplayName = (mapInfo.parentMapID and Localization and Localization:GetMapName(mapInfo.parentMapID)) or (mapInfo.parentMapID and tostring(mapInfo.parentMapID)) or DT("DebugNoRecord");
+            SafeDebugLimited("map_not_in_list_" .. tostring(currentMapID), string.format(DT("DebugMapNotInList"), mapDisplayName, parentMapDisplayName, currentMapID))
             self.lastUnmatchedMapID = currentMapID;
         end
         return false;
@@ -318,14 +291,15 @@ function TimerManager:DetectMapIcons()
         crateName = Localization:GetAirdropCrateName();
     else
         local L = CrateTrackerZK.L;
-        if L and L.AirdropCrateNames and L.AirdropCrateNames["AIRDROP_CRATE_001"] then
-            crateName = L.AirdropCrateNames["AIRDROP_CRATE_001"];
+        local crateCode = "WarSupplyCrate";
+        if L and L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
+            crateName = L.AirdropCrateNames[crateCode];
         else
             local LocaleManager = BuildEnv("LocaleManager");
             if LocaleManager and LocaleManager.GetEnglishLocale then
                 local enL = LocaleManager.GetEnglishLocale();
-                if enL and enL.AirdropCrateNames and enL.AirdropCrateNames["AIRDROP_CRATE_001"] then
-                    crateName = enL.AirdropCrateNames["AIRDROP_CRATE_001"];
+                if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
+                    crateName = enL.AirdropCrateNames[crateCode];
                 end
             end
         end

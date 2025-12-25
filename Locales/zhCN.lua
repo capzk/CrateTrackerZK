@@ -109,20 +109,20 @@ localeData["MenuHelp"] = "帮助";
 localeData["MenuAbout"] = "关于";
 localeData["MenuSettings"] = "设置";
 
--- 地图名称翻译
+-- 地图名称翻译（使用地图ID作为键）
 localeData.MapNames = {
-    ["MAP_001"] = "多恩岛",
-    ["MAP_002"] = "卡雷什",
-    ["MAP_003"] = "陨圣峪",
-    ["MAP_004"] = "艾基-卡赫特",
-    ["MAP_005"] = "安德麦",
-    ["MAP_006"] = "喧鸣深窟",
-    ["MAP_007"] = "海妖岛",
+    [2248] = "多恩岛",      -- 多恩岛
+    [2369] = "海妖岛",      -- 海妖岛
+    [2371] = "卡雷什",      -- 卡雷什
+    [2346] = "安德麦",      -- 安德麦
+    [2215] = "陨圣峪",      -- 陨圣峪
+    [2214] = "喧鸣深窟",    -- 喧鸣深窟
+    [2255] = "艾基-卡赫特", -- 艾基-卡赫特
 };
 
 -- 空投箱子名称
 localeData.AirdropCrateNames = {
-    ["AIRDROP_CRATE_001"] = "战争物资箱",
+    ["WarSupplyCrate"] = "战争物资箱",
 };
 
 -- Register this locale

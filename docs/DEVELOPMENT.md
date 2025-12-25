@@ -28,7 +28,7 @@
 - **语言**：Lua 5.1
 - **平台**：World of Warcraft AddOn API
 - **接口版本**：110200, 110205, 110207
-- **当前版本**：v1.1.2-beta
+- **当前版本**：v1.2.0-beta
 - **重构路线图**：参见 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)
 
 ### 1.3 项目结构 (当前)
@@ -40,7 +40,7 @@ CrateTrackerZK/
 ├── Core/                # 核心初始化与事件分发
 │   └── Core.lua
 ├── Data/                # 数据管理与静态数据
-│   ├── MapConfig.lua    # 地图/空投配置（代号系统）
+│   ├── MapConfig.lua    # 地图/空投配置（地图ID系统）
 │   └── Data.lua         # 数据管理核心（使用 MapConfig 作为唯一数据源）
 ├── UI/                  # 界面实现
 │   ├── MainPanel.lua
@@ -82,19 +82,20 @@ CrateTrackerZK/
   - 模块间通过明确的接口通信
   - 避免循环依赖
 
-### 2.2 数据存储设计（代号系统）
+### 2.2 数据存储设计（地图ID系统）
 
-- **要求**：单一数据源 + 代号系统，分离内置配置与可变数据
+- **要求**：单一数据源 + 地图ID系统，分离内置配置与可变数据
 - **实现**：
   - 内置地图/空投配置唯一来源：`Data.MAP_CONFIG.current_maps`（在 `Data/MapConfig.lua`）
   - 刷新间隔默认 1100 秒（`Data.DEFAULT_REFRESH_INTERVAL`）可被配置覆盖
-  - 可变数据存储在 SavedVariables（`CRATETRACKERZK_DB.mapData`），键为代号
+  - 可变数据存储在 SavedVariables（`CRATETRACKERZK_DB.mapData`），键为地图ID（数字）
   - 所有角色共享数据（通用存储），无旧版本兼容逻辑（全新版本优先）
-  - **代号系统优势**：
-    - 完全语言无关，添加新语言无需改代码
-    - 存储键使用代号，跨语言数据共享
-    - 可任意调整地图顺序，不影响已保存的数据
-    - 名称完全由本地化文件管理
+  - **地图ID系统优势**：
+    - 直接使用游戏API的地图ID，匹配更可靠
+    - 数据处理与显示分离，逻辑更清晰
+    - 性能更好（数字比较比字符串匹配快）
+    - 存储键使用地图ID（数字），跨语言数据共享
+    - 名称完全由本地化文件管理（仅用于显示）
 
 ### 2.3 错误处理
 
@@ -141,7 +142,7 @@ CrateTrackerZK/
 **检查逻辑**：
 1. 检查是否在副本/战场/室内 → 无效
 2. 检查是否在主城（多恩诺嘉尔） → 无效
-3. 检查是否在有效地图列表中（支持父地图匹配） → 有效/无效
+3. 检查是否在有效地图列表中（使用地图ID直接匹配，支持父地图匹配） → 有效/无效
 
 #### 3.1.2 位面检测
 
@@ -155,7 +156,7 @@ CrateTrackerZK/
 - 定时检测：每10秒（`OnUpdate`）
 - 总开关：`CheckAndUpdateAreaValid()`
 - 功能：获取当前地图位面ID（通过NPC）
-- 特性：子区域跳过位面检测
+- 特性：只匹配当前地图ID，不匹配父地图（确保数据准确性）
 
 #### 3.1.3 空投检测
 
@@ -180,7 +181,7 @@ CrateTrackerZK/
 **流程**：
 1. 定时检测（每2秒一次）
 2. 检查地图有效性（总开关）
-3. 检查地图匹配（当前地图或父地图）
+3. 检查地图匹配（使用地图ID直接匹配，支持父地图匹配）
 4. 检测Vignette图标名称（通过本地化配置匹配）
 5. 连续检测确认（至少2秒）
 6. 首次确认有效时，更新刷新时间
@@ -194,16 +195,19 @@ CrateTrackerZK/
 **检测方式**：
 - 使用 `C_VignetteInfo.GetVignettes()` 获取所有Vignette
 - 遍历每个Vignette，检查名称是否匹配配置的空投箱子名称
-- 空投箱子名称通过本地化配置（`L.AirdropCrateNames["AIRDROP_CRATE_001"]`）：
+- 空投箱子名称通过本地化配置（`L.AirdropCrateNames["WarSupplyCrate"]`）：
   - 中文：`"战争物资箱"`
   - 英文：`"War Supply Crate"`
-  - 使用代号系统（`AIRDROP_CRATE_001`），完全语言无关
+  - 使用类型标识符（`WarSupplyCrate`），语义清晰，便于扩展
+  - **注意**：空投箱子使用类型标识符，因为空投箱子是独立配置项，不需要地图ID匹配
 
 #### 3.2.2 手动更新
 
 **方式**：
 - 刷新按钮：`TimerManager:StartTimer(mapId, REFRESH_BUTTON)`
+  - `mapId` 为数组索引（1, 2, 3...），通过 `Data:GetMapByMapID()` 获取
 - 手动输入：`TimerManager:StartTimer(mapId, MANUAL_INPUT, timestamp)`
+  - `mapId` 为数组索引（1, 2, 3...），通过 `Data:GetMapByMapID()` 获取
 
 ### 3.3 数据持久化
 
@@ -220,15 +224,15 @@ CrateTrackerZK/
 
 **设计要求**：
 - 只有在有效区域（非主城、非副本、在地图列表中）才进行位面检测
-- 只有当当前地图名称与地图列表完全匹配时才更新位面ID，确保数据有效性
-- 如果只匹配父地图（当前地图不在列表中），则不更新位面ID（因为数据无效）
+- 只有当当前地图ID与地图列表完全匹配时才更新位面ID，确保数据有效性
+- 不匹配父地图（只匹配当前地图ID），确保位面数据的准确性
 
 **实现要求**：
 - 函数：`Phase:UpdatePhaseInfo()`
 - 总开关：`Area.detectionPaused`（区域有效性检测）
 - 主城检查：在主城时直接返回，不检测位面
-- 地图匹配：优先检查当前地图名称是否直接匹配列表中的地图
-- 代码位置：`Modules/Phase.lua:45-132`
+- 地图匹配：使用地图ID直接匹配，只匹配当前地图ID，不匹配父地图
+- 代码位置：`Modules/Phase.lua:52-127`
 
 ### 3.5 位面ID颜色显示逻辑
 
@@ -556,8 +560,8 @@ tableContainer (表格容器)
 #### UpdatePhaseInfo()
 更新位面信息
 - 检查区域是否有效（`Area.detectionPaused`）
-- 获取当前地图ID和名称
-- 匹配地图列表（只匹配当前地图名称，不匹配父地图）
+- 获取当前地图ID（`C_Map.GetBestMapForUnit("player")`）
+- 匹配地图列表（使用地图ID直接匹配，只匹配当前地图ID，不匹配父地图）
 - 从NPC获取位面ID（通过 `GetLayerFromNPC()`）
 - 更新地图数据中的位面ID
 
@@ -583,14 +587,18 @@ tableContainer (表格容器)
   - `source` - 检测来源（`MANUAL_INPUT`、`REFRESH_BUTTON`、`MAP_ICON`）
   - `timestamp` - 时间戳（可选，用于手动输入）
 
-#### StartCurrentMapTimer(source)
+#### StartCurrentMapTimer(source, timestamp)
 启动当前地图计时
-- 参数：`source` - 检测来源
+- 参数：
+  - `source` - 检测来源
+  - `timestamp` - 时间戳（可选）
+- 实现：通过 `C_Map.GetBestMapForUnit("player")` 获取当前地图ID，使用 `Data:GetMapByMapID()` 查找对应地图数据，支持父地图匹配
 
 #### DetectMapIcons()
 检测地图图标（Vignette检测）
 - 每2秒调用一次
 - 检查区域有效性（`Area.detectionPaused`）
+- 使用地图ID直接匹配（支持父地图匹配）
 - 使用 `C_VignetteInfo.GetVignettes()` 获取所有Vignette
 - 通过空投箱子名称匹配识别空投事件
 - 连续检测确认（至少2秒）后更新刷新时间
@@ -675,26 +683,23 @@ TimerManager.detectionSources = {
 - 如果调试模式开启，自动启用缺失翻译日志
 - 延迟验证翻译完整性并报告初始化状态
 
-#### GetMapName(mapCode)
+#### GetMapName(mapID)
 获取地图名称（支持三层回退）
-- 参数：`mapCode` - 地图代号（如 `"MAP_001"`）
+- 参数：`mapID` - 游戏地图ID（数字，如 `2248`）
 - 返回：本地化的地图名称
-- 回退机制：当前语言 → 英文 → 格式化代号（如 `"MAP_001"`）
+- 回退机制：当前语言 → 英文 → 格式化ID（如 `"Map 2248"`）
 - 如果翻译缺失，会记录到缺失翻译日志
 
 #### GetAirdropCrateName()
 获取空投箱子名称（支持三层回退）
 - 返回：本地化的空投箱子名称
-- 回退机制：当前语言 → 英文 → 格式化代号（如 `"AIRDROP_CRATE_001"`）
+- 回退机制：当前语言 → 英文 → 默认名称（`"Airdrop Crate"`）
 - 如果翻译缺失，会记录到缺失翻译日志
 
-#### IsMapNameMatch(mapData, mapName)
-检查地图名称是否匹配（支持多语言）
-- 参数：
-  - `mapData` - 地图数据对象
-  - `mapName` - 要匹配的地图名称
-- 返回：`true` 如果匹配，否则 `false`
-- 支持当前语言和英文的匹配
+#### FormatMapID(mapID)
+格式化地图ID显示（用于回退显示）
+- 参数：`mapID` - 游戏地图ID（数字）
+- 返回：格式化字符串（如 `"Map 2248"`）
 
 #### ValidateCompleteness()
 验证翻译完整性
@@ -777,16 +782,16 @@ CRATETRACKERZK_UI_DB = {
   - `Core/Core.lua:16-18`
   - `UI/FloatingButton.lua:16-27`
 
-### 6.2 通用数据库 (CRATETRACKERZK_DB) - 代号系统
+### 6.2 通用数据库 (CRATETRACKERZK_DB) - 地图ID系统
 
 **数据结构**：
 ```lua
 CRATETRACKERZK_DB = {
     version = 1,
     mapData = {
-        -- 使用代号（MAP_001等）作为键，完全语言无关
-        -- 存储键名使用代号，确保跨语言数据共享和向后兼容
-        ["MAP_001"] = {
+        -- 使用地图ID（数字）作为键，完全语言无关
+        -- 存储键名使用地图ID，确保跨语言数据共享
+        [2248] = {  -- 多恩岛（游戏地图ID）
             instance = "3043-28226",        -- 位面ID
             lastInstance = "3043-28225",     -- 上一次位面ID
             lastRefreshInstance = "3043-28226", -- 上次刷新时的位面ID
@@ -799,32 +804,32 @@ CRATETRACKERZK_DB = {
 ```
 
 **设计原则**：
-- 内置地图列表存储在代码中（`Data.DEFAULT_MAPS`），使用代号系统
-- 可变数据存储在SavedVariables（`mapData`），使用代号作为键
+- 内置地图列表存储在代码中（`Data.MAP_CONFIG.current_maps`），使用地图ID系统
+- 可变数据存储在SavedVariables（`mapData`），使用地图ID（数字）作为键
 - 所有角色共享数据
-- **代号系统优势**：
-  - 完全语言无关，添加新语言无需修改代码
-  - 数据存储使用代号（`MAP_001`等），跨语言数据共享
-  - 可以任意调整地图顺序，不影响已保存的数据
-  - 地图名称完全通过本地化文件管理（`L.MapNames["MAP_001"]`）
+- **地图ID系统优势**：
+  - 直接使用游戏API的地图ID，匹配更可靠、性能更好
+  - 数据处理与显示分离，逻辑更清晰
+  - 数据存储使用地图ID（数字），跨语言数据共享
+  - 地图名称完全通过本地化文件管理（`L.MapNames[mapID]`），仅用于显示
 
 **初始化健壮性**：
 - `Data:Initialize()` 中确保 `CRATETRACKERZK_DB` 和 `CRATETRACKERZK_DB.mapData` 存在
 - 验证数据结构类型，处理空/损坏数据
 - 验证时间戳的有效性（类型、范围）
-- 访问 `CRATETRACKERZK_DB.mapData[mapCode]` 前确保表存在（防止全新安装时出错）
+- 访问 `CRATETRACKERZK_DB.mapData[mapID]` 前确保表存在（防止全新安装时出错）
 - 代码位置：`Data/Data.lua`
 - 全新安装时，`savedData` 为空表 `{}`，字段从 `MAP_CONFIG.current_maps` 初始化
 
-### 6.3 内置地图列表（代号系统）
+### 6.3 内置地图列表（地图ID系统）
 
 - **唯一数据源**：`Data.MAP_CONFIG.current_maps`（`Data/MapConfig.lua`）
 - **刷新间隔**：默认 1100 秒，可在 MapConfig 中按地图覆盖
-- **代号系统说明**：
-  - **地图ID（id）**：按配置顺序分配（1, 2, 3...）
-  - **地图代号（code）**：唯一标识符（`MAP_001` 等），用于存储和本地化
-  - **数据存储**：使用代号作为键，调整顺序不影响已保存的数据
-  - **多语言支持**：名称在本地化文件中，`Localization:GetMapName()` 负责回退
+- **地图ID系统说明**：
+  - **数组索引（id）**：按配置顺序分配（1, 2, 3...），用于UI显示顺序和内部引用
+  - **游戏地图ID（mapID）**：游戏API提供的地图ID（数字），用于匹配和存储
+  - **数据存储**：使用地图ID（数字）作为键，调整顺序不影响已保存的数据
+  - **多语言支持**：名称在本地化文件中（`L.MapNames[mapID]`），`Localization:GetMapName(mapID)` 负责回退
 
 ---
 
@@ -908,8 +913,8 @@ CRATETRACKERZK_DB = {
 - 代码位置：`Modules/Timer.lua:291-551`
 
 **检测流程**：
-1. 获取当前地图ID和名称
-2. 匹配地图列表（支持父地图匹配）
+1. 获取当前地图ID（`C_Map.GetBestMapForUnit("player")`）
+2. 匹配地图列表（使用地图ID直接匹配，支持父地图匹配）
 3. 使用 `C_VignetteInfo.GetVignettes()` 获取所有Vignette
 4. 遍历每个Vignette，检查名称是否匹配配置的图标名称
 5. 连续检测确认（至少2秒）后更新刷新时间
@@ -919,10 +924,11 @@ CRATETRACKERZK_DB = {
 - 使用首次检测到的时间作为刷新时间（更准确）
 
 **空投箱子名称配置**：
-- 通过本地化配置（`L.AirdropCrateNames["AIRDROP_CRATE_001"]`）：
+- 通过本地化配置（`L.AirdropCrateNames["WarSupplyCrate"]`）：
   - 中文：`"战争物资箱"`（`Locales/zhCN.lua`）
   - 英文：`"War Supply Crate"`（`Locales/enUS.lua`）
-  - 使用代号系统（`AIRDROP_CRATE_001`），完全语言无关
+  - 使用类型标识符（`WarSupplyCrate`），语义清晰，便于扩展
+  - **注意**：空投箱子使用类型标识符，因为空投箱子是独立配置项，不需要地图ID匹配
 
 **检测间隔**：
 - 定时检测：每2秒一次（`Core/Core.lua:25`）
@@ -1012,8 +1018,8 @@ CRATETRACKERZK_DB = {
 
 **位面检测前提条件**：
 1. 区域有效（`detectionPaused == false`）
-2. 不是主城（地图名称不是"多恩诺嘉尔"）
-3. 不是子区域（当前地图匹配且没有父地图在有效列表中，或父地图不在有效列表中）
+2. 不是主城（地图ID不是主城地图ID）
+3. 当前地图ID直接匹配列表中的地图（不匹配父地图，确保数据准确性）
 
 **位面检测调用时机**：
 - 初始化时：不调用位面检测，只检测区域有效性
@@ -1224,7 +1230,7 @@ TimerManager中的Vignette检测使用了安全的API调用，兼容不同版本
 
 地图图标检测（Vignette）持续进行，每2秒检测一次，无刷新周期概念。
 
-### 9.7 多语言支持（代号系统）
+### 9.7 多语言支持（地图ID系统）
 
 插件支持多种语言：
 - **简体中文（zhCN）**：已完整配置，可直接使用
@@ -1237,32 +1243,35 @@ TimerManager中的Vignette检测使用了安全的API调用，兼容不同版本
 - `Utils/Localization.lua`：本地化工具模块，提供翻译获取和验证功能
 - 各语言文件（`zhCN.lua`、`zhTW.lua`、`enUS.lua`、`ruRU.lua`）：包含翻译数据
 
-**代号系统（Code-based System）**：
-- **地图名称**：使用代号（`MAP_001`等）作为键，名称存储在 `L.MapNames["MAP_001"]`
-- **空投箱子名称**：使用代号（`AIRDROP_CRATE_001`）作为键，名称存储在 `L.AirdropCrateNames["AIRDROP_CRATE_001"]`
+**地图ID系统（Map ID System）**：
+- **地图名称**：使用地图ID（数字，如 `2248`）作为键，名称存储在 `L.MapNames[2248]`
+- **空投箱子名称**：使用类型标识符（`WarSupplyCrate`）作为键，名称存储在 `L.AirdropCrateNames["WarSupplyCrate"]`
+  - **注意**：空投箱子仍使用代号系统，因为空投箱子是独立配置项，不需要地图ID匹配
 - **优势**：
-  - 完全语言无关，添加新语言无需修改代码
-  - 数据存储使用代号，跨语言数据共享
+  - 直接使用游戏API的地图ID，匹配更可靠、性能更好
+  - 数据处理与显示分离，逻辑更清晰
+  - 数据存储使用地图ID（数字），跨语言数据共享
   - 可以任意调整地图顺序，不影响已保存的数据
 
 **本地化文件结构**：
 ```lua
 -- Locales/zhCN.lua
 localeData.MapNames = {
-    ["MAP_001"] = "多恩岛",
-    ["MAP_002"] = "卡雷什",
+    [2248] = "多恩岛",      -- 使用数字键（地图ID）
+    [2369] = "海妖岛",
+    [2371] = "卡雷什",
     -- ...
 };
 
 localeData.AirdropCrateNames = {
-    ["AIRDROP_CRATE_001"] = "战争物资箱",
+    ["WarSupplyCrate"] = "战争物资箱",  -- 空投箱子使用类型标识符
 };
 ```
 
 **翻译获取机制**：
-- `Localization:GetMapName(mapCode)`：获取地图名称，支持三层回退（当前语言 → 英文 → 格式化代号）
+- `Localization:GetMapName(mapID)`：获取地图名称，支持三层回退（当前语言 → 英文 → 格式化ID）
 - `Localization:GetAirdropCrateName()`：获取空投箱子名称，支持三层回退
-- `Localization:IsMapNameMatch(mapData, mapName)`：支持多语言地图名称匹配
+- `Localization:FormatMapID(mapID)`：格式化地图ID显示（用于回退）
 
 **完整性验证**：
 - `Localization:ValidateCompleteness()`：验证关键翻译（地图名称、空投箱子名称）是否完整
@@ -1270,10 +1279,10 @@ localeData.AirdropCrateNames = {
 - `Localization:ReportInitializationStatus()`：报告初始化状态和缺失翻译
 
 **数据存储兼容性**：
-- 存储键名使用代号（`MAP_001`等），完全语言无关
-- 不同语言的用户数据可以共享（都使用代号作为键）
+- 存储键名使用地图ID（数字，如 `2248`），完全语言无关
+- 不同语言的用户数据可以共享（都使用地图ID作为键）
 - 显示时根据用户语言自动切换
-- 旧数据完全兼容，无需迁移
+- **注意**：这是全新版本，不提供旧数据迁移（旧数据将被清除）
 
 **翻译指南**：
 - `Locales/TRANSLATION_GUIDE.md`：单文件指南（含中英说明），提供翻译步骤与注意事项
@@ -1327,13 +1336,30 @@ localeData.AirdropCrateNames = {
 
 ---
 
-**文档版本**：v1.1.2-beta  
+**文档版本**：v1.2.0-beta  
 **最后更新**：2024年
 
 **更新记录**：
+- v1.2.0-beta：地图ID系统重构、彻底清除旧代码、性能优化
+  - **地图ID系统（Map ID System）**：
+    - 地图使用游戏地图ID（数字，如 `2248`）作为唯一标识符
+    - 数据存储使用地图ID（数字）作为键，完全语言无关
+    - 匹配逻辑使用地图ID直接匹配，性能更好、更可靠
+    - 数据处理与显示分离，逻辑更清晰
+    - 添加新语言只需在本地化文件中添加地图ID到名称的映射
+    - 可以任意调整地图顺序，不影响已保存的数据
+    - 空投箱子仍使用代号系统（独立配置项）
+  - **代码清理**：
+    - 移除所有旧代码（`IsMapNameMatch`、`StartTimerByName`、`FormatMapCode`等）
+    - 更新所有匹配逻辑使用地图ID
+    - 更新所有注释和文档
+  - **性能优化**：
+    - 数字比较替代字符串匹配，性能提升
+    - 直接使用游戏API，避免名称匹配误判
 - v1.1.2-beta：代号系统完整实现、多语言支持改进、数据初始化健壮性增强
-  - **代号系统（Code-based System）**：
-    - 地图和空投箱子使用代号（`MAP_001`、`AIRDROP_CRATE_001`等）作为唯一标识符
+  - **代号系统（Code-based System）**（已废弃，已迁移到地图ID系统）：
+    - 地图使用代号（`MAP_001`等）作为唯一标识符（已废弃，已迁移到地图ID系统）
+    - 空投箱子使用类型标识符（`WarSupplyCrate`）作为键
     - 数据存储使用代号作为键，完全语言无关
     - 添加新语言只需在本地化文件中添加代号到名称的映射
     - 可以任意调整地图顺序，不影响已保存的数据

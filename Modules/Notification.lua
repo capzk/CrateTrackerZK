@@ -1,4 +1,3 @@
--- CrateTrackerZK - 通知模块
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -26,7 +25,7 @@ function Notification:Initialize()
         end
     end
     
-    DebugPrint("[Notification] Notification module initialized");
+    DebugPrint("[通知] 通知模块已初始化");
 end
 
 function Notification:IsTeamNotificationEnabled()

@@ -109,20 +109,20 @@ localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
 localeData["MenuSettings"] = "Settings";
 
--- Map names
+-- Map names (using map ID as key)
 localeData.MapNames = {
-    ["MAP_001"] = "Isle of Dorn",
-    ["MAP_002"] = "K'aresh",
-    ["MAP_003"] = "Hallowfall",
-    ["MAP_004"] = "Azj-Kahet",
-    ["MAP_005"] = "Undermine",
-    ["MAP_006"] = "The Ringing Deeps",
-    ["MAP_007"] = "Siren Isle",
+    [2248] = "Isle of Dorn",      -- 多恩岛
+    [2369] = "Siren Isle",        -- 海妖岛
+    [2371] = "K'aresh",            -- 卡雷什
+    [2346] = "Undermine",         -- 安德麦
+    [2215] = "Hallowfall",        -- 陨圣峪
+    [2214] = "The Ringing Deeps", -- 喧鸣深窟
+    [2255] = "Azj-Kahet",         -- 艾基-卡赫特
 };
 
 -- Airdrop crate names
 localeData.AirdropCrateNames = {
-    ["AIRDROP_CRATE_001"] = "War Supply Crate",
+    ["WarSupplyCrate"] = "War Supply Crate",
 };
 
 -- Register this locale

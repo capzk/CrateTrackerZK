@@ -1,4 +1,3 @@
--- CrateTrackerZK - 工具函数模块
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -15,7 +14,6 @@ local function ParseTimeFormatColon(input)
     return string.match(input, '^(%d%d):(%d%d):(%d%d)$');
 end
 
--- 解析HHMMSS格式的时间字符串
 local function ParseTimeFormatCompact(input)
     if not string.match(input, '^%d%d%d%d%d%d$') then
         return nil;

@@ -1,4 +1,3 @@
--- CrateTrackerZK - 命令模块
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -44,13 +43,15 @@ end
 function Commands:HandleClearCommand(arg)
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["ClearingData"]);
     
-    -- 停止检测和计时器
     if TimerManager then TimerManager:StopMapIconDetection() end
     if CrateTrackerZK and CrateTrackerZK.phaseTimer then
         CrateTrackerZK.phaseTimer:SetScript("OnUpdate", nil);
     end
+    if MainPanel and MainPanel.updateTimer then
+        MainPanel.updateTimer:Cancel();
+        MainPanel.updateTimer = nil;
+    end
 
-    -- 隐藏并销毁现有 UI，以便重建默认布局
     if CrateTrackerZKFrame then
         CrateTrackerZKFrame:Hide();
         CrateTrackerZKFrame = nil;
@@ -60,11 +61,18 @@ function Commands:HandleClearCommand(arg)
         CrateTrackerZKFloatingButton = nil;
     end
 
-    -- 彻底清除持久化数据（SavedVariables）
-    CRATETRACKERZK_DB = nil;
-    CRATETRACKERZK_UI_DB = nil;
+    if CRATETRACKERZK_DB and CRATETRACKERZK_DB.mapData then
+        for k in pairs(CRATETRACKERZK_DB.mapData) do
+            CRATETRACKERZK_DB.mapData[k] = nil;
+        end
+    end
+    if CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB.position = nil;
+        CRATETRACKERZK_UI_DB.minimapButton = nil;
+        CRATETRACKERZK_UI_DB.debugEnabled = nil;
+        CRATETRACKERZK_UI_DB.teamNotificationEnabled = nil;
+    end
 
-    -- 重置模块状态，确保重新初始化
     if Data then
         Data.maps = {};
         Data.manualInputLock = {};
@@ -85,7 +93,6 @@ function Commands:HandleClearCommand(arg)
         Debug.lastDebugMessage = {};
     end
 
-    -- 重新初始化（等同于全新安装）
     if CrateTrackerZK and CrateTrackerZK.Reinitialize then
         CrateTrackerZK:Reinitialize();
         DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["DataCleared"]);

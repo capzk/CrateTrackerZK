@@ -140,7 +140,8 @@ C_Timer.After(0.2, function()
     -- 如果有加载失败的语言文件，在调试模式下报告
     if #LocaleLoadStatus.failedLocales > 0 and Debug and Debug.IsEnabled and Debug:IsEnabled() then
         local prefix = "|cff00ff88[CrateTrackerZK]|r ";
-        local L = GetL();
+        -- 使用 LocaleManager.GetL() 或直接使用 L（局部变量）
+        local L = LocaleManager.GetL and LocaleManager.GetL() or L;
         local warningFormat = (L and L["LocalizationFailedLocalesWarning"]) or "Warning: %d locale files failed to load";
         DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
             warningFormat,

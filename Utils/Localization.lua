@@ -1,19 +1,13 @@
--- CrateTrackerZK - 本地化
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
-
--- 定义 Localization 命名空间
 local Localization = BuildEnv('Localization');
 
 local function GetL()
     return CrateTrackerZK.L;
 end
 
--- 初始化状态
 Localization.isInitialized = false;
 Localization.currentLocale = GetLocale();
-
--- 缺失翻译日志
 Localization.missingTranslations = {};
 Localization.missingLogEnabled = false;
 
@@ -46,21 +40,21 @@ function Localization:ValidateCompleteness()
         local enL = self:GetEnglishLocale();
         
         for _, mapData in ipairs(Data.MAP_CONFIG.current_maps) do
-            local mapCode = mapData.code;
-            if mapCode then
+            local mapID = mapData.mapID;
+            if mapID then
                 local hasTranslation = false;
                 
                 -- 检查当前语言
-                if L and L.MapNames and L.MapNames[mapCode] then
+                if L and L.MapNames and L.MapNames[mapID] then
                     hasTranslation = true;
                 -- 检查英文回退
-                elseif enL and enL.MapNames and enL.MapNames[mapCode] then
+                elseif enL and enL.MapNames and enL.MapNames[mapID] then
                     hasTranslation = true;
                 end
                 
                 if not hasTranslation then
-                    table.insert(missing.mapNames, mapCode);
-                    self:LogMissingTranslation(mapCode, "MapNames", true);
+                    table.insert(missing.mapNames, tostring(mapID));
+                    self:LogMissingTranslation(tostring(mapID), "MapNames", true);
                 end
             end
         end
@@ -188,38 +182,32 @@ function Localization:ReportInitializationStatus()
     end
 end
 
-function Localization:GetMapName(mapCode)
-    if not mapCode then return "" end;
+function Localization:GetMapName(mapID)
+    if not mapID or type(mapID) ~= "number" then return "" end;
     
     local L = GetL();
     if not L then
-        -- 如果L还没有初始化，回退到格式化代号
-        self:LogMissingTranslation(mapCode, "MapNames", false);
-        return self:FormatMapCode(mapCode);
+        -- 如果L还没有初始化，回退到格式化ID
+        self:LogMissingTranslation(tostring(mapID), "MapNames", false);
+        return "Map " .. tostring(mapID);
     end
     
-    if L.MapNames and L.MapNames[mapCode] then
-        return L.MapNames[mapCode];
+    if L.MapNames and L.MapNames[mapID] then
+        return L.MapNames[mapID];
     end
     
     local enL = self:GetEnglishLocale();
-    if enL and enL.MapNames and enL.MapNames[mapCode] then
+    if enL and enL.MapNames and enL.MapNames[mapID] then
         if GetLocale() ~= "enUS" then
-            self:LogMissingTranslation(mapCode, "MapNames", false);
+            self:LogMissingTranslation(tostring(mapID), "MapNames", false);
         end
-        return enL.MapNames[mapCode];
+        return enL.MapNames[mapID];
     end
     
-    self:LogMissingTranslation(mapCode, "MapNames", true);
-    return self:FormatMapCode(mapCode);
+    self:LogMissingTranslation(tostring(mapID), "MapNames", true);
+    return "Map " .. tostring(mapID);
 end
 
-function Localization:FormatMapCode(mapCode)
-    if not mapCode then return "" end;
-    return mapCode:gsub("_", " "):gsub("(%a+)(%d+)", function(prefix, number)
-        return prefix:sub(1,1):upper() .. prefix:sub(2):lower() .. " " .. number;
-    end);
-end
 
 function Localization:GetEnglishLocale()
     local L = GetL();
@@ -245,88 +233,50 @@ function Localization:GetAllMapNames()
     
     if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
         for _, mapData in ipairs(Data.MAP_CONFIG.current_maps) do
-            local mapCode = mapData.code;
-            result[mapCode] = self:GetMapName(mapCode);
+            local mapID = mapData.mapID;
+            if mapID then
+                result[mapID] = self:GetMapName(mapID);
+            end
         end
     end
     
     return result;
 end
 
--- ============================================================================
--- 空投箱子名称本地化
--- ============================================================================
-
--- 获取空投箱子名称
--- @return string 当前语言的空投箱子名称
 function Localization:GetAirdropCrateName()
-    local crateCode = "AIRDROP_CRATE_001";
+    local crateCode = "WarSupplyCrate";
     local L = GetL();
     
     if not L then
-        -- 如果L还没有初始化，尝试获取英文本地化
         self:LogMissingTranslation(crateCode, "AirdropCrateNames", false);
         local enL = self:GetEnglishLocale();
         if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
             return enL.AirdropCrateNames[crateCode];
         end
-        -- 如果英文也没有，返回格式化代号（不应该到达这里）
-        return self:FormatMapCode(crateCode);
+        return "War Supply Crate";
     end
     
-    -- 使用代号系统
     if L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
         return L.AirdropCrateNames[crateCode];
     end
     
-    -- 回退到英文
     local enL = self:GetEnglishLocale();
     if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
-        -- 使用英文回退，记录但不标记为严重（因为英文是默认语言）
         if GetLocale() ~= "enUS" then
             self:LogMissingTranslation(crateCode, "AirdropCrateNames", false);
         end
         return enL.AirdropCrateNames[crateCode];
     end
     
-    -- 最后回退到格式化代号（不应该到达这里，因为英文本地化文件应该总是存在）
     self:LogMissingTranslation(crateCode, "AirdropCrateNames", true);
-    return self:FormatMapCode(crateCode);
+    return "War Supply Crate";
 end
 
--- ============================================================================
--- 地图名称匹配（支持多语言）
--- ============================================================================
-
--- 检查地图名称是否匹配（支持多语言）
--- @param mapData 地图数据对象（包含code字段）
--- @param mapName 要匹配的地图名称
--- @return boolean 是否匹配
-function Localization:IsMapNameMatch(mapData, mapName)
-    if not mapData or not mapName then return false end;
-    
-    -- 通过代号获取当前语言的本地化名称
-    local mapCode = mapData.code;
-    if not mapCode then return false end;
-    
-    local localizedName = self:GetMapName(mapCode);
-    
-    -- 清理名称进行比较（移除标点符号和空格）
-    local function cleanName(name)
-        return string.lower(string.gsub(name or "", "[%p ]", ""));
-    end
-    
-    local cleanMapName = cleanName(localizedName);
-    local cleanInputName = cleanName(mapName);
-    
-    return cleanMapName == cleanInputName;
+function Localization:FormatMapID(mapID)
+    if not mapID or type(mapID) ~= "number" then return "" end;
+    return "Map " .. tostring(mapID);
 end
 
--- ============================================================================
--- 初始化检查
--- ============================================================================
-
--- 自动初始化
 Localization:Initialize();
 
 return Localization;

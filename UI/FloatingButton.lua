@@ -1,24 +1,21 @@
--- CrateTrackerZK - 悬浮按钮模块
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 
--- 调试函数
 local function DebugPrint(msg, ...)
     if Debug and Debug:IsEnabled() then
         Debug:Print(msg, ...);
     end
 end
 
--- 创建浮动按钮
 function CrateTrackerZK:CreateFloatingButton()
-    -- 确保数据库结构完整
     if not CRATETRACKERZK_UI_DB then
-        -- 理想情况下应该在 Core 中初始化，但这里做个保险
-        return;
+        CRATETRACKERZK_UI_DB = {};
+    end
+    if type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {};
     end
     
-    -- 确保 minimapButton 结构存在
     if not CRATETRACKERZK_UI_DB.minimapButton then
         CRATETRACKERZK_UI_DB.minimapButton = {};
     end
@@ -31,51 +28,42 @@ function CrateTrackerZK:CreateFloatingButton()
         -- 如果按钮已存在，确保它在正确的位置并显示
         local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
         
-        -- 使用新结构（point, x, y）
         local point, x, y;
         if type(pos) == "table" and pos.point then
             point = pos.point;
             x = pos.x or 0;
             y = pos.y or 0;
         else
-            -- 使用默认值
             point = "TOPLEFT";
             x = 50;
             y = -50;
-            
-            -- 更新数据库为新结构
             CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
         end
         
         CrateTrackerZKFloatingButton:ClearAllPoints();
         CrateTrackerZKFloatingButton:SetPoint(point, UIParent, point, x, y);
         
-        -- 确保按钮显示
         if not (CrateTrackerZKFrame and CrateTrackerZKFrame:IsShown()) then
-            DebugPrint("[FloatingButton] Show floating button");
+            DebugPrint("[浮动按钮] 显示浮动按钮");
             CrateTrackerZKFloatingButton:Show();
         else
-            DebugPrint("[FloatingButton] Main window shown, hide floating button");
+            DebugPrint("[浮动按钮] 主窗口已显示，隐藏浮动按钮");
             CrateTrackerZKFloatingButton:Hide();
         end
         
         return CrateTrackerZKFloatingButton;
     end
     
-    DebugPrint("[FloatingButton] Create floating button");
+    DebugPrint("[浮动按钮] 创建浮动按钮");
     
-    -- 创建浮动按钮，使用UIMenuButtonStretchTemplate模板实现圆角效果
     local button = CreateFrame("Button", "CrateTrackerZKFloatingButton", UIParent, "UIMenuButtonStretchTemplate");
-    button:SetSize(140, 32); -- 增大按钮尺寸以适应更长的文字
+    button:SetSize(140, 32);
     
-    -- 设置按钮层级（确保按钮显示在最前面）
     button:SetFrameStrata("HIGH");
     button:SetFrameLevel(100);
     
-    -- 加载保存的位置
     local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
     
-    -- 使用新结构（point, x, y）
     local point, x, y;
     if type(pos) == "table" and pos.point then
         point = pos.point;
@@ -89,7 +77,7 @@ function CrateTrackerZK:CreateFloatingButton()
         
         -- 更新数据库为新结构
         CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
-        DebugPrint("[FloatingButton] Using default position: " .. point .. ", x=" .. x .. ", y=" .. y);
+            DebugPrint("[浮动按钮] 使用默认位置：" .. point .. ", x=" .. x .. ", y=" .. y);
     end
     
     -- 设置按钮到保存的位置
@@ -148,7 +136,7 @@ function CrateTrackerZK:CreateFloatingButton()
     
     -- 设置拖动事件
     button:SetScript("OnDragStart", function(self)
-        DebugPrint("[FloatingButton] User action: Start dragging floating button");
+        DebugPrint("[浮动按钮] 用户操作：开始拖动浮动按钮");
         self:StartMoving();
     end);
     button:SetScript("OnDragStop", function(self)
@@ -223,7 +211,7 @@ function CrateTrackerZK:CreateFloatingButton()
             pos.point = point;
             pos.x = x;
             pos.y = y;
-            DebugPrint("[FloatingButton] User action: Stop dragging floating button", "Point=" .. point, "x=" .. x, "y=" .. y);
+            DebugPrint("[浮动按钮] 用户操作：停止拖动浮动按钮", "锚点=" .. point, "x=" .. x, "y=" .. y);
         end
         
         -- 应用最终位置
@@ -233,7 +221,7 @@ function CrateTrackerZK:CreateFloatingButton()
     
     -- 设置点击事件
     button:SetScript("OnClick", function()
-        DebugPrint("[FloatingButton] User action: Click floating button");
+        DebugPrint("[浮动按钮] 用户操作：点击浮动按钮");
         if MainPanel then
             MainPanel:Toggle();
         end
