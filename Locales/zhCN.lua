@@ -43,8 +43,8 @@ localeData["LocalizationMissingTranslationsWarning"] = "警告：发现 %d 个�
 localeData["LocalizationMissingMapNames"] = "缺失的地图名称: %s";
 localeData["LocalizationMissingCrateNames"] = "缺失的空投箱子名称: %s";
 localeData["LocalizationFailedLocalesWarning"] = "警告：%d 个语言文件加载失败";
-localeData["MapNamesCount"] = "地图名称: %d 个";
-localeData["AirdropCratesCount"] = "空投箱子: %d 个";
+localeData["MapNamesCount"] = "缺失地图名称: %d";
+localeData["AirdropCratesCount"] = "缺失空投箱子名称: %d";
 
 -- 通知
 localeData["TeamNotificationStatus"] = "团队通知%s";
@@ -57,8 +57,7 @@ localeData["Disabled"] = "已关闭";
 -- 命令
 localeData["UnknownCommand"] = "未知命令：%s";
 localeData["ClearingData"] = "正在清除所有时间和位面数据...";
-localeData["DataCleared"] = "已清除所有时间和位面数据，地图列表已保留";
-localeData["DataClearFailedEmpty"] = "清除数据失败：地图列表为空";
+localeData["DataCleared"] = "已清除所有数据，插件已重新初始化";
 localeData["DataClearFailedModule"] = "清除数据失败：Data模块未加载";
 localeData["ClearUsage"] = "清除命令：/ctk clear 或 /ctk reset";
 localeData["NotificationModuleNotLoaded"] = "通知模块未加载";
@@ -66,7 +65,7 @@ localeData["TeamUsage1"] = "团队通知命令：";
 localeData["TeamUsage2"] = "/ctk team on - 开启团队通知";
 localeData["TeamUsage3"] = "/ctk team off - 关闭团队通知";
 localeData["HelpTitle"] = "可用命令：";
-localeData["HelpClear"] = "/ctk clear 或 /ctk reset - 清除所有时间和位面数据（保留地图列表）";
+localeData["HelpClear"] = "/ctk clear 或 /ctk reset - 清除所有数据并重新初始化插件";
 localeData["HelpTeam"] = "/ctk team on|off - 开启/关闭团队通知";
 localeData["HelpHelp"] = "/ctk help - 显示此帮助信息";
 localeData["HelpUpdateWarning"] = "版本更新后出现任何问题，请彻底删除此插件目录后全新安装！！";

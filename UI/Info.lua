@@ -19,16 +19,32 @@ Info.currentFrame = nil;
 local ADDON_NAME = "CrateTrackerZK";
 
 local function GetAddonVersion()
-    if GetAddOnMetadata then
-        return GetAddOnMetadata(ADDON_NAME, "Version") or "Unknown";
+    if not GetAddOnMetadata then
+        return "1.1.2-beta";
     end
-    return "Unknown";
+    
+    local version = GetAddOnMetadata(ADDON_NAME, "Version");
+    if version and version ~= "" then
+        return version;
+    end
+    
+    for i = 1, GetNumAddOns() do
+        local name = GetAddOnInfo(i);
+        if name == ADDON_NAME then
+            local metaVersion = GetAddOnMetadata(i, "Version");
+            if metaVersion and metaVersion ~= "" then
+                return metaVersion;
+            end
+        end
+    end
+    
+    return "1.1.2-beta";
 end
 
 local function BuildAboutText()
     local version = GetAddonVersion();
     return string.format([[
-CrateTrackerZK
+About CrateTrackerZK
 
 Author: capzk
 Version: %s
@@ -36,13 +52,45 @@ Project: https://github.com/capzk/CrateTrackerZK
 License: MIT
 Contact: capzk@outlook.com
 
-]], version);
+
+关于 CrateTrackerZK
+
+作者: capzk
+版本: %s
+项目: https://github.com/capzk/CrateTrackerZK
+许可: MIT
+联系: capzk@outlook.com
+
+]], version, version);
 end
 
 local HELP_TEXT = [[
+Available Commands:
+
 /ctk help        Show available commands
 /ctk team on/off Enable or disable team notifications
 /ctk clear       Clear local data and reinitialize
+
+
+Important Notes:
+
+If you encounter any issues after updating the addon, please completely delete the addon folder and reinstall it from scratch.
+
+Due to significant code refactoring, old saved data is no longer compatible. If your data is cleared after updating, this is normal and expected behavior. You can safely continue using the addon.
+
+
+可用命令：
+
+/ctk help        显示可用命令
+/ctk team on/off 开启/关闭团队通知
+/ctk clear       清除本地数据并重新初始化
+
+
+重要提示：
+
+如果插件升级后出现任何问题，请彻底删除此插件目录并重新安装。
+
+由于插件代码进行了大量重构，旧数据已不再兼容。如果更新后数据被清空，这属于正常现象，无需担心。您可以安全地继续使用插件。
 ]];
 
 function Info:Initialize()

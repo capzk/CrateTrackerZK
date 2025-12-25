@@ -43,8 +43,8 @@ localeData["LocalizationMissingTranslationsWarning"] = "Warning: Found %d missin
 localeData["LocalizationMissingMapNames"] = "Missing map names: %s";
 localeData["LocalizationMissingCrateNames"] = "Missing airdrop crate names: %s";
 localeData["LocalizationFailedLocalesWarning"] = "Warning: %d locale files failed to load";
-localeData["MapNamesCount"] = "Map names: %d";
-localeData["AirdropCratesCount"] = "Airdrop crates: %d";
+localeData["MapNamesCount"] = "Missing map names: %d";
+localeData["AirdropCratesCount"] = "Missing airdrop crate names: %d";
 
 -- Notifications
 localeData["TeamNotificationStatus"] = "Team notification %s";
@@ -57,8 +57,7 @@ localeData["Disabled"] = "Disabled";
 -- Commands
 localeData["UnknownCommand"] = "Unknown command: %s";
 localeData["ClearingData"] = "Clearing all time and instance data...";
-localeData["DataCleared"] = "All time and instance data cleared, map list preserved";
-localeData["DataClearFailedEmpty"] = "Clear data failed: map list is empty";
+localeData["DataCleared"] = "All data cleared, addon reinitialized";
 localeData["DataClearFailedModule"] = "Clear data failed: Data module not loaded";
 localeData["ClearUsage"] = "Clear command: /ctk clear or /ctk reset";
 localeData["NotificationModuleNotLoaded"] = "Notification module not loaded";
@@ -66,7 +65,7 @@ localeData["TeamUsage1"] = "Team notification commands:";
 localeData["TeamUsage2"] = "/ctk team on - Enable team notification";
 localeData["TeamUsage3"] = "/ctk team off - Disable team notification";
 localeData["HelpTitle"] = "Available commands:";
-localeData["HelpClear"] = "/ctk clear or /ctk reset - Clear all time and instance data (preserve map list)";
+localeData["HelpClear"] = "/ctk clear or /ctk reset - Clear all data and reinitialize addon";
 localeData["HelpTeam"] = "/ctk team on|off - Enable/disable team notification";
 localeData["HelpHelp"] = "/ctk help - Show this help information";
 localeData["HelpUpdateWarning"] = "If any problem occurs after updating, please completely delete this addon folder and reinstall it from scratch!!";
