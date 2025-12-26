@@ -19,3 +19,6 @@ prod/
 *.swp
 *.swo
 
+# 文档目录
+docs/
+
