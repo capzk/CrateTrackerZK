@@ -49,13 +49,23 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local message = string.format(L["AirdropDetected"], mapName);
     
+    -- 始终发送到聊天框（个人消息）
     DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. message);
     
+    -- 自动检测消息：只在团队中发送，受 teamNotificationEnabled 控制
+    -- 注意：如果 teamNotificationEnabled = false，则只发送到聊天框，不发送任何团队消息
+    -- 注意：小队中不发送自动消息，只有手动通知才会发送小队消息
     if self.teamNotificationEnabled and IsInRaid() then
+        -- 1. 发送普通团队消息（RAID）
+        pcall(function()
+            SendChatMessage(message, "RAID");
+        end);
+        -- 2. 发送团队通知（RAID_WARNING）
         pcall(function()
             SendChatMessage(message, "RAID_WARNING");
         end);
     end
+    -- 如果不在团队中，或 teamNotificationEnabled = false，只发送到聊天框
 end
 
 function Notification:GetTeamChatType()
@@ -87,13 +97,17 @@ function Notification:NotifyMapRefresh(mapData)
         end
     end
     
+    -- 手动通知不受 teamNotificationEnabled 控制，始终根据队伍状态发送
+    -- 如果在队伍中，发送队伍消息；否则发送到聊天框
     local chatType = self:GetTeamChatType();
     if chatType then
         pcall(function()
             SendChatMessage(message, chatType);
         end);
-    else
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. message);
+        return; -- 已发送到队伍，不再发送到聊天框
     end
+    
+    -- 不在队伍中，发送到聊天框（个人消息）
+    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. message);
 end
 

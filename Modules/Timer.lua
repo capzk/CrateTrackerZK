@@ -309,25 +309,22 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    if C_VignetteInfo and C_VignetteInfo.GetVignettes and C_VignetteInfo.GetVignetteInfo and C_VignetteInfo.GetVignettePosition then
+    if C_VignetteInfo and C_VignetteInfo.GetVignettes and C_VignetteInfo.GetVignetteInfo then
         local vignettes = C_VignetteInfo.GetVignettes()
         if vignettes then
             for _, vignetteGUID in ipairs(vignettes) do
                 local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID)
                 if vignetteInfo then
-                    local position = C_VignetteInfo.GetVignettePosition(vignetteGUID, currentMapID)
-                    if position then
-                        local vignetteName = vignetteInfo.name or ""
+                    local vignetteName = vignetteInfo.name or ""
+                    
+                    if vignetteName ~= "" then
+                        local trimmedName = vignetteName:match("^%s*(.-)%s*$");
                         
-                        if vignetteName ~= "" then
-                            local trimmedName = vignetteName:match("^%s*(.-)%s*$");
-                            
-                            if crateName and crateName ~= "" and trimmedName == crateName then
-                                foundMapIcon = true;
-                                SafeDebugLimited("icon_detection_start", string.format(DT("DebugIconDetectionStart"), Data:GetMapDisplayName(targetMapData), crateName));
-                                SafeDebugLimited("icon_vignette_" .. targetMapData.id, string.format(DT("DebugDetectedMapIconVignette"), Data:GetMapDisplayName(targetMapData), crateName))
-                                break
-                            end
+                        if crateName and crateName ~= "" and trimmedName == crateName then
+                            foundMapIcon = true;
+                            SafeDebugLimited("icon_detection_start", string.format(DT("DebugIconDetectionStart"), Data:GetMapDisplayName(targetMapData), crateName));
+                            SafeDebugLimited("icon_vignette_" .. targetMapData.id, string.format(DT("DebugDetectedMapIconVignette"), Data:GetMapDisplayName(targetMapData), crateName))
+                            break
                         end
                     end
                 end

@@ -178,21 +178,26 @@ MAP_CONFIG = {
 - 团队通知管理
 
 **通知类型**:
-- 自动检测通知: 检测到空投时
-- 手动通知: 用户点击通知按钮
+- 自动检测通知: 检测到空投时（受 `/ctk team on/off` 控制）
+- 手动通知: 用户点击通知按钮（不受 `/ctk team on/off` 控制）
 
 **主要函数**:
 - `Initialize()`: 初始化通知模块
 - `NotifyAirdropDetected(mapName, source)`: 通知空投检测
 - `NotifyMapRefresh(mapData)`: 通知地图刷新信息
 - `SetTeamNotificationEnabled(enabled)`: 设置团队通知开关
+- `GetTeamChatType()`: 获取队伍聊天类型
 
 **通知渠道**:
-- 聊天框（始终）
-- 团队聊天（可选）
-  - RAID_WARNING（团队）
-  - PARTY（队伍）
-  - INSTANCE_CHAT（副本队伍）
+- **自动检测通知**（受命令控制）:
+  - 聊天框（始终）
+  - 团队消息（仅在团队中，且 `teamNotificationEnabled = true`）
+    - RAID（普通团队消息）
+    - RAID_WARNING（团队通知）
+  - 小队中：不发送自动消息
+- **手动通知**（不受命令控制）:
+  - 在队伍中：PARTY/RAID/INSTANCE_CHAT
+  - 不在队伍中：聊天框
 
 #### Modules/Commands.lua
 **职责**:

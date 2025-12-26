@@ -322,12 +322,15 @@ Notification:NotifyAirdropDetected(mapName, source)
    ├─▶ 构建消息
    │   message = string.format(L["AirdropDetected"], mapName)
    │
-   ├─▶ 发送到聊天框
+   ├─▶ 发送到聊天框（始终）
    │   DEFAULT_CHAT_FRAME:AddMessage(message)
    │
-   └─▶ 发送到团队（如果启用）
+   └─▶ 发送到团队（如果启用且在团队中）
        if teamNotificationEnabled and IsInRaid()
-           SendChatMessage(message, "RAID_WARNING")
+           ├─▶ SendChatMessage(message, "RAID")  // 普通团队消息
+           └─▶ SendChatMessage(message, "RAID_WARNING")  // 团队通知
+       
+       注意：小队中不发送自动消息
 ```
 
 ### 5.2 手动通知
@@ -348,15 +351,20 @@ Notification:NotifyMapRefresh(mapData)
    │       remaining = Data:CalculateRemainingTime(nextRefresh)
    │       message = "剩余时间: MM:SS"
    │
-   ├─▶ 确定聊天类型
+   ├─▶ 确定聊天类型（不受 teamNotificationEnabled 控制）
    │   GetTeamChatType()
    │   │
    │   ├─▶ INSTANCE_CHAT (副本队伍)
    │   ├─▶ RAID (团队)
    │   └─▶ PARTY (队伍)
    │
-   └─▶ 发送消息
-       SendChatMessage(message, chatType)
+   ├─▶ 如果在队伍中
+   │   └─▶ 发送消息到队伍
+   │       SendChatMessage(message, chatType)
+   │
+   └─▶ 如果不在队伍中
+       └─▶ 发送到聊天框
+           DEFAULT_CHAT_FRAME:AddMessage(message)
 ```
 
 ## 六、区域检测数据流

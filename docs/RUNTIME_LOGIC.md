@@ -80,9 +80,15 @@ OnLogin() {
 
 4. 遍历所有图标，查找空投箱子
    for each vignette in vignettes:
-     - 获取图标名称
+     - 获取图标信息（GetVignetteInfo）
+     - 提取图标名称
      - 与配置的空投名称比较（"战争物资箱" / "War Supply Crate"）
      - 如果匹配，标记为找到
+   
+   **注意**：检测仅依赖名称匹配，不检查位置信息。原因：
+   - GetVignettes() 已返回当前地图上的所有Vignette
+   - 区域有效性检测已确保在正确的追踪区域
+   - 支持子地图场景（子地图上的Vignette可能无法用子地图ID获取位置）
 
 5. 持续检测确认机制
    - 首次检测到图标：记录首次检测时间
@@ -346,11 +352,19 @@ PLAYER_TARGET_CHANGED:
 
 ### 6.3 通知渠道
 
+**自动检测通知**（受 `/ctk team on/off` 控制）：
 1. **聊天框**: 始终显示
-2. **团队聊天**: 如果启用团队通知
-   - 团队: RAID_WARNING
-   - 队伍: PARTY
+2. **团队消息**（仅在团队中，且 `teamNotificationEnabled = true`）:
+   - RAID: 普通团队消息
+   - RAID_WARNING: 团队通知
+3. **小队中**: 不发送自动消息
+
+**手动通知**（不受 `/ctk team on/off` 控制）：
+1. **在队伍中**: 发送到队伍
    - 副本队伍: INSTANCE_CHAT
+   - 团队: RAID
+   - 队伍: PARTY
+2. **不在队伍中**: 发送到聊天框
 
 ## 七、错误处理和边界情况
 
