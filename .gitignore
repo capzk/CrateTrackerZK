@@ -19,4 +19,7 @@ prod/
 *.swp
 *.swo
 
+# 问题记录目录
+issues/
+
 
