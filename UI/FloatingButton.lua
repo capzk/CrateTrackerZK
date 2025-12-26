@@ -23,9 +23,7 @@ function CrateTrackerZK:CreateFloatingButton()
         CRATETRACKERZK_UI_DB.minimapButton.position = { point = "TOPLEFT", x = 50, y = -50 };
     end
     
-    -- 检查按钮是否已存在
     if CrateTrackerZKFloatingButton then
-        -- 如果按钮已存在，确保它在正确的位置并显示
         local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
         
         local point, x, y;
@@ -69,72 +67,59 @@ function CrateTrackerZK:CreateFloatingButton()
         point = pos.point;
         x = pos.x or 0;
         y = pos.y or 0;
-    else
-        -- 使用默认值
-        point = "TOPLEFT";
-        x = 50;
-        y = -50;
-        
-        -- 更新数据库为新结构
-        CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
+        else
+            point = "TOPLEFT";
+            x = 50;
+            y = -50;
+            CRATETRACKERZK_UI_DB.minimapButton.position = { point = point, x = x, y = y };
             DebugPrint("[浮动按钮] 使用默认位置：" .. point .. ", x=" .. x .. ", y=" .. y);
     end
     
-    -- 设置按钮到保存的位置
     button:ClearAllPoints();
     button:SetPoint(point, UIParent, point, x, y);
     
-    -- 设置按钮属性
     button:SetMovable(true);
     button:EnableMouse(true);
     button:RegisterForDrag("LeftButton");
     button:SetText("CrateTrackerZK");
     
-    -- 设置按钮文本属性
     button:SetNormalFontObject(GameFontNormal);
     button:SetHighlightFontObject(GameFontHighlight);
     button:SetDisabledFontObject(GameFontDisable);
-    button.Text:SetTextColor(1, 1, 1); -- 设置文本颜色为白色
+    button.Text:SetTextColor(1, 1, 1);
     
-    -- 设置按钮状态
-    button:Enable(); -- 确保按钮是启用状态
+    button:Enable();
     
-    -- 根据主窗口状态决定按钮初始显示状态
     if CrateTrackerZKFrame and CrateTrackerZKFrame:IsShown() then
-        button:Hide(); -- 主窗口已显示，隐藏按钮
+        button:Hide();
     else
-        button:Show(); -- 主窗口未显示，显示按钮
+        button:Show();
     end
     
-    -- 设置背景颜色
     local bgTexture = button:GetNormalTexture();
     if bgTexture then
-        bgTexture:SetVertexColor(0, 0.5, 0.5, 1); -- 青绿色背景
+        bgTexture:SetVertexColor(0, 0.5, 0.5, 1);
         bgTexture:Show();
     end
     
-    -- 设置高亮状态
     local highlightTexture = button:GetHighlightTexture();
     if highlightTexture then
-        highlightTexture:SetVertexColor(0.2, 0.7, 0.7, 1); -- 高亮时的颜色
+        highlightTexture:SetVertexColor(0.2, 0.7, 0.7, 1);
         highlightTexture:Show();
     end
     
-    -- 设置禁用状态
     local disabledTexture = button:GetDisabledTexture();
     if disabledTexture then
-        disabledTexture:SetVertexColor(0.3, 0.3, 0.3, 0.5); -- 禁用时的颜色
+        disabledTexture:SetVertexColor(0.3, 0.3, 0.3, 0.5);
         disabledTexture:Hide();
     end
     
-    -- 设置点击状态
     local pushedTexture = button:GetPushedTexture();
     if pushedTexture then
-        pushedTexture:SetVertexColor(0, 0.3, 0.3, 1); -- 点击时的颜色
+        pushedTexture:SetVertexColor(0, 0.3, 0.3, 1);
         pushedTexture:Hide();
     end
     
-    -- 设置拖动事件
     button:SetScript("OnDragStart", function(self)
         DebugPrint("[浮动按钮] 用户操作：开始拖动浮动按钮");
         self:StartMoving();
@@ -142,21 +127,17 @@ function CrateTrackerZK:CreateFloatingButton()
     button:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing();
         
-        -- 获取屏幕尺寸
         local screenWidth = GetScreenWidth();
         local screenHeight = GetScreenHeight();
         
-        -- 获取按钮当前位置和尺寸
         local left = self:GetLeft() or 0;
         local right = self:GetRight() or self:GetWidth();
         local top = self:GetTop() or 0;
         local bottom = self:GetBottom() or -self:GetHeight();
         
-        -- 智能选择最合适的锚点
         local point;
         local x, y;
         
-        -- 水平方向锚点选择
         local distToLeft = left;
         local distToRight = screenWidth - right;
         local distToCenter = math.abs((left + right) / 2 - screenWidth / 2);
@@ -172,7 +153,6 @@ function CrateTrackerZK:CreateFloatingButton()
             x = (left + right) / 2 - screenWidth / 2;
         end
         
-        -- 垂直方向锚点选择
         local distToBottom = bottom;
         local distToTop = screenHeight - top;
         local distToMiddle = math.abs((bottom + top) / 2 - screenHeight / 2);
@@ -187,12 +167,10 @@ function CrateTrackerZK:CreateFloatingButton()
             y = (bottom + top) / 2 - screenHeight / 2;
         end
         
-        -- 如果没有选择到锚点，使用CENTER
         if point == "" then
             point = "CENTER";
         end
         
-        -- 确保按钮在屏幕范围内
         if point:find("LEFT") then
             x = math.max(0, x);
         elseif point:find("RIGHT") then
@@ -205,7 +183,6 @@ function CrateTrackerZK:CreateFloatingButton()
             y = math.max(0, y);
         end
         
-        -- 保存位置
         if CRATETRACKERZK_UI_DB then
             local pos = CRATETRACKERZK_UI_DB.minimapButton.position;
             pos.point = point;
@@ -214,12 +191,10 @@ function CrateTrackerZK:CreateFloatingButton()
             DebugPrint("[浮动按钮] 用户操作：停止拖动浮动按钮", "锚点=" .. point, "x=" .. x, "y=" .. y);
         end
         
-        -- 应用最终位置
         self:ClearAllPoints();
         self:SetPoint(point, UIParent, point, x, y);
     end);
     
-    -- 设置点击事件
     button:SetScript("OnClick", function()
         DebugPrint("[浮动按钮] 用户操作：点击浮动按钮");
         if MainPanel then
@@ -227,7 +202,6 @@ function CrateTrackerZK:CreateFloatingButton()
         end
     end);
     
-    -- 设置鼠标悬停提示
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
         GameTooltip:SetText(L["FloatingButtonTooltipTitle"]);
@@ -240,7 +214,6 @@ function CrateTrackerZK:CreateFloatingButton()
         GameTooltip:Hide();
     end);
     
-    -- 保存引用
     CrateTrackerZK.floatingButton = button;
     
     return button;

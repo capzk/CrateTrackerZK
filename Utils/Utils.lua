@@ -37,49 +37,24 @@ end
 
 function Utils.ParseTimeInput(input)
     if not input or input == '' then 
-        if Utils.debugEnabled then
-            Utils.Debug("时间解析: 输入为空");
-        end
         return nil;
-    end
-    
-    if Utils.debugEnabled then
-        Utils.Debug("时间解析: 开始解析", "输入=" .. input);
     end
     
     local hh, mm, ss;
     
     hh, mm, ss = ParseTimeFormatColon(input);
-    if hh then
-        if Utils.debugEnabled then
-            Utils.Debug("时间解析: 匹配HH:MM:SS格式");
-        end
-    else
+    if not hh then
         hh, mm, ss = ParseTimeFormatCompact(input);
-        if hh then
-            if Utils.debugEnabled then
-                Utils.Debug("时间解析: 匹配HHMMSS格式");
-            end
-        else
-            if Utils.debugEnabled then
-                Utils.Debug("时间解析: 格式不匹配", "输入=" .. input);
-            end
+        if not hh then
             return nil;
         end
     end
     
     if not ValidateTimeRange(hh, mm, ss) then
-        if Utils.debugEnabled then
-            Utils.Debug("时间解析: 时间范围无效", "时=" .. (hh or "nil"), "分=" .. (mm or "nil"), "秒=" .. (ss or "nil"));
-        end
         return nil;
     end
     
     hh, mm, ss = tonumber(hh), tonumber(mm), tonumber(ss);
-    
-    if Utils.debugEnabled then
-        Utils.Debug("时间解析: 解析成功", "时=" .. hh, "分=" .. mm, "秒=" .. ss);
-    end
     
     return hh, mm, ss;
 end

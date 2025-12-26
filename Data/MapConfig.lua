@@ -6,43 +6,43 @@ Data.MAP_CONFIG = {
     
     current_maps = {
         {
-            mapID = 2248,  -- 多恩岛
+            mapID = 2248,
             interval = 1100,
             enabled = true,
             priority = 1,
         },
         {
-            mapID = 2369,  -- 海妖岛
+            mapID = 2369,
             interval = 1100,
             enabled = true,
             priority = 2,
         },
         {
-            mapID = 2371,  -- 卡雷什
+            mapID = 2371,
             interval = 1100,
             enabled = true,
             priority = 3,
         },
         {
-            mapID = 2346,  -- 安德麦
+            mapID = 2346,
             interval = 1100,
             enabled = true,
             priority = 4,
         },
         {
-            mapID = 2215,  -- 陨圣峪
+            mapID = 2215,
             interval = 1100,
             enabled = true,
             priority = 5,
         },
         {
-            mapID = 2214,  -- 喧鸣深窟
+            mapID = 2214,
             interval = 1100,
             enabled = true,
             priority = 6,
         },
         {
-            mapID = 2255,  -- 艾基-卡赫特
+            mapID = 2255,
             interval = 1100,
             enabled = true,
             priority = 7,

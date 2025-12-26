@@ -149,9 +149,7 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     row.refreshBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.refreshBtn:SetSize(Layout.BUTTONS.REFRESH_WIDTH, Layout.BUTTONS.REFRESH_HEIGHT);
     row.refreshBtn:SetText(L["Refresh"]);
-    -- 放宽可点击区域，避免用户点在按钮边缘时第一次无响应
     row.refreshBtn:SetHitRectInsets(-6, -6, -4, -4);
-    -- 调整按钮文字字体大小
     local refreshFont, refreshSize, refreshFlags = row.refreshBtn.Text:GetFont();
     row.refreshBtn.Text:SetFont(refreshFont, Layout.TABLE.FONT_SIZE, refreshFlags);
     row.refreshBtn:SetPoint('CENTER', opCell, 'CENTER', -Layout.BUTTONS.BUTTON_SPACING / 2, 0);
@@ -159,17 +157,13 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     row.notifyBtn = CreateFrame('Button', nil, opCell, 'UIPanelButtonTemplate');
     row.notifyBtn:SetSize(Layout.BUTTONS.NOTIFY_WIDTH, Layout.BUTTONS.NOTIFY_HEIGHT);
     row.notifyBtn:SetText(L["Notify"]);
-    -- 放宽可点击区域
     row.notifyBtn:SetHitRectInsets(-6, -6, -4, -4);
-    -- 调整按钮文字字体大小
     local notifyFont, notifySize, notifyFlags = row.notifyBtn.Text:GetFont();
     row.notifyBtn.Text:SetFont(notifyFont, Layout.TABLE.FONT_SIZE, notifyFlags);
     row.notifyBtn:SetPoint('CENTER', opCell, 'CENTER', Layout.BUTTONS.BUTTON_SPACING / 2, 0);
     
-    -- 存储当前 mapData 引用，用于事件处理器
     row.mapDataRef = {};
     
-    -- 在创建时设置事件处理器（只设置一次，避免重复创建闭包）
     row.columns[3]:SetScript('OnMouseUp', function()
         if row.mapDataRef.mapId then
             MainPanel:EditLastRefresh(row.mapDataRef.mapId);
@@ -200,7 +194,6 @@ local function CreateTable(frame)
     tableHeader:SetSize(Layout.TABLE.WIDTH, Layout.TABLE.HEADER_HEIGHT);
     tableHeader:SetPoint('TOPLEFT', tableContainer, 'TOPLEFT', 0, 0);
     
-    -- 整体表头背景，柔和区分表头区域
     local headerBg = tableHeader:CreateTexture(nil, 'BACKGROUND');
     headerBg:SetAllPoints();
     headerBg:SetColorTexture(0.12, 0.12, 0.12, 0.95);
@@ -518,11 +511,9 @@ function MainPanel:Toggle()
     if not CrateTrackerZKFrame then self:CreateMainFrame() end
     if CrateTrackerZKFrame:IsShown() then
         CrateTrackerZKFrame:Hide();
-        -- 确保悬浮按钮显示
         if CrateTrackerZKFloatingButton then
             CrateTrackerZKFloatingButton:Show();
         elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
-            -- 如果按钮不存在，尝试创建
             CrateTrackerZK:CreateFloatingButton();
         end
     else
@@ -685,8 +676,6 @@ function MainPanel:CreateInfoButton(parentFrame)
         end
     end
     
-    -- 创建全局点击检测帧（用于检测点击外部区域关闭菜单）
-    -- 保存引用到 parentFrame，避免内存泄漏
     if not parentFrame.clickFrame then
         local clickFrame = CreateFrame('Frame', nil, UIParent);
         clickFrame:SetScript('OnMouseDown', function(self, button)

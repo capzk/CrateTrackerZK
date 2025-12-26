@@ -44,10 +44,8 @@ function Localization:ValidateCompleteness()
             if mapID then
                 local hasTranslation = false;
                 
-                -- 检查当前语言
                 if L and L.MapNames and L.MapNames[mapID] then
                     hasTranslation = true;
-                -- 检查英文回退
                 elseif enL and enL.MapNames and enL.MapNames[mapID] then
                     hasTranslation = true;
                 end
@@ -69,10 +67,8 @@ function Localization:ValidateCompleteness()
             if crateCode then
                 local hasTranslation = false;
                 
-                -- 检查当前语言
                 if L and L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
                     hasTranslation = true;
-                -- 检查英文回退
                 elseif enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
                     hasTranslation = true;
                 end
