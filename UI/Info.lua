@@ -85,7 +85,8 @@ function Info:Initialize()
         return;
     end
     self.isInitialized = true;
-    Logger:Info("Info", "初始化", "信息模块已初始化");
+    -- 调试模式下显示初始化信息
+    Logger:DebugLimited("info:init_complete", "Info", "初始化", "信息模块已初始化");
 end
 
 function Info:ShowAnnouncement()
