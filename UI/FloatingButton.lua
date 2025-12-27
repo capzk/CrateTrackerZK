@@ -3,9 +3,7 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 
 local function DebugPrint(msg, ...)
-    if Debug and Debug:IsEnabled() then
-        Debug:Print(msg, ...);
-    end
+    Logger:Debug("FloatingButton", "调试", msg, ...);
 end
 
 function CrateTrackerZK:CreateFloatingButton()

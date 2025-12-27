@@ -19,8 +19,8 @@ function Localization:Initialize()
     self.currentLocale = GetLocale();
     self.isInitialized = true;
     
-    if Debug and Debug.IsEnabled and Debug:IsEnabled() then
-        self.missingLogEnabled = Debug:IsEnabled();
+    if Logger and Logger:IsDebugEnabled() then
+        self.missingLogEnabled = Logger:IsDebugEnabled();
     end
     
     C_Timer.After(0.1, function()
@@ -101,9 +101,12 @@ function Localization:LogMissingTranslation(key, category, critical)
         local L = GetL();
         local levelKey = critical and "LocalizationCritical" or "LocalizationWarning";
         local level = (L and L[levelKey]) or (critical and "Critical" or "Warning");
-        local prefix = "|cff00ff88[CrateTrackerZK]|r ";
         local formatStr = (L and L["LocalizationMissingTranslation"]) or "[Localization %s] Missing translation: %s.%s";
-        print(prefix .. string.format(formatStr, level, category, key));
+        if critical then
+            Logger:Error("Localization", "本地化", string.format(formatStr, level, category, key));
+        else
+            Logger:Warn("Localization", "本地化", string.format(formatStr, level, category, key));
+        end
     end
 end
 
@@ -127,13 +130,12 @@ function Localization:ReportInitializationStatus()
     
     local status = LocaleManager.GetLoadStatus();
     local L = GetL();
-    local prefix = "|cff00ff88[CrateTrackerZK]|r ";
     
     if status.activeLocale then
         if status.activeLocale == GetLocale() then
         elseif status.fallbackUsed then
             local formatStr = (L and L["LocalizationFallbackWarning"]) or "Warning: Locale file for %s not found, fallback to %s";
-            DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
+            Logger:Warn("Localization", "本地化", string.format(
                 formatStr,
                 GetLocale(),
                 status.activeLocale
@@ -141,7 +143,7 @@ function Localization:ReportInitializationStatus()
         end
     else
         local errorMsg = (L and L["LocalizationNoLocaleError"]) or "Error: No available locale file found";
-        DEFAULT_CHAT_FRAME:AddMessage(prefix .. errorMsg);
+        Logger:Error("Localization", "本地化", errorMsg);
     end
     
     local missing = self:ValidateCompleteness();
@@ -159,20 +161,20 @@ function Localization:ReportInitializationStatus()
         end
         
         local warningFormat = (L and L["LocalizationMissingTranslationsWarning"]) or "Warning: Found %d missing critical translations (%s)";
-        DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
+        Logger:Warn("Localization", "本地化", string.format(
             warningFormat,
             missingCount,
             table.concat(missingList, ", ")
         ));
         
-        if Debug and Debug:IsEnabled() then
+        if Logger and Logger:IsDebugEnabled() then
             local mapNamesMsg = (L and L["LocalizationMissingMapNames"]) or "Missing map names: %s";
             local crateNamesMsg = (L and L["LocalizationMissingCrateNames"]) or "Missing airdrop crate names: %s";
             if #missing.mapNames > 0 then
-                DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(mapNamesMsg, table.concat(missing.mapNames, ", ")));
+                Logger:Debug("Localization", "本地化", string.format(mapNamesMsg, table.concat(missing.mapNames, ", ")));
             end
             if #missing.airdropCrateNames > 0 then
-                DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(crateNamesMsg, table.concat(missing.airdropCrateNames, ", ")));
+                Logger:Debug("Localization", "本地化", string.format(crateNamesMsg, table.concat(missing.airdropCrateNames, ", ")));
             end
         end
     end

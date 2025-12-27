@@ -115,16 +115,15 @@ C_Timer.After(0.2, function()
         end
     end
     
-    if #LocaleLoadStatus.failedLocales > 0 and Debug and Debug.IsEnabled and Debug:IsEnabled() then
-        local prefix = "|cff00ff88[CrateTrackerZK]|r ";
+    if #LocaleLoadStatus.failedLocales > 0 and Logger and Logger:IsDebugEnabled() then
         local L = LocaleManager.GetL and LocaleManager.GetL() or L;
         local warningFormat = (L and L["LocalizationFailedLocalesWarning"]) or "Warning: %d locale files failed to load";
-        DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
+        Logger:Warn("Localization", "本地化", string.format(
             warningFormat,
             #LocaleLoadStatus.failedLocales
         ));
         for _, failed in ipairs(LocaleLoadStatus.failedLocales) do
-            DEFAULT_CHAT_FRAME:AddMessage(prefix .. string.format(
+            Logger:Debug("Localization", "本地化", string.format(
                 "  - %s: %s",
                 failed.locale or "unknown",
                 failed.reason or "unknown reason"

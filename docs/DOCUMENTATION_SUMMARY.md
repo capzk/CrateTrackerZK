@@ -44,6 +44,10 @@ API 参考
 - [x] 用户命令说明
 - [x] 错误处理机制
 - [x] 扩展性设计
+- [x] 重复检测修复机制
+- [x] 通知冷却期机制
+- [x] 消失确认期机制
+- [x] 离开地图状态管理
 
 ### 📝 文档特点
 
@@ -73,7 +77,53 @@ API 参考
 - 文档定位已明确，避免重复
 - 索引文档已更新
 
+## 最新更新（2024年）
+
+### 模块重构与文档更新
+
+#### 架构重构
+- **模块化重构**: 将检测逻辑拆分为独立模块
+  - `IconDetector.lua`: 图标检测（仅负责检测逻辑）
+  - `MapTracker.lua`: 地图匹配和变化处理
+  - `DetectionState.lua`: 状态机管理（IDLE -> DETECTING -> CONFIRMED -> ACTIVE -> DISAPPEARING）
+  - `DetectionDecision.lua`: 通知和时间更新决策
+  - `NotificationCooldown.lua`: 通知冷却期管理
+- **日志系统统一**: `Debug.lua` 重构为 `Logger.lua`
+  - 统一日志输出系统
+  - 支持多级别日志（ERROR, WARN, INFO, DEBUG, SUCCESS）
+  - 灵活的限流机制（不同类型消息不同限流间隔）
+  - 限流消息统计
+
+#### 文档更新
+- **MODULE_ARCHITECTURE.md**: 
+  - 添加新模块说明（IconDetector, MapTracker, DetectionState等）
+  - 更新模块依赖关系
+  - 删除Debug.lua引用，更新为Logger.lua
+  - 更新限流策略说明
+- **RUNTIME_LOGIC.md**: 
+  - 更新文件加载顺序（反映新的模块结构）
+  - 更新检测流程（反映新的模块架构）
+  - 删除Debug模块引用
+- **DATA_FLOW.md**: 
+  - 更新空投检测数据流（反映新的模块架构）
+  - 更新模块调用关系
+- **FUNCTIONALITY_AND_LOGIC.md**: 
+  - 更新文件加载顺序
+  - 更新初始化步骤
+  - 更新检测循环说明
+- **API_REFERENCE.md**: 
+  - 更新API使用位置（图标检测API现在在IconDetector模块）
+  - 更新日志API使用位置（现在统一通过Logger模块）
+
+#### 功能优化
+- **状态汇总报告**: 每5秒输出一次完整状态（当前地图、区域、位面、检测状态等）
+- **调试信息优化**: 
+  - 高频消息（检测循环）: 5秒限流
+  - 关键信息（状态变化、地图匹配）: 不限流
+  - 普通信息: 20-30秒限流
+  - UI更新: 300秒限流
+
 ---
 
-*最后更新：2024年*
+*最后更新：2024年（模块重构后）*
 

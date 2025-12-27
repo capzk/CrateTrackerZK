@@ -107,23 +107,26 @@ MAP_CONFIG = {
 
 #### Modules/Timer.lua (TimerManager)
 **职责**:
-- 地图图标检测
 - 定时器管理
+- 检测循环协调
 - 刷新时间更新触发
+- 状态汇总输出
 
-**检测流程**:
-1. 每1秒执行一次检测
+**检测流程**（重构后）:
+1. 每1秒执行一次检测循环
 2. 获取当前地图ID
-3. 匹配目标地图数据
-4. 获取所有Vignette图标
-5. 查找空投箱子图标
-6. 持续检测确认（2秒）
-7. 更新刷新时间
+3. 通过 MapTracker 匹配目标地图数据
+4. 通过 MapTracker 处理地图变化
+5. 通过 IconDetector 检测图标
+6. 通过 DetectionState 更新状态
+7. 通过 DetectionDecision 决策通知和更新
+8. 定期输出状态汇总（每5秒）
 
 **主要函数**:
 - `Initialize()`: 初始化定时器管理器
 - `StartMapIconDetection(interval)`: 启动地图图标检测
-- `DetectMapIcons()`: 执行地图图标检测
+- `DetectMapIcons()`: 执行检测循环
+- `ReportCurrentStatus()`: 输出状态汇总
 - `StartTimer(mapId, source, timestamp)`: 启动/更新计时器
 - `StartCurrentMapTimer(source)`: 启动当前地图计时器
 
@@ -132,6 +135,76 @@ MAP_CONFIG = {
 - `REFRESH_BUTTON`: 刷新按钮
 - `API_INTERFACE`: API接口
 - `MAP_ICON`: 地图图标检测
+
+**依赖模块**:
+- `MapTracker`: 地图匹配和变化处理
+- `IconDetector`: 图标检测
+- `DetectionState`: 状态机管理
+- `DetectionDecision`: 决策逻辑
+- `NotificationCooldown`: 通知冷却期管理
+
+#### Modules/IconDetector.lua
+**职责**:
+- 图标检测（仅负责检测逻辑）
+- 仅依赖名称匹配
+
+**主要函数**:
+- `DetectIcon(currentMapID)`: 检测当前地图是否有空投图标
+
+**检测方法**:
+- 使用 `C_VignetteInfo.GetVignettes()` 获取所有图标
+- 通过名称匹配查找空投箱子
+
+#### Modules/MapTracker.lua
+**职责**:
+- 地图匹配（支持父地图匹配）
+- 地图变化检测
+- 离开地图状态管理
+
+**主要函数**:
+- `GetTargetMapData(currentMapID)`: 获取匹配的地图数据
+- `OnMapChanged(currentMapID, targetMapData, currentTime)`: 处理地图变化
+- `CheckAndClearLeftMaps(currentTime)`: 清除超时的离开地图状态
+
+**状态管理**:
+- `lastDetectedMapId`: 上次检测到的配置地图ID
+- `lastDetectedGameMapID`: 上次检测到的游戏地图ID
+- `mapLeftTime[mapId]`: 离开地图时间（用于自动清除）
+
+#### Modules/DetectionState.lua
+**职责**:
+- 状态机管理（IDLE -> DETECTING -> CONFIRMED -> ACTIVE -> DISAPPEARING）
+- 检测状态跟踪
+
+**状态定义**:
+- `IDLE`: 未检测到图标
+- `DETECTING`: 首次检测到图标，等待2秒确认
+- `CONFIRMED`: 已确认（持续2秒），等待通知和更新时间
+- `ACTIVE`: 持续检测中（已更新时间）
+- `DISAPPEARING`: 图标消失，等待5秒确认
+
+**主要函数**:
+- `GetState(mapId)`: 获取当前状态
+- `UpdateState(mapId, iconDetected, currentTime)`: 更新状态
+- `ClearState(mapId, reason)`: 清除状态
+
+#### Modules/DetectionDecision.lua
+**职责**:
+- 通知决策（检查冷却期）
+- 时间更新决策（检查间隔和手动锁定）
+
+**主要函数**:
+- `ShouldNotify(mapId, state, currentTime)`: 判断是否应该通知
+- `ShouldUpdateTime(mapId, state, currentTime)`: 判断是否应该更新时间
+
+#### Modules/NotificationCooldown.lua
+**职责**:
+- 通知冷却期管理（120秒）
+- 防止重复通知
+
+**主要函数**:
+- `RecordNotification(mapId, currentTime)`: 记录通知时间
+- `IsInCooldown(mapId, currentTime)`: 检查是否在冷却期内
 
 #### Modules/Phase.lua
 **职责**:
@@ -281,27 +354,35 @@ MAP_CONFIG = {
 **主要函数**:
 - `ParseTimeInput(input)`: 解析时间输入（HH:MM:SS 或 HHMMSS）
 - `GetTimestampFromTime(hh, mm, ss)`: 将时间转换为时间戳
-- `PrintError(message)`: 输出错误消息
-- `Print(message)`: 输出普通消息
-- `Debug(...)`: 调试输出
+- `PrintError(message)`: 输出错误消息（通过Logger）
+- `Print(message)`: 输出普通消息（通过Logger）
+- `Debug(...)`: 调试输出（通过Logger）
+- `SetDebugEnabled(enabled)`: 设置调试模式（通过Logger）
 
-#### Utils/Debug.lua
+#### Utils/Logger.lua
 **职责**:
-- 调试模式管理
-- 调试消息输出
-- 消息限流
+- 统一日志输出系统
+- 日志级别管理（ERROR, WARN, INFO, DEBUG, SUCCESS）
+- 消息限流（支持不同类型消息的限流间隔）
+- 模块/功能前缀显示
 
 **特性**:
 - 调试开关持久化
-- 消息限流（30秒间隔）
-- 本地化调试文本
+- 灵活的限流机制（不同类型消息不同限流间隔）
+- 限流消息统计（显示被限流的消息数量）
+- 本地化调试文本支持
 
 **主要函数**:
-- `Initialize()`: 初始化调试模块
-- `IsEnabled()`: 检查是否启用
-- `SetEnabled(enabled)`: 设置启用状态
-- `Print(msg, ...)`: 输出调试消息
-- `PrintLimited(key, msg, ...)`: 限流输出
+- `Initialize()`: 初始化日志模块
+- `SetDebugEnabled(enabled)`: 设置调试模式
+- `IsDebugEnabled()`: 检查是否启用调试模式
+- `Error(module, func, ...)`: 输出错误信息
+- `Warn(module, func, ...)`: 输出警告信息
+- `Info(module, func, ...)`: 输出常规信息
+- `Debug(module, func, ...)`: 输出调试信息（不限流）
+- `DebugLimited(messageKey, module, func, ...)`: 输出限流调试信息
+- `Success(module, func, ...)`: 输出成功信息
+- `InfoLimited(messageKey, module, func, ...)`: 输出限流常规信息
 
 #### Utils/Localization.lua
 **职责**:
@@ -358,7 +439,15 @@ Core
  ├─ Data
  │   └─ MapConfig
  ├─ TimerManager
- │   └─ Data
+ │   ├─ MapTracker
+ │   │   └─ Data
+ │   ├─ IconDetector
+ │   ├─ DetectionState
+ │   │   └─ Data
+ │   ├─ DetectionDecision
+ │   │   ├─ DetectionState
+ │   │   └─ NotificationCooldown
+ │   └─ NotificationCooldown
  ├─ Phase
  │   └─ Data
  ├─ Area
@@ -366,7 +455,7 @@ Core
  ├─ Notification
  │   └─ Data
  ├─ Commands
- │   ├─ Debug
+ │   ├─ Logger
  │   └─ Notification
  ├─ MainPanel
  │   ├─ Data
@@ -375,7 +464,7 @@ Core
  ├─ FloatingButton
  │   └─ MainPanel
  └─ Utils
-     ├─ Debug
+     ├─ Logger
      └─ Localization
 ```
 
@@ -406,7 +495,12 @@ Core
 - 地图图标检测: 每1秒一次
 - 位面检测: 事件触发 + 10秒定时器
 - UI更新: 每1秒一次
-- 调试消息: 30秒限流
+- 状态汇总报告: 每5秒一次
+- 调试消息限流:
+  - 高频消息（检测循环）: 5秒限流
+  - 关键信息（状态变化、地图匹配）: 不限流
+  - 普通信息: 20-30秒限流
+  - UI更新: 300秒限流
 
 ### 5.2 区域检测优化
 

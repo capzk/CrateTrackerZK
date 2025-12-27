@@ -16,11 +16,11 @@
 
 ### C_VignetteInfo.GetVignettes()
 - **用途**: 获取当前地图上所有小地图图标的GUID列表
-- **使用位置**: `Modules/Timer.lua`
+- **使用位置**: `Modules/IconDetector.lua`
 
 ### C_VignetteInfo.GetVignetteInfo(vignetteGUID)
 - **用途**: 获取指定vignette的详细信息（名称等）
-- **使用位置**: `Modules/Timer.lua`
+- **使用位置**: `Modules/IconDetector.lua`
 
 ## 三、定时器系统 API (C_Timer)
 
@@ -56,7 +56,7 @@
 
 ### DEFAULT_CHAT_FRAME:AddMessage(message)
 - **用途**: 向默认聊天框添加消息
-- **使用位置**: `Core/Core.lua`, `Modules/Commands.lua`, `Modules/Notification.lua`
+- **使用位置**: `Utils/Logger.lua` (统一日志输出), `Modules/Notification.lua`
 
 ## 七、UI框架 API
 

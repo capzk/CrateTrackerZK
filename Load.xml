@@ -1,7 +1,7 @@
 <Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
     <!-- 基础工具（优先加载） -->
     <Script file="Utils/Utils.lua"/>
-    <Script file="Utils/Debug.lua"/>
+    <Script file="Utils/Logger.lua"/>
     <!-- 本地化管理模块（在本地化文件之前加载） -->
     <Script file="Utils/Localization.lua"/>
     
@@ -20,6 +20,12 @@
     <!-- 功能模块 -->
     <Script file="Modules/Notification.lua"/>
     <Script file="Modules/Commands.lua"/>
+    <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
+    <Script file="Modules/IconDetector.lua"/>
+    <Script file="Modules/MapTracker.lua"/>
+    <Script file="Modules/NotificationCooldown.lua"/>
+    <Script file="Modules/DetectionState.lua"/>
+    <Script file="Modules/DetectionDecision.lua"/>
     <Script file="Modules/Timer.lua"/>
     <Script file="Modules/Area.lua"/>
     <Script file="Modules/Phase.lua"/>

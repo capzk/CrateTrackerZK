@@ -7,22 +7,15 @@ Phase.anyInstanceIDAcquired = false;
 Phase.lastReportedInstanceID = nil;
 
 local function DebugPrint(msg, ...)
-    if Debug and Debug:IsEnabled() then
-        Debug:Print(msg, ...);
-    end
+    Logger:Debug("Phase", "调试", msg, ...);
 end
 
 local function DT(key)
-    if Debug and Debug.GetText then
-        return Debug:GetText(key);
-    end
-    return key;
+    return Logger:GetDebugText(key);
 end
 
 local function DebugPrintLimited(key, msg, ...)
-    if Debug and Debug:IsEnabled() then
-        Debug:PrintLimited(key, msg, ...);
-    end
+    Logger:DebugLimited(key, "Phase", "调试", msg, ...);
 end
 
 function Phase:GetLayerFromNPC()
@@ -73,17 +66,28 @@ function Phase:UpdatePhaseInfo()
     if targetMapData then
         local instanceID = self:GetLayerFromNPC();
         
+        -- 输出位面检测状态（位面检测本身10秒一次，不需要限流）
+        if Logger and Logger.debugEnabled then
+            Logger:Debug("Phase", "状态", string.format("【位面检测】地图=%s，当前位面=%s，尝试获取位面=%s", 
+                Data:GetMapDisplayName(targetMapData),
+                targetMapData.instance or "未获取",
+                instanceID and instanceID or "未获取（需要鼠标悬停NPC或选择目标）"));
+        end
+        
         if instanceID ~= targetMapData.instance then
             if instanceID then
                 local oldInstance = targetMapData.instance;
                 Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
                 
                 if oldInstance then
-                    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
-                    DebugPrintLimited("phase_changed_" .. targetMapData.id, L["Prefix"] .. string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
+                    Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
+                    Logger:Debug("Phase", "位面", string.format("位面变化：%s -> %s，地图=%s", 
+                        oldInstance, instanceID, Data:GetMapDisplayName(targetMapData)));
                 else
                     if not self.lastReportedInstanceID or self.lastReportedInstanceID ~= instanceID then
-                        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. string.format(L["CurrentInstanceID"], instanceID));
+                        Logger:Info("Phase", "位面", string.format(L["CurrentInstanceID"], instanceID));
+                        Logger:Debug("Phase", "位面", string.format("获取到位面ID：%s，地图=%s", 
+                            instanceID, Data:GetMapDisplayName(targetMapData)));
                         self.lastReportedInstanceID = instanceID;
                     end
                 end
@@ -102,7 +106,7 @@ function Phase:UpdatePhaseInfo()
                 if m.instance then hasAny = true; break end
             end
             if not hasAny then
-                DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["NoInstanceAcquiredHint"]);
+                Logger:Info("Phase", "位面", L["NoInstanceAcquiredHint"]);
                 self.anyInstanceIDAcquired = true;
             end
         end

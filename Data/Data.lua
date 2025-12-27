@@ -24,17 +24,20 @@ local function sanitizeTimestamp(ts)
 end
 
 function Data:Initialize()
+    Logger:Debug("Data", "初始化", "开始初始化数据模块");
     ensureDB();
     self.maps = {};
 
     local mapConfig = self.MAP_CONFIG and self.MAP_CONFIG.current_maps or {};
     if not mapConfig or #mapConfig == 0 then
-        if Utils then Utils.PrintError("Data:Initialize() - MAP_CONFIG.current_maps is empty or nil"); end
+        Logger:Error("Data", "错误", "MAP_CONFIG.current_maps 为空或 nil");
         return;
     end
 
     local defaults = (self.MAP_CONFIG and self.MAP_CONFIG.defaults) or {};
     local nextId = 1;
+    local loadedCount = 0;
+    local skippedCount = 0;
 
     for _, cfg in ipairs(mapConfig) do
         if cfg and cfg.mapID and (cfg.enabled ~= false) then
@@ -60,23 +63,38 @@ function Data:Initialize()
 
             if mapData.lastRefresh then
                 self:UpdateNextRefresh(nextId, mapData);
+                Logger:Debug("Data", "加载", string.format("地图 ID=%d，已加载时间记录：%s，下次刷新：%s", 
+                    mapID, 
+                    self:FormatDateTime(mapData.lastRefresh),
+                    mapData.nextRefresh and self:FormatDateTime(mapData.nextRefresh) or "无"));
+            else
+                Logger:Debug("Data", "加载", string.format("地图 ID=%d，无时间记录", mapID));
             end
 
             if mapData.instance and not mapData.lastInstance then
                 mapData.lastInstance = mapData.instance;
                 CRATETRACKERZK_DB.mapData[mapID] = CRATETRACKERZK_DB.mapData[mapID] or {};
                 CRATETRACKERZK_DB.mapData[mapID].lastInstance = mapData.lastInstance;
+                Logger:Debug("Data", "加载", string.format("地图 ID=%d，位面=%s", mapID, mapData.instance));
             end
 
             table.insert(self.maps, mapData);
             nextId = nextId + 1;
+            loadedCount = loadedCount + 1;
+        else
+            skippedCount = skippedCount + 1;
         end
     end
+    
+    Logger:InfoLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
 end
 
 function Data:SaveMapData(mapId)
     local mapData = self.maps[mapId];
-    if not mapData or not mapData.mapID then return end
+    if not mapData or not mapData.mapID then 
+        Logger:DebugLimited("data_save:invalid", "Data", "保存", "保存失败：无效的地图ID " .. tostring(mapId));
+        return 
+    end
 
     ensureDB();
 
@@ -87,6 +105,11 @@ function Data:SaveMapData(mapId)
         lastRefresh = mapData.lastRefresh,
         createTime = mapData.createTime or time(),
     };
+    
+    Logger:DebugLimited("data_save:map_" .. mapData.mapID, "Data", "保存", 
+        string.format("已保存地图数据：地图ID=%d，上次刷新=%s", 
+            mapData.mapID,
+            mapData.lastRefresh and self:FormatDateTime(mapData.lastRefresh) or "无"));
 end
 
 function Data:UpdateMap(mapId, mapData)
@@ -153,26 +176,47 @@ function Data:UpdateNextRefresh(mapId, mapData)
     
     if not mapData.lastRefresh then
         mapData.nextRefresh = nil;
+        Logger:DebugLimited("data_update:no_refresh", "Data", "更新", 
+            string.format("地图 ID=%d 无刷新时间，跳过计算下次刷新", mapId));
         return;
     end
     
     local interval = mapData.interval or 1100;
     local currentTime = time();
     local lastRefresh = mapData.lastRefresh;
+    local oldNextRefresh = mapData.nextRefresh;
     
     mapData.nextRefresh = CalculateNextRefreshTime(lastRefresh, interval, currentTime);
+    
+    if oldNextRefresh ~= mapData.nextRefresh then
+        Logger:DebugLimited("data_update:map_" .. mapId, "Data", "更新",
+            string.format("已更新下次刷新时间：地图=%s，间隔=%d秒，下次=%s",
+                self:GetMapDisplayName(mapData),
+                interval,
+                mapData.nextRefresh and self:FormatDateTime(mapData.nextRefresh) or "无"));
+    end
 end
 
 function Data:SetLastRefresh(mapId, timestamp)
     local mapData = self.maps[mapId];
-    if not mapData then return false end
+    if not mapData then 
+        Logger:Debug("Data", "更新", "设置刷新时间失败：无效的地图ID " .. tostring(mapId));
+        return false 
+    end
     
     timestamp = timestamp or time();
+    local oldLastRefresh = mapData.lastRefresh;
     mapData.lastRefresh = timestamp;
     mapData.lastRefreshInstance = mapData.instance;
     
     self:UpdateNextRefresh(mapId);
     self:SaveMapData(mapId);
+    
+    Logger:Debug("Data", "更新", string.format("已更新刷新时间：地图=%s，旧时间=%s，新时间=%s，下次刷新=%s",
+        self:GetMapDisplayName(mapData),
+        oldLastRefresh and self:FormatDateTime(oldLastRefresh) or "无",
+        self:FormatDateTime(timestamp),
+        mapData.nextRefresh and self:FormatDateTime(mapData.nextRefresh) or "无"));
     
     return true;
 end
@@ -188,7 +232,8 @@ end
 function Data:CalculateRemainingTime(nextRefresh)
     if not nextRefresh then return nil end;
     local remaining = nextRefresh - time();
-    return remaining > 0 and remaining or 0;
+    -- 当倒计时结束后，返回 nil 而不是 0，这样 UI 会显示 "--:--"
+    return remaining > 0 and remaining or nil;
 end
 
 function Data:CheckAndUpdateRefreshTimes()
@@ -240,10 +285,18 @@ function Data:ClearAllData()
         end
     end
     
-    if TimerManager then
-        TimerManager.mapIconDetected = {};
-        TimerManager.mapIconFirstDetectedTime = {};
-        TimerManager.lastUpdateTime = {};
+    -- 清除检测状态（使用新模块）
+    if DetectionState then
+        -- DetectionState 模块管理自己的状态，这里不需要手动清除
+        -- 如果需要清除，可以通过 DetectionState:ClearState() 方法
+    end
+    if MapTracker then
+        MapTracker.mapLeftTime = {};
+        MapTracker.lastDetectedMapId = nil;
+        MapTracker.lastDetectedGameMapID = nil;
+    end
+    if NotificationCooldown then
+        NotificationCooldown.lastNotificationTime = {};
     end
     
     if MainPanel and MainPanel.UpdateTable then

@@ -147,7 +147,7 @@ GUID格式: "Creature-服务器ID-实例ID-其他信息"
 ```
 1. 基础工具
    ├─ Utils/Utils.lua
-   └─ Utils/Debug.lua
+   └─ Utils/Logger.lua
 
 2. 本地化系统
    ├─ Utils/Localization.lua
@@ -158,9 +158,14 @@ GUID格式: "Creature-服务器ID-实例ID-其他信息"
    ├─ Data/MapConfig.lua
    └─ Data/Data.lua
 
-4. 功能模块
+4. 功能模块（按依赖顺序）
    ├─ Modules/Notification.lua
    ├─ Modules/Commands.lua
+   ├─ Modules/IconDetector.lua
+   ├─ Modules/MapTracker.lua
+   ├─ Modules/NotificationCooldown.lua
+   ├─ Modules/DetectionState.lua
+   ├─ Modules/DetectionDecision.lua
    ├─ Modules/Timer.lua
    ├─ Modules/Area.lua
    └─ Modules/Phase.lua
@@ -184,9 +189,9 @@ GUID格式: "Creature-服务器ID-实例ID-其他信息"
 2. 初始化各模块
    ├─ Localization:Initialize()
    ├─ Data:Initialize()
-   ├─ Debug:Initialize()
    ├─ Notification:Initialize()
    └─ Commands:Initialize()
+   (注意：Logger 已在 Load.xml 中自动初始化)
 
 3. 启动检测系统
    ├─ TimerManager:Initialize()
@@ -208,11 +213,13 @@ GUID格式: "Creature-服务器ID-实例ID-其他信息"
 每1秒执行：
 ├─ TimerManager:DetectMapIcons()
 │  ├─ 获取当前地图ID
-│  ├─ 匹配目标地图数据
-│  ├─ 获取所有Vignette图标
-│  ├─ 查找空投箱子图标
-│  ├─ 持续检测确认（2秒）
-│  └─ 更新刷新时间
+│  ├─ MapTracker:GetTargetMapData() - 匹配目标地图数据
+│  ├─ MapTracker:OnMapChanged() - 处理地图变化
+│  ├─ IconDetector:DetectIcon() - 检测图标
+│  ├─ DetectionState:UpdateState() - 更新状态（状态机）
+│  ├─ DetectionDecision:ShouldNotify() - 决策通知
+│  ├─ DetectionDecision:ShouldUpdateTime() - 决策更新
+│  └─ 定期状态汇总（每5秒）
 │
 └─ 条件检查：
    ├─ 区域必须有效
@@ -286,7 +293,7 @@ Area.lastAreaValidState:
    └─ 停止位面检测定时器
 ```
 
-### 持续检测确认机制
+### 持续检测确认机制（优化后）
 
 #### 工作原理
 
@@ -295,26 +302,80 @@ Area.lastAreaValidState:
 ├─ 记录首次检测时间
 │  └─ mapIconFirstDetectedTime[mapId] = currentTime
 │
-├─ 等待持续检测
+├─ 立即发送通知（检查冷却期）
+│  ├─ 检查通知冷却期：距离上次通知 >= 120秒？
+│  ├─ 如果不在冷却期：
+│  │  ├─ 发送通知到聊天框和团队
+│  │  └─ 记录通知时间：lastNotificationTime[mapId] = currentTime
+│  └─ 如果不在冷却期：跳过通知
+│
+├─ 等待持续检测（不立即更新时间）
 │  └─ 每1秒检查一次
 │
 └─ 持续2秒后：
    ├─ 确认空投出现
    ├─ 使用首次检测时间作为刷新时间
    ├─ 更新 mapIconDetected[mapId] = true
-   └─ 发送通知
+   └─ 不再次发送通知（首次检测时已发送）
 ```
 
-#### 中断处理
+#### 中断处理（优化后）
 
 ```
 如果检测中断（图标消失）：
+
+情况1：还在2秒确认期内
 ├─ 清除首次检测时间
 │  └─ mapIconFirstDetectedTime[mapId] = nil
 │
-└─ 如果之前已确认：
-   └─ 清除检测状态
-      └─ mapIconDetected[mapId] = nil
+└─ 不发送通知（未确认）
+
+情况2：已确认检测到
+├─ 记录消失时间
+│  └─ mapIconDisappearedTime[mapId] = currentTime
+│
+├─ 消失确认期（5秒）
+│  ├─ 如果图标在5秒内重新出现：保持状态
+│  └─ 如果持续消失超过5秒：
+│     └─ 清除所有检测状态
+│        ├─ mapIconDetected[mapId] = nil
+│        ├─ mapIconFirstDetectedTime[mapId] = nil
+│        └─ mapIconDisappearedTime[mapId] = nil
+```
+
+#### 通知冷却期机制
+
+```
+通知冷却期：120秒（2分钟）
+
+首次检测时：
+├─ 检查 lastNotificationTime[mapId]
+├─ 如果存在且距离当前时间 < 120秒：
+│  └─ 跳过通知（在冷却期内）
+└─ 如果不存在或距离当前时间 >= 120秒：
+   └─ 发送通知并记录时间
+```
+
+#### 离开地图状态管理（新增）
+
+```
+地图切换时：
+├─ 记录离开旧地图的时间
+│  └─ mapLeftTime[oldMapId] = currentTime
+│
+├─ 清除当前地图的离开时间（玩家已回到该地图）
+│  └─ mapLeftTime[currentMapId] = nil
+│
+└─ 检查并清除超时的地图状态
+   ├─ 遍历所有已离开的地图
+   ├─ 如果离开时间 >= 300秒（5分钟）：
+   │  └─ 清除该地图的所有状态
+   │     ├─ mapIconDetected[mapId] = nil
+   │     ├─ mapIconFirstDetectedTime[mapId] = nil
+   │     ├─ mapIconDisappearedTime[mapId] = nil
+   │     ├─ lastNotificationTime[mapId] = nil
+   │     └─ mapLeftTime[mapId] = nil
+   └─ 如果离开时间 < 300秒：保持状态
 ```
 
 ### 时间输入处理

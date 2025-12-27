@@ -3,9 +3,7 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 
 local function DebugPrint(msg, ...)
-    if Debug and Debug:IsEnabled() then
-        Debug:Print(msg, ...);
-    end
+    Logger:Debug("Core", "调试", msg, ...);
 end
 
 local function OnLogin()
@@ -18,15 +16,15 @@ local function OnLogin()
         CRATETRACKERZK_UI_DB = {};
     end
     
-    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["AddonLoaded"]);
-    DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["HelpCommandHint"]);
+    Logger:InfoLimited("core:addon_loaded", "Core", "启动", L["AddonLoaded"]);
+    Logger:InfoLimited("core:help_hint", "Core", "启动", L["HelpCommandHint"]);
 
     if Localization and not Localization.isInitialized then
         Localization:Initialize();
     end
     
     if Data then Data:Initialize() end
-    if Debug then Debug:Initialize() end
+    -- Logger 已在 Load.xml 中自动初始化
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
     
@@ -114,7 +112,7 @@ local function HandleSlashCommand(msg)
     if Commands then
         Commands:HandleCommand(msg);
     else
-        DEFAULT_CHAT_FRAME:AddMessage(L["Prefix"] .. L["CommandModuleNotLoaded"]);
+        Logger:Error("Core", "错误", L["CommandModuleNotLoaded"]);
     end
 end
 

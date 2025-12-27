@@ -23,52 +23,93 @@
 
 ## 二、核心数据流
 
-### 2.1 空投检测数据流
+### 2.1 空投检测数据流（重构后）
 
 ```
 1. 定时器触发 (每1秒)
    TimerManager.mapIconDetectionTimer
    │
    ▼
-2. 执行检测
+2. 执行检测循环
    TimerManager:DetectMapIcons()
    │
    ├─▶ 获取当前地图ID
    │   C_Map.GetBestMapForUnit("player")
    │
-   ├─▶ 匹配地图数据
-   │   Data:GetMapByMapID(mapID)
+   ├─▶ 匹配地图数据（MapTracker模块）
+   │   MapTracker:GetTargetMapData(currentMapID)
+   │   │
+   │   └─▶ 支持父地图匹配
    │
-   ├─▶ 获取Vignette图标
-   │   C_VignetteInfo.GetVignettes()
+   ├─▶ 处理地图变化（MapTracker模块）
+   │   MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
+   │   │
+   │   ├─▶ 检测游戏地图变化
+   │   ├─▶ 检测配置地图变化
+   │   ├─▶ 记录离开地图时间
+   │   └─▶ 清除回到地图的离开时间
    │
-   └─▶ 查找空投图标
-       C_VignetteInfo.GetVignetteInfo()
+   ├─▶ 检测图标（IconDetector模块）
+   │   IconDetector:DetectIcon(currentMapID)
+   │   │
+   │   ├─▶ 获取Vignette图标
+   │   │   C_VignetteInfo.GetVignettes()
+   │   │
+   │   └─▶ 查找空投图标（名称匹配）
+   │       C_VignetteInfo.GetVignetteInfo()
+   │
+   ├─▶ 更新状态（DetectionState模块 - 状态机）
+   │   DetectionState:UpdateState(mapId, iconDetected, currentTime)
+   │   │
+   │   ├─▶ IDLE -> DETECTING: 首次检测到图标
+   │   │   mapIconFirstDetectedTime[mapId] = currentTime
+   │   │
+   │   ├─▶ DETECTING -> CONFIRMED: 持续检测2秒
+   │   │   timeSinceFirstDetection >= 2
+   │   │
+   │   ├─▶ CONFIRMED -> ACTIVE: 已更新时间
+   │   │
+   │   ├─▶ ACTIVE -> DISAPPEARING: 图标消失
+   │   │   mapIconDisappearedTime[mapId] = currentTime
+   │   │
+   │   └─▶ DISAPPEARING -> IDLE: 持续消失5秒
+   │       timeSinceDisappeared >= 5
+   │
+   ├─▶ 决策通知和更新（DetectionDecision模块）
+   │   │
+   │   ├─▶ 检查通知冷却期（NotificationCooldown模块）
+   │   │   DetectionDecision:ShouldNotify()
+   │   │   │
+   │   │   └─▶ 如果不在冷却期（>= 120秒）：
+   │   │       └─▶ Notification:NotifyAirdropDetected()
+   │   │           └─▶ NotificationCooldown:RecordNotification()
+   │   │
+   │   └─▶ 检查时间更新条件
+   │       DetectionDecision:ShouldUpdateTime()
+   │       │
+   │       └─▶ 如果应该更新：
+   │           └─▶ Data:SetLastRefresh(mapId, firstDetectedTime)
+   │               │
+   │               ├─▶ 计算下次刷新时间
+   │               │   Data:UpdateNextRefresh(mapId)
+   │               │
+   │               └─▶ 保存数据
+   │                   Data:SaveMapData(mapId)
+   │
+   └─▶ 定期状态汇总（每5秒）
+       TimerManager:ReportCurrentStatus()
        │
-       ▼
-3. 持续检测确认 (2秒)
-   TimerManager.mapIconFirstDetectedTime[mapId]
-   │
-   ▼
-4. 确认空投出现
-   TimerManager.mapIconDetected[mapId] = true
-   │
-   ▼
-5. 更新刷新时间
-   Data:SetLastRefresh(mapId, timestamp)
-   │
-   ├─▶ 计算下次刷新时间
-   │   Data:UpdateNextRefresh(mapId)
-   │
-   └─▶ 保存数据
-       Data:SaveMapData(mapId)
-       │
-       ▼
-6. 更新UI
+       └─▶ 输出当前地图、区域、位面、检测状态等信息
+
+8. 更新UI
    MainPanel:UpdateTable()
+
+9. 地图切换处理（MapTracker模块）
+   MapTracker:CheckAndClearLeftMaps(currentTime)
    │
-   └─▶ 通知系统
-       Notification:NotifyAirdropDetected()
+   └─▶ 如果离开时间 >= 300秒：
+       └─▶ DetectionState:ClearState(mapId, "left_map_timeout")
+           └─▶ 清除所有相关状态（但保留通知冷却期）
 ```
 
 ### 2.2 位面检测数据流
@@ -88,7 +129,7 @@
    │   Area:GetCurrentMapId()
    │
    ├─▶ 匹配地图数据
-   │   Data:GetMapByMapID(mapID)
+   │   Data:GetAllMaps() 然后遍历匹配
    │
    └─▶ 获取位面ID
        Phase:GetLayerFromNPC()

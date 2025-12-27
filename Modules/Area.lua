@@ -6,16 +6,11 @@ Area.lastAreaValidState = nil;
 Area.detectionPaused = false;
 
 local function DebugPrint(msg, ...)
-    if Debug and Debug:IsEnabled() then
-        Debug:Print(msg, ...);
-    end
+    Logger:Debug("Area", "调试", msg, ...);
 end
 
 local function DT(key)
-    if Debug and Debug.GetText then
-        return Debug:GetText(key);
-    end
-    return key;
+    return Logger:GetDebugText(key);
 end
 
 function Area:GetCurrentMapId()
@@ -47,10 +42,21 @@ function Area:CheckAndUpdateAreaValid()
     local instanceType = select(4, GetInstanceInfo());
     local isInstance = (instanceType == "party" or instanceType == "raid" or instanceType == "pvp" or instanceType == "arena" or instanceType == "scenario");
     
+    -- 输出区域检查状态（只在区域变化时输出，不需要限流）
+    if Logger and Logger.debugEnabled then
+        local currentMapID = self:GetCurrentMapId();
+        local mapName = currentMapID and (Localization and Localization:GetMapName(currentMapID) or tostring(currentMapID)) or "未知";
+        Logger:Debug("Area", "状态", string.format("【区域检查】地图=%s，室内=%s，副本类型=%s，区域有效=%s", 
+            mapName,
+            isIndoors and "是" or "否",
+            instanceType or "无",
+            (not isIndoors and not isInstance) and "是" or "否"));
+    end
+    
     if isIndoors or isInstance then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            DebugPrint(DT("DebugAreaInvalidInstance"));
+            Logger:Debug("Area", "区域", DT("DebugAreaInvalidInstance"));
             self:PauseAllDetections();
         end
         return false;
@@ -60,7 +66,7 @@ function Area:CheckAndUpdateAreaValid()
     if not currentMapID then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
-            DebugPrint(DT("DebugAreaCannotGetMapID"));
+            Logger:Debug("Area", "区域", DT("DebugAreaCannotGetMapID"));
             self:PauseAllDetections();
         end
         return false;
@@ -99,14 +105,16 @@ function Area:CheckAndUpdateAreaValid()
         if isValid then
             if self.lastAreaValidState ~= true then
                 self.lastAreaValidState = true;
-                DebugPrint(string.format(DT("DebugAreaValid"), matchedMapName or (mapInfo.name or tostring(currentMapID))));
+                Logger:Debug("Area", "区域", string.format("区域变化：无效 -> 有效，地图=%s", 
+                    matchedMapName or (mapInfo.name or tostring(currentMapID))));
                 self:ResumeAllDetections();
             end
             return true;
         else
             if self.lastAreaValidState ~= false then
                 self.lastAreaValidState = false;
-                DebugPrint(string.format(DT("DebugAreaInvalidNotInList"), mapInfo.name or tostring(currentMapID)));
+                Logger:Debug("Area", "区域", string.format("区域变化：有效 -> 无效，地图=%s（不在列表中）", 
+                    mapInfo.name or tostring(currentMapID)));
                 self:PauseAllDetections();
             end
             return false;

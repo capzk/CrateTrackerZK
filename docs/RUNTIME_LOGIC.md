@@ -9,7 +9,7 @@
 ```
 1. 基础工具模块
    - Utils/Utils.lua (工具函数)
-   - Utils/Debug.lua (调试模块)
+   - Utils/Logger.lua (统一日志系统)
 
 2. 本地化系统
    - Utils/Localization.lua (本地化管理)
@@ -20,10 +20,15 @@
    - Data/MapConfig.lua (地图配置)
    - Data/Data.lua (数据管理)
 
-4. 功能模块
+4. 功能模块（按依赖顺序）
    - Modules/Notification.lua (通知系统)
    - Modules/Commands.lua (命令处理)
-   - Modules/Timer.lua (定时器和检测)
+   - Modules/IconDetector.lua (图标检测)
+   - Modules/MapTracker.lua (地图匹配和变化)
+   - Modules/NotificationCooldown.lua (通知冷却期)
+   - Modules/DetectionState.lua (状态机)
+   - Modules/DetectionDecision.lua (决策逻辑)
+   - Modules/Timer.lua (定时器和检测协调)
    - Modules/Area.lua (区域检测)
    - Modules/Phase.lua (位面检测)
 
@@ -41,11 +46,10 @@
 ```lua
 OnLogin() {
   1. 初始化 SavedVariables (CRATETRACKERZK_UI_DB)
-  2. 显示加载消息
+  2. 显示加载消息（通过Logger）
   3. 初始化各模块：
      - Localization:Initialize()
      - Data:Initialize()
-     - Debug:Initialize()
      - Notification:Initialize()
      - Commands:Initialize()
   4. 启动地图图标检测
@@ -65,43 +69,60 @@ OnLogin() {
 
 **检测频率**: 每1秒执行一次
 
-**检测流程**:
+**检测流程**（重构后）:
 
 ```
 1. 获取当前地图ID
    currentMapID = C_Map.GetBestMapForUnit("player")
+   (TimerManager:DetectMapIcons())
 
-2. 匹配目标地图数据
+2. 匹配目标地图数据（MapTracker模块）
+   - MapTracker:GetTargetMapData(currentMapID)
    - 首先匹配当前地图ID
    - 如果未匹配，尝试匹配父地图ID
 
-3. 获取地图上的所有Vignette图标
-   vignettes = C_VignetteInfo.GetVignettes()
+3. 处理地图变化（MapTracker模块）
+   - MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
+   - 检测游戏地图变化和配置地图变化
+   - 记录离开地图时间
+   - 清除回到地图的离开时间
 
-4. 遍历所有图标，查找空投箱子
-   for each vignette in vignettes:
-     - 获取图标信息（GetVignetteInfo）
-     - 提取图标名称
-     - 与配置的空投名称比较（"战争物资箱" / "War Supply Crate"）
-     - 如果匹配，标记为找到
+4. 检测图标（IconDetector模块）
+   - IconDetector:DetectIcon(currentMapID)
+   - 获取所有Vignette图标：C_VignetteInfo.GetVignettes()
+   - 遍历查找空投箱子（仅依赖名称匹配）
    
    **注意**：检测仅依赖名称匹配，不检查位置信息。原因：
    - GetVignettes() 已返回当前地图上的所有Vignette
    - 区域有效性检测已确保在正确的追踪区域
    - 支持子地图场景（子地图上的Vignette可能无法用子地图ID获取位置）
 
-5. 持续检测确认机制
-   - 首次检测到图标：记录首次检测时间
-   - 持续检测2秒后：确认空投出现
-   - 更新刷新时间：使用首次检测时间作为刷新时间
-   - 发送通知：通知玩家和团队
+5. 更新状态（DetectionState模块 - 状态机）
+   - DetectionState:UpdateState(mapId, iconDetected, currentTime)
+   - 状态转换：
+     * IDLE -> DETECTING: 首次检测到图标
+     * DETECTING -> CONFIRMED: 持续检测2秒
+     * CONFIRMED -> ACTIVE: 已更新时间
+     * ACTIVE -> DISAPPEARING: 图标消失
+     * DISAPPEARING -> IDLE: 持续消失5秒
 
-6. 图标消失处理
-   - 如果之前检测到图标，现在检测不到
-   - 清除检测状态
+6. 决策通知和更新（DetectionDecision模块）
+   - DetectionDecision:ShouldNotify(): 检查通知冷却期（120秒）
+   - DetectionDecision:ShouldUpdateTime(): 检查间隔和手动锁定
+   - 如果应该通知：Notification:NotifyAirdropDetected()
+   - 如果应该更新：Data:SetLastRefresh()
+
+7. 定期状态汇总（每5秒）
+   - TimerManager:ReportCurrentStatus()
+   - 输出当前地图、区域、位面、检测状态等信息
 ```
 
-**关键代码位置**: `Modules/Timer.lua` 的 `DetectMapIcons()` 函数
+**关键代码位置**: 
+- `Modules/Timer.lua` 的 `DetectMapIcons()` 函数（协调）
+- `Modules/IconDetector.lua` 的 `DetectIcon()` 函数（图标检测）
+- `Modules/MapTracker.lua` 的 `GetTargetMapData()` 和 `OnMapChanged()` 函数（地图匹配）
+- `Modules/DetectionState.lua` 的 `UpdateState()` 函数（状态机）
+- `Modules/DetectionDecision.lua` 的 `ShouldNotify()` 和 `ShouldUpdateTime()` 函数（决策）
 
 ### 2.2 刷新时间计算逻辑
 
@@ -329,8 +350,10 @@ PLAYER_TARGET_CHANGED:
 
 ### 6.1 通知触发条件
 
-1. **自动检测到空投**:
-   - 地图图标检测确认空投出现
+1. **自动检测到空投**（优化后）:
+   - **首次检测到图标时立即发送通知**（检查通知冷却期）
+   - 如果不在冷却期内（距离上次通知 >= 120秒），立即发送通知
+   - 2秒确认后更新时间，不再次发送通知
    - 调用 `Notification:NotifyAirdropDetected()`
 
 2. **手动通知**:
@@ -356,8 +379,9 @@ PLAYER_TARGET_CHANGED:
 1. **聊天框**: 始终显示
 2. **团队消息**（仅在团队中，且 `teamNotificationEnabled = true`）:
    - RAID: 普通团队消息
-   - RAID_WARNING: 团队通知
+   - RAID_WARNING: 团队通知（需要权限）
 3. **小队中**: 不发送自动消息
+4. **通知冷却期**: 同一地图在120秒内不重复发送通知
 
 **手动通知**（不受 `/ctk team on/off` 控制）：
 1. **在队伍中**: 发送到队伍
@@ -387,6 +411,22 @@ PLAYER_TARGET_CHANGED:
 - 恢复时重新启动检测
 
 ### 7.4 防误触机制
+
+- **2秒持续检测确认**：防止短暂图标闪烁导致的误判
+- **消失确认期（5秒）**：防止因API延迟或地图切换导致的误清除
+- **通知冷却期（120秒）**：防止短时间内重复通知
+
+### 7.5 状态管理优化
+
+- **离开地图状态自动清除**：
+  - 当玩家离开某个地图后，如果5分钟内没有回到该地图，自动清除该地图的检测状态
+  - 避免长期占用内存，保持状态准确性
+  - 清除的状态包括：检测状态、首次检测时间、消失时间、通知冷却期
+
+- **地图切换状态管理**：
+  - 自动记录离开地图的时间
+  - 自动清除回到地图的离开时间
+  - 定期检查并清除超时的地图状态
 
 - 地图图标检测需要持续2秒才确认
 - 如果检测到图标但未持续2秒，清除首次检测时间

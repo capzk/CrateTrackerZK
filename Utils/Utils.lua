@@ -77,33 +77,21 @@ function Utils.GetTimestampFromTime(hh, mm, ss)
     return time(dateTable);
 end
 
+-- 使用 Logger 模块统一输出（不再保留旧接口）
 function Utils.PrintError(message)
-    print('|cffff0000[CrateTrackerZK] ' .. message .. '|r');
+    Logger:Error("Utils", "错误", message);
 end
 
 function Utils.Print(message)
-    print('|cff4FC1FF[CrateTrackerZK] ' .. message .. '|r');
+    Logger:Info("Utils", nil, message);
 end
-
-Utils.debugEnabled = false;
 
 function Utils.SetDebugEnabled(enabled)
-    Utils.debugEnabled = enabled;
+    Logger:SetDebugEnabled(enabled);
 end
 
-function Utils.Debug(...)    
-    if Utils.debugEnabled then
-        local message = "";
-        for i = 1, select("#", ...) do
-            local arg = select(i, ...);
-            if type(arg) == "table" then
-                message = message .. " {table}";
-            else
-                message = message .. " " .. tostring(arg);
-            end
-        end
-        print('|cff00ff00[CrateTrackerZK]|r' .. message);
-    end
+function Utils.Debug(...)
+    Logger:Debug("Utils", "调试", ...);
 end
 
 return Utils;
