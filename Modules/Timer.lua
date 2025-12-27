@@ -337,12 +337,14 @@ function TimerManager:DetectMapIcons()
     
     local changeInfo = MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime);
     
-    -- 4. 如果游戏地图变化但配置ID相同，清除检测状态（保留通知冷却期）
-    if changeInfo.gameMapChanged and changeInfo.configIdSame then
-        if DetectionState and DetectionState.ClearState then
-            DetectionState:ClearState(targetMapData.id, "game_map_changed");
-        end
-    end
+    -- 4. 地图变化处理
+    -- 注意：当游戏地图变化但配置ID相同时（主地图<->子地图切换，双向），不清除检测状态
+    -- 原因：空投是持续事件，不会因为地图传送而中断，应该保持检测状态
+    -- 无论是从主地图传送到子地图，还是从子地图传送到主地图，都视为同一个空投事件
+    -- DetectionState 模块已经实现了检测中断恢复机制：
+    --   - DISAPPEARING -> ACTIVE：图标重新出现时识别为同一次空投事件
+    --   - ACTIVE -> DISAPPEARING：使用 5 分钟的消失确认期，允许检测中断
+    -- 只有在配置地图变化时（切换到不同的追踪地图），才需要清除状态（由离开地图超时机制处理）
     
     -- 5. 检查并清除超时的离开地图状态（符合设计文档：300秒）
     self:CheckAndClearLeftMaps(currentTime);
