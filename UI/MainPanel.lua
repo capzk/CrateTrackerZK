@@ -249,6 +249,7 @@ local function CreateTable(frame)
             highlight:SetAllPoints();
             
             local sortField = (i == 3) and 'lastRefresh' or 'remaining';
+            cell.sortField = sortField;
             cell:EnableMouse(true);
             cell:SetScript('OnMouseUp', function() MainPanel:SortTable(sortField) end);
         end
@@ -332,7 +333,7 @@ function MainPanel:CreateMainFrame()
     CreateTable(frame);
     
     frame.sortField = nil;
-    frame.sortOrder = 'asc';
+    frame.sortOrder = nil; -- nil = 默认顺序, 'asc' = 正序, 'desc' = 倒序
     
     MainPanel.updateTimer = C_Timer.NewTicker(1, function() MainPanel:UpdateTable() end);
     
@@ -345,15 +346,28 @@ function MainPanel:SortTable(field)
     local frame = self.mainFrame;
     if not frame then return end
     
+    -- 三种状态循环：正序 -> 倒序 -> 默认顺序 -> 正序
     if frame.sortField == field then
-        frame.sortOrder = frame.sortOrder == 'asc' and 'desc' or 'asc';
+        -- 同一个字段，在三种状态间循环
+        if frame.sortOrder == 'asc' then
+            frame.sortOrder = 'desc';  -- 正序 -> 倒序
+        elseif frame.sortOrder == 'desc' then
+            frame.sortField = nil;     -- 倒序 -> 默认顺序（清除排序）
+            frame.sortOrder = nil;
+        else
+            -- 这种情况不应该发生，但作为安全措施
+            frame.sortField = field;
+            frame.sortOrder = 'asc';
+        end
     else
+        -- 不同字段，设置为新字段的正序
         frame.sortField = field;
         frame.sortOrder = 'asc';
     end
     
     self:UpdateTable();
 end
+
 
 local function CreateSortComparator(sortField, sortOrder)
     return function(a, b)
@@ -423,7 +437,8 @@ function MainPanel:UpdateTable()
     Logger:DebugLimited("ui_update:table", "MainPanel", "界面", "更新表格显示");
     local mapArray = PrepareTableData();
     
-    if frame.sortField and (frame.sortField == 'lastRefresh' or frame.sortField == 'remaining') then
+    -- 只有在有排序字段且排序顺序不为 nil 时才排序
+    if frame.sortField and frame.sortOrder and (frame.sortField == 'lastRefresh' or frame.sortField == 'remaining') then
         local comparator = CreateSortComparator(frame.sortField, frame.sortOrder);
         table.sort(mapArray, comparator);
     end
