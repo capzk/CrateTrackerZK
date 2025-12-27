@@ -52,28 +52,37 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
     
-    -- 使用 Logger 统一输出
-    Logger:Info("Notification", "通知", message);
+    -- 检查是否在小队或团队中
+    local chatType = self:GetTeamChatType();
     
-    if self.teamNotificationEnabled and IsInRaid() then
-        local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
-        local chatType = hasPermission and "RAID_WARNING" or "RAID";
-        Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", chatType, hasPermission and "有" or "无"));
-        
-        if hasPermission then
-            pcall(function()
-                SendChatMessage(message, "RAID_WARNING");
-            end);
+    if chatType then
+        -- 在小队或团队中：只发送到小队/团队，不发送到聊天框（避免重复）
+        if IsInRaid() then
+            -- 在团队中：根据权限选择 RAID_WARNING 或 RAID（受 teamNotificationEnabled 控制）
+            if self.teamNotificationEnabled then
+                local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
+                local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
+                Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"));
+                
+                pcall(function()
+                    SendChatMessage(message, raidChatType);
+                end);
+            else
+                -- teamNotificationEnabled = false：不发送团队通知，也不发送到聊天框
+                Logger:DebugLimited("notification:team_disabled", "Notification", "通知", 
+                    string.format("团队通知已禁用，跳过发送：地图=%s", mapName));
+            end
         else
+            -- 在小队中：发送到小队（不受 teamNotificationEnabled 控制）
+            Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
             pcall(function()
-                SendChatMessage(message, "RAID");
+                SendChatMessage(message, chatType);
             end);
         end
+        -- 注意：在小队/团队中时，不发送到聊天框，避免重复
     else
-        Logger:DebugLimited("notification:team_disabled", "Notification", "通知", 
-            string.format("团队通知已禁用或不在团队中：启用=%s，在团队=%s", 
-                self.teamNotificationEnabled and "是" or "否",
-                IsInRaid() and "是" or "否"));
+        -- 不在小队/团队中：发送到聊天框
+        Logger:Info("Notification", "通知", message);
     end
 end
 
@@ -114,12 +123,12 @@ function Notification:NotifyMapRefresh(mapData)
         end
     end
     
-    -- 使用 Logger 统一输出（始终在聊天框显示消息）
-    Logger:Info("Notification", "通知", message);
-    
-    -- 尝试发送到团队/队伍（如果失败也不影响，因为聊天框已显示）
+    -- 检查是否在小队或团队中
     local chatType = self:GetTeamChatType();
+    
     if chatType then
+        -- 在小队或团队中：只发送到小队/团队，不发送到聊天框（避免重复）
+        Logger:Debug("Notification", "通知", string.format("发送小队/团队通知：类型=%s", chatType));
         local success, err = pcall(function()
             SendChatMessage(message, chatType);
         end);
@@ -127,6 +136,9 @@ function Notification:NotifyMapRefresh(mapData)
             -- SendChatMessage 失败（可能是速率限制），记录但不影响用户体验
             Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
         end
+    else
+        -- 不在小队/团队中：发送到聊天框
+        Logger:Info("Notification", "通知", message);
     end
 end
 

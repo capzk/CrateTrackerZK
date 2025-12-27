@@ -38,22 +38,21 @@ function Area:ResumeAllDetections()
 end
 
 function Area:CheckAndUpdateAreaValid()
-    local isIndoors = IsIndoors();
     local instanceType = select(4, GetInstanceInfo());
     local isInstance = (instanceType == "party" or instanceType == "raid" or instanceType == "pvp" or instanceType == "arena" or instanceType == "scenario");
     
-    -- 输出区域检查状态（只在区域变化时输出，不需要限流）
+    -- 输出区域检查状态（限流：每30秒一次，避免频繁输出）
     if Logger and Logger.debugEnabled then
         local currentMapID = self:GetCurrentMapId();
         local mapName = currentMapID and (Localization and Localization:GetMapName(currentMapID) or tostring(currentMapID)) or "未知";
-        Logger:Debug("Area", "状态", string.format("【区域检查】地图=%s，室内=%s，副本类型=%s，区域有效=%s", 
-            mapName,
-            isIndoors and "是" or "否",
-            instanceType or "无",
-            (not isIndoors and not isInstance) and "是" or "否"));
+        Logger:DebugLimited("area:check_" .. (currentMapID or 0), "Area", "状态", 
+            string.format("【区域检查】地图=%s，副本类型=%s，区域有效=%s", 
+                mapName,
+                instanceType or "无",
+                not isInstance and "是" or "否"));
     end
     
-    if isIndoors or isInstance then
+    if isInstance then
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
             Logger:Debug("Area", "区域", DT("DebugAreaInvalidInstance"));

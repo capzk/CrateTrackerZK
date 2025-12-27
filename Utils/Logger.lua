@@ -27,7 +27,7 @@ Logger.COLORS = {
     [Logger.LEVELS.WARN] = "ffff8800",    -- 橙色
     [Logger.LEVELS.INFO] = "ff4FC1FF",    -- 蓝色
     [Logger.LEVELS.DEBUG] = "ff00ff00",   -- 绿色
-    [Logger.LEVELS.SUCCESS] = "ff00ffff"  -- 青色
+    [Logger.LEVELS.SUCCESS] = "ff00ff00"  -- 绿色
 };
 
 -- 模块前缀映射（用于标识输出来源）
@@ -105,7 +105,7 @@ Logger.DEBUG_TEXTS = {
     DebugWaitingForConfirmation = "等待持续检测确认：%s（已等待=%s秒）",
     DebugClearedFirstDetectionTime = "清除首次检测时间，未再检测到图标：%s",
     DebugAirdropEnded = "未检测到图标，空投事件结束：%s",
-    DebugAreaInvalidInstance = "区域无效（副本/战场/室内），自动暂停",
+    DebugAreaInvalidInstance = "区域无效（副本/战场），自动暂停",
     DebugAreaCannotGetMapID = "无法获取地图 ID",
     DebugAreaValid = "区域有效，已恢复：%s",
     DebugAreaInvalidNotInList = "区域无效（不在列表中），自动暂停：%s",

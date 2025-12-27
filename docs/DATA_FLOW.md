@@ -417,11 +417,10 @@ Notification:NotifyMapRefresh(mapData)
    ▼
 Area:CheckAndUpdateAreaValid()
    │
-   ├─▶ 检查是否在室内
-   │   IsIndoors()
-   │
-   ├─▶ 检查是否在副本
+   ├─▶ 检查是否在副本/战场
    │   GetInstanceInfo()
+   │   │
+   │   └─▶ 副本类型: party, raid, pvp, arena, scenario
    │
    ├─▶ 获取当前地图ID
    │   C_Map.GetBestMapForUnit("player")

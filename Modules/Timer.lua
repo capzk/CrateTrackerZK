@@ -37,10 +37,11 @@ function TimerManager:Initialize()
     self.lastDetectionTime = self.lastDetectionTime or {};
     self.notificationCount = self.notificationCount or {};
     self.lastStatusReportTime = self.lastStatusReportTime or 0; -- 上次状态报告时间
-    self.STATUS_REPORT_INTERVAL = 5; -- 状态报告间隔（秒，5秒一次，确保信息及时可见）
+    self.STATUS_REPORT_INTERVAL = 30; -- 状态报告间隔（秒，30秒一次，避免频繁输出）
     -- 注意：调试消息限流已迁移到 Logger 模块
     -- 注意：状态管理已迁移到 DetectionState、MapTracker、NotificationCooldown 模块
-    Logger:InfoLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
+    -- 调试模式下显示初始化信息
+    Logger:DebugLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
 end
 
 -- 使用 Logger 模块统一输出（限流）
@@ -376,6 +377,8 @@ function TimerManager:DetectMapIcons()
     end
     
     -- 8. 通知和时间更新决策（已更新：2秒确认后同时执行）
+    -- 注意：DetectionState:UpdateState() 已经处理了 CONFIRMED 状态下图标消失的情况（误报检测）
+    -- 如果状态是 CONFIRMED，说明图标确实存在且已持续2秒
     if state.status == DetectionState.STATES.CONFIRMED then
         if not DetectionDecision or not DetectionDecision.ShouldNotify or not DetectionDecision.ShouldUpdateTime then
             Logger:Error("Timer", "错误", "DetectionDecision 模块未加载");
@@ -384,6 +387,16 @@ function TimerManager:DetectMapIcons()
         
         local shouldNotify = DetectionDecision:ShouldNotify(targetMapData.id, state, currentTime);
         local shouldUpdate = DetectionDecision:ShouldUpdateTime(targetMapData.id, state, currentTime);
+        
+        -- 调试：输出决策结果
+        if Logger and Logger:IsDebugEnabled() then
+            Logger:Debug("Timer", "决策", string.format("通知决策=%s，更新决策=%s，状态=%s，首次检测时间=%s，上次更新时间=%s", 
+                shouldNotify and "是" or "否",
+                shouldUpdate and "是" or "否",
+                state.status,
+                state.firstDetectedTime and Data:FormatDateTime(state.firstDetectedTime) or "无",
+                state.lastUpdateTime and Data:FormatDateTime(state.lastUpdateTime) or "无"));
+        end
         
         -- 通知决策（检查冷却期）
         if shouldNotify then
@@ -399,7 +412,25 @@ function TimerManager:DetectMapIcons()
         end
         
         -- 时间更新决策（检查间隔和手动锁定）
-        if shouldUpdate then
+        if not shouldUpdate then
+            -- 调试：输出为什么不能更新
+            if Logger and Logger:IsDebugEnabled() then
+                local reason = "";
+                if not state.firstDetectedTime then
+                    reason = "无首次检测时间";
+                elseif state.lastUpdateTime then
+                    local timeSinceLastUpdate = currentTime - state.lastUpdateTime;
+                    if timeSinceLastUpdate < DetectionDecision.MIN_UPDATE_INTERVAL then
+                        reason = string.format("距离上次更新仅 %d 秒（最小间隔 %d 秒）", timeSinceLastUpdate, DetectionDecision.MIN_UPDATE_INTERVAL);
+                    end
+                elseif Data.manualInputLock and Data.manualInputLock[targetMapData.id] then
+                    reason = "地图被手动锁定";
+                else
+                    reason = "未知原因";
+                end
+                Logger:Debug("Timer", "调试", string.format("跳过时间更新：%s，地图=%s", reason, Data:GetMapDisplayName(targetMapData)));
+            end
+        else
             -- 检查手动输入锁定
             if not Data.manualInputLock or not Data.manualInputLock[targetMapData.id] then
                 local success = Data:SetLastRefresh(targetMapData.id, state.firstDetectedTime);
@@ -446,7 +477,8 @@ function TimerManager:StartMapIconDetection(interval)
         end
     end);
     
-    Logger:InfoLimited("timer:detection_started", "Timer", "初始化", "地图图标检测已启动，间隔=" .. interval .. "秒");
+    -- 调试模式下显示检测启动信息
+    Logger:DebugLimited("timer:detection_started", "Timer", "初始化", "地图图标检测已启动，间隔=" .. interval .. "秒");
     return true;
 end
 
@@ -454,7 +486,8 @@ function TimerManager:StopMapIconDetection()
     if self.mapIconDetectionTimer then
         self.mapIconDetectionTimer:Cancel();
         self.mapIconDetectionTimer = nil;
-        Logger:Info("Timer", "状态", "地图图标检测已停止");
+        -- 调试模式下显示检测停止信息
+        Logger:Debug("Timer", "状态", "地图图标检测已停止");
     end
     return true;
 end

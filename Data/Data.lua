@@ -86,7 +86,8 @@ function Data:Initialize()
         end
     end
     
-    Logger:InfoLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
+    -- 调试模式下显示初始化信息
+    Logger:DebugLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
 end
 
 function Data:SaveMapData(mapId)

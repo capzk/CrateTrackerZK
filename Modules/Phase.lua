@@ -66,12 +66,13 @@ function Phase:UpdatePhaseInfo()
     if targetMapData then
         local instanceID = self:GetLayerFromNPC();
         
-        -- 输出位面检测状态（位面检测本身10秒一次，不需要限流）
+        -- 输出位面检测状态（限流：每10秒一次，避免频繁输出）
         if Logger and Logger.debugEnabled then
-            Logger:Debug("Phase", "状态", string.format("【位面检测】地图=%s，当前位面=%s，尝试获取位面=%s", 
-                Data:GetMapDisplayName(targetMapData),
-                targetMapData.instance or "未获取",
-                instanceID and instanceID or "未获取（需要鼠标悬停NPC或选择目标）"));
+            Logger:DebugLimited("phase:status_" .. (targetMapData.id or 0), "Phase", "状态", 
+                string.format("【位面检测】地图=%s，当前位面=%s，尝试获取位面=%s", 
+                    Data:GetMapDisplayName(targetMapData),
+                    targetMapData.instance or "未获取",
+                    instanceID and instanceID or "未获取（需要鼠标悬停NPC或选择目标）"));
         end
         
         if instanceID ~= targetMapData.instance then

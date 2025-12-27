@@ -43,8 +43,10 @@ function DetectionState:Initialize()
     self.mapIconDetected = self.mapIconDetected or {}; -- 是否已确认检测
     self.mapIconDisappearedTime = self.mapIconDisappearedTime or {}; -- 消失时间
     self.lastUpdateTime = self.lastUpdateTime or {}; -- 上次更新时间
-    self.DISAPPEAR_CONFIRM_TIME = 5; -- 消失确认时间（秒）
+    self.DISAPPEAR_CONFIRM_TIME = 5; -- 消失确认时间（秒）- 用于CONFIRMED状态
+    self.ACTIVE_DISAPPEAR_CONFIRM_TIME = 300; -- ACTIVE状态消失确认时间（秒，5分钟）- 用于已确认的空投事件
     self.CONFIRM_TIME = 2; -- 确认时间（秒）
+    self.AIRDROP_DURATION = 300; -- 空投事件持续时间（秒，5分钟）- 用于判断是否同一次空投事件
 end
 
 -- 获取当前状态
@@ -64,7 +66,14 @@ function DetectionState:GetState(mapId)
         if disappearedTime then
             status = self.STATES.DISAPPEARING;
         else
-            status = self.STATES.ACTIVE;
+            -- 区分 CONFIRMED 和 ACTIVE：CONFIRMED 是已确认但未更新时间，ACTIVE 是已更新时间
+            -- 如果 firstDetectedTime 存在且 lastUpdateTime 不存在，说明是 CONFIRMED 状态
+            -- 如果 lastUpdateTime 存在，说明已经更新过时间，是 ACTIVE 状态
+            if firstDetectedTime and not lastUpdateTime then
+                status = self.STATES.CONFIRMED;
+            else
+                status = self.STATES.ACTIVE;
+            end
         end
     elseif firstDetectedTime then
         status = self.STATES.DETECTING;
@@ -118,11 +127,11 @@ function DetectionState:UpdateState(mapId, iconDetected, currentTime)
                     string.format("等待确认中：地图=%s，已等待=%d秒", Data:GetMapDisplayName(Data:GetMap(mapId)), timeSinceFirstDetection));
             end
         elseif state.status == self.STATES.DISAPPEARING then
-            -- DISAPPEARING -> ACTIVE：5秒内图标重新出现
+            -- DISAPPEARING -> ACTIVE：图标重新出现（可能是检测中断后恢复，识别为同一次空投事件）
             newState.disappearedTime = nil;
             newState.status = self.STATES.ACTIVE;
             self.mapIconDisappearedTime[mapId] = nil;
-            Logger:Debug("DetectionState", "状态", string.format("状态变化：DISAPPEARING -> ACTIVE，地图=%s（图标重新出现）", 
+            Logger:Debug("DetectionState", "状态", string.format("状态变化：DISAPPEARING -> ACTIVE，地图=%s（图标重新出现，识别为同一次空投事件）", 
                 Data:GetMapDisplayName(Data:GetMap(mapId))));
         end
         -- ACTIVE 状态：图标持续存在，保持状态
@@ -137,18 +146,42 @@ function DetectionState:UpdateState(mapId, iconDetected, currentTime)
                 self.mapIconFirstDetectedTime[mapId] = nil;
                 SafeDebug(string.format(DT("DebugClearedFirstDetectionTime"), Data:GetMapDisplayName(Data:GetMap(mapId))));
             end
+        elseif state.status == self.STATES.CONFIRMED then
+            -- CONFIRMED -> IDLE：确认后图标立即消失（误报），立即清除状态
+            newState.firstDetectedTime = nil;
+            newState.status = self.STATES.IDLE;
+            newState.isDetected = false;
+            self.mapIconDetected[mapId] = nil;
+            self.mapIconFirstDetectedTime[mapId] = nil;
+            Logger:Debug("DetectionState", "状态", string.format("状态变化：CONFIRMED -> IDLE，地图=%s（确认后图标立即消失，判定为误报）", 
+                Data:GetMapDisplayName(Data:GetMap(mapId))));
+            SafeDebug(string.format("确认后图标立即消失，判定为误报：%s", Data:GetMapDisplayName(Data:GetMap(mapId))));
         elseif state.status == self.STATES.ACTIVE then
             -- ACTIVE -> DISAPPEARING：图标消失
+            -- 对于已确认的空投事件，使用更长的消失确认期（因为空投是持续事件，可能因地图传送等原因中断）
             newState.disappearedTime = currentTime;
             newState.status = self.STATES.DISAPPEARING;
             self.mapIconDisappearedTime[mapId] = currentTime;
-            Logger:Debug("DetectionState", "状态", string.format("状态变化：ACTIVE -> DISAPPEARING，地图=%s（图标消失，等待%d秒确认）", 
-                Data:GetMapDisplayName(Data:GetMap(mapId)), self.DISAPPEAR_CONFIRM_TIME));
-            SafeDebug(string.format("图标消失，等待确认（%d秒）", self.DISAPPEAR_CONFIRM_TIME));
+            local confirmTime = self.ACTIVE_DISAPPEAR_CONFIRM_TIME;
+            Logger:Debug("DetectionState", "状态", string.format("状态变化：ACTIVE -> DISAPPEARING，地图=%s（图标消失，等待%d秒确认，空投可能因地图传送中断）", 
+                Data:GetMapDisplayName(Data:GetMap(mapId)), confirmTime));
+            SafeDebug(string.format("图标消失，等待确认（%d秒，空投可能因地图传送中断）", confirmTime));
         elseif state.status == self.STATES.DISAPPEARING then
-            -- DISAPPEARING -> IDLE：持续消失5秒
+            -- DISAPPEARING -> IDLE：持续消失确认期
             local timeSinceDisappeared = currentTime - state.disappearedTime;
-            if timeSinceDisappeared >= self.DISAPPEAR_CONFIRM_TIME then
+            
+            -- 根据空投开始时间判断是否可能是同一次空投事件
+            -- 如果空投开始时间距离现在很短（在空投持续时间内），说明可能是检测中断，使用更长的确认期
+            local airdropStartTime = state.firstDetectedTime;
+            local timeSinceAirdropStart = airdropStartTime and (currentTime - airdropStartTime) or 0;
+            local isWithinAirdropDuration = timeSinceAirdropStart < self.AIRDROP_DURATION;
+            
+            -- 确定消失确认期：
+            -- 1. 如果空投开始时间在持续时间内，使用更长的确认期（可能是检测中断）
+            -- 2. 否则使用标准确认期（空投可能已结束）
+            local confirmTime = isWithinAirdropDuration and self.ACTIVE_DISAPPEAR_CONFIRM_TIME or self.DISAPPEAR_CONFIRM_TIME;
+            
+            if timeSinceDisappeared >= confirmTime then
                 -- 清除所有状态（但保留通知冷却期）
                 newState.status = self.STATES.IDLE;
                 newState.firstDetectedTime = nil;
@@ -157,14 +190,15 @@ function DetectionState:UpdateState(mapId, iconDetected, currentTime)
                 self.mapIconDetected[mapId] = nil;
                 self.mapIconFirstDetectedTime[mapId] = nil;
                 self.mapIconDisappearedTime[mapId] = nil;
-                Logger:Debug("DetectionState", "状态", string.format("状态变化：DISAPPEARING -> IDLE，地图=%s（空投事件结束）", 
-                    Data:GetMapDisplayName(Data:GetMap(mapId))));
+                Logger:Debug("DetectionState", "状态", string.format("状态变化：DISAPPEARING -> IDLE，地图=%s（空投事件结束，消失%d秒）", 
+                    Data:GetMapDisplayName(Data:GetMap(mapId)), timeSinceDisappeared));
                 SafeDebug(string.format(DT("DebugAirdropEnded"), Data:GetMapDisplayName(Data:GetMap(mapId))));
             else
                 -- 消失确认中，限流输出
+                local reason = isWithinAirdropDuration and "（空投可能因地图传送中断）" or "";
                 Logger:DebugLimited("state_check:disappearing_" .. mapId, "DetectionState", "状态", 
-                    string.format("图标消失确认中：地图=%s，%d/%d秒", 
-                        Data:GetMapDisplayName(Data:GetMap(mapId)), timeSinceDisappeared, self.DISAPPEAR_CONFIRM_TIME));
+                    string.format("图标消失确认中：地图=%s，%d/%d秒%s", 
+                        Data:GetMapDisplayName(Data:GetMap(mapId)), timeSinceDisappeared, confirmTime, reason));
             end
         end
     end
@@ -201,6 +235,8 @@ function DetectionState:ClearState(mapId, reason)
         Logger:Debug("DetectionState", "状态", string.format("离开地图超时，清除检测状态：地图=%s", mapDisplayName));
     elseif reason == "disappeared_confirmed" then
         Logger:Debug("DetectionState", "状态", string.format("图标消失确认，清除检测状态：地图=%s", mapDisplayName));
+    elseif reason == "false_positive" then
+        Logger:Debug("DetectionState", "状态", string.format("误报检测，清除检测状态：地图=%s", mapDisplayName));
     end
     
     -- 清除检测状态（但保留通知冷却期）

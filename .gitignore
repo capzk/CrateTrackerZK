@@ -19,7 +19,8 @@ prod/
 *.swp
 *.swo
 
-# 问题记录目录
-issues/
+# 文档目录
+# issues/
+# docs/
 
 
