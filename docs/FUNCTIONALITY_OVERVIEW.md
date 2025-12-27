@@ -6,7 +6,7 @@
 
 CrateTrackerZK 是一个魔兽世界插件，用于自动追踪和记录游戏中的战争物资空投宝箱（War Supply Crate）的刷新时间和位面信息。
 
-**版本**: 1.1.2  
+**版本**: 1.1.3-beta  
 **作者**: capzk  
 **项目地址**: https://github.com/capzk/CrateTrackerZK
 
