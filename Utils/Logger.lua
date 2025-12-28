@@ -45,7 +45,6 @@ Logger.MODULE_PREFIXES = {
     ["IconDetector"] = "图标检测",
     ["MapTracker"] = "地图追踪",
     ["DetectionState"] = "检测状态",
-    ["DetectionDecision"] = "检测决策",
     ["NotificationCooldown"] = "通知冷却",
     
     -- UI模块
@@ -75,7 +74,8 @@ Logger.FUNCTION_PREFIXES = {
     ["加载"] = "加载",
     ["清除"] = "清除",
     ["用户操作"] = "用户操作",
-    ["界面"] = "界面"
+    ["界面"] = "界面",
+    ["处理"] = "处理"
 };
 
 -- 调试文本字典（从 Debug.lua 迁移）
@@ -105,6 +105,9 @@ Logger.DEBUG_TEXTS = {
     DebugWaitingForConfirmation = "等待持续检测确认：%s（已等待=%s秒）",
     DebugClearedFirstDetectionTime = "清除首次检测时间，未再检测到图标：%s",
     DebugAirdropEnded = "未检测到图标，空投事件结束：%s",
+    DebugAirdropProcessed = "空投已处理，暂停检测5分钟：%s",
+    DebugProcessedTimeout = "处理状态超时（5分钟），清除状态，重新开始检测：%s",
+    DebugProcessedSkipped = "已处理状态，跳过检测（剩余%d秒）",
     DebugAreaInvalidInstance = "区域无效（副本/战场），自动暂停",
     DebugAreaCannotGetMapID = "无法获取地图 ID",
     DebugAreaValid = "区域有效，已恢复：%s",
@@ -140,6 +143,7 @@ function Logger:Initialize()
         ["icon_detection:result"] = 0, -- 图标检测结果，不限流（关键信息，但只在状态变化时输出）
         ["map_check:match"] = 0, -- 地图匹配成功，不限流（关键信息）
         ["state_change"] = 0, -- 状态变化，不限流（关键信息）
+        ["state_processed"] = 0, -- 处理状态相关，不限流（关键信息）
         ["phase_update"] = 0, -- 位面更新，不限流（关键信息）
         ["area_change"] = 0, -- 区域变化，不限流（关键信息）
         

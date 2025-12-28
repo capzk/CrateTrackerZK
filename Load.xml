@@ -25,7 +25,6 @@
     <Script file="Modules/MapTracker.lua"/>
     <Script file="Modules/NotificationCooldown.lua"/>
     <Script file="Modules/DetectionState.lua"/>
-    <Script file="Modules/DetectionDecision.lua"/>
     <Script file="Modules/Timer.lua"/>
     <Script file="Modules/Area.lua"/>
     <Script file="Modules/Phase.lua"/>

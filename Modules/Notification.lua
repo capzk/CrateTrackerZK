@@ -107,7 +107,8 @@ function Notification:NotifyMapRefresh(mapData)
     local isAirdropActive = false;
     if DetectionState then
         local state = DetectionState:GetState(mapData.id);
-        isAirdropActive = (state and state.status == "active");
+        -- 检查是否处于已处理状态（空投已检测并处理）
+        isAirdropActive = (state and state.status == DetectionState.STATES.PROCESSED);
     end
     
     local message;

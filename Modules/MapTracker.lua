@@ -153,12 +153,15 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
             oldMapName, self.lastDetectedMapId or 0, newMapName, targetMapData.id));
     end
     
-    -- 记录离开旧地图的时间（符合设计文档）
+    -- 配置地图变化时，清除旧地图的处理状态
     if changeInfo.configMapChanged and self.lastDetectedMapId then
+        if DetectionState then
+            DetectionState:ClearProcessed(self.lastDetectedMapId);
+        end
         if not self.mapLeftTime[self.lastDetectedMapId] then
             self.mapLeftTime[self.lastDetectedMapId] = currentTime;
             local oldMapData = Data:GetMap(self.lastDetectedMapId);
-            Logger:Debug("MapTracker", "地图", string.format("玩家离开地图：%s（配置ID=%d），记录离开时间", 
+            Logger:Debug("MapTracker", "地图", string.format("玩家离开地图：%s（配置ID=%d），清除处理状态，记录离开时间", 
                 oldMapData and Data:GetMapDisplayName(oldMapData) or tostring(self.lastDetectedMapId), self.lastDetectedMapId));
         end
     end
@@ -194,17 +197,21 @@ function MapTracker:CheckAndClearLeftMaps(currentTime)
         end
     end
     
-    -- 清除标记的地图状态（但保留通知冷却期，防止误报）
+    -- 清除标记的地图离开时间和处理状态
     for _, mapId in ipairs(mapsToClear) do
         local mapData = Data:GetMap(mapId);
         if mapData then
             local mapDisplayName = Data:GetMapDisplayName(mapData);
-            SafeDebug(string.format("自动清除离开地图的状态：%s（离开 %d 秒）", mapDisplayName, currentTime - self.mapLeftTime[mapId]));
+            Logger:Debug("MapTracker", "地图", string.format("自动清除离开地图的状态：%s（离开 %d 秒）", 
+                mapDisplayName, currentTime - self.mapLeftTime[mapId]));
         end
         
-        -- 清除所有相关状态（但保留通知冷却期，防止误报）
-        -- 注意：这里不清除 lastNotificationTime，保持通知冷却期
-        -- 实际的清除操作由 DetectionState 模块处理
+        -- 清除处理状态（离开地图300秒后）
+        if DetectionState and DetectionState.ClearProcessed then
+            DetectionState:ClearProcessed(mapId);
+        end
+        
+        -- 清除离开时间
         self.mapLeftTime[mapId] = nil;
     end
 end

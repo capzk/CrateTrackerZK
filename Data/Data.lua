@@ -5,7 +5,6 @@ local Data = BuildEnv('Data');
 
 Data.DEFAULT_REFRESH_INTERVAL = (Data.MAP_CONFIG and Data.MAP_CONFIG.defaults and Data.MAP_CONFIG.defaults.interval) or 1100;
 Data.maps = {};
-Data.manualInputLock = {};
 
 local function ensureDB()
     if type(CRATETRACKERZK_DB) ~= "table" then
@@ -286,10 +285,14 @@ function Data:ClearAllData()
         end
     end
     
-    -- 清除检测状态（使用新模块）
+    -- 清除检测状态
     if DetectionState then
-        -- DetectionState 模块管理自己的状态，这里不需要手动清除
-        -- 如果需要清除，可以通过 DetectionState:ClearState() 方法
+        -- 清除所有地图的处理状态
+        for i, mapData in ipairs(self.maps) do
+            if mapData then
+                DetectionState:ClearProcessed(mapData.id);
+            end
+        end
     end
     if MapTracker then
         MapTracker.mapLeftTime = {};

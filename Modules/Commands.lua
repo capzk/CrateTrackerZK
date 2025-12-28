@@ -76,14 +76,21 @@ function Commands:HandleClearCommand(arg)
 
     if Data then
         Data.maps = {};
-        Data.manualInputLock = {};
     end
     if TimerManager then
         TimerManager.isInitialized = false;
     end
-    -- 清除检测状态（使用新模块）
-    if DetectionState then
-        -- DetectionState 模块管理自己的状态
+    -- 清除检测状态
+    if DetectionState and Data then
+        -- 清除所有地图的处理状态
+        local maps = Data:GetAllMaps();
+        if maps then
+            for _, mapData in ipairs(maps) do
+                if mapData then
+                    DetectionState:ClearProcessed(mapData.id);
+                end
+            end
+        end
     end
     if MapTracker then
         MapTracker.mapLeftTime = {};
