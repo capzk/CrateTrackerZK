@@ -214,20 +214,27 @@
 1. 用户点击"刷新"按钮
    MainPanel:RefreshMap(mapId)
    │
-   ▼
-2. 启动计时器
-   TimerManager:StartTimer(mapId, REFRESH_BUTTON)
+   ├─▶ 立即更新内存数据（同步）
+   │   mapData.lastRefresh = currentTimestamp
+   │   mapData.lastRefreshInstance = mapData.instance
+   │   Data:UpdateNextRefresh(mapId, mapData)
    │
-   ├─▶ 使用当前时间戳
-   │   timestamp = time()
+   ├─▶ 立即更新UI显示（同步）
+   │   MainPanel:UpdateTable()
+   │   └─▶ UI立即显示新时间，用户无需等待
    │
-   └─▶ 更新刷新时间
-       Data:SetLastRefresh(mapId, timestamp)
-       │
-       ▼
-3. 更新UI
-   MainPanel:UpdateTable()
+   └─▶ 异步保存数据（异步）
+       C_Timer.After(0, function()
+           TimerManager:StartTimer(mapId, REFRESH_BUTTON, currentTimestamp)
+           │
+           └─▶ Data:SetLastRefresh(mapId, timestamp)
+               └─▶ Data:SaveMapData(mapId)  // 持久化保存
 ```
+
+**设计说明**：
+- **立即UI更新**：点击后立即更新内存数据和UI显示，确保用户看到即时反馈
+- **异步数据保存**：数据保存操作在后台异步执行，不阻塞UI更新
+- **用户体验优化**：解决了之前需要点击两次才生效的问题
 
 ## 三、数据持久化流程
 

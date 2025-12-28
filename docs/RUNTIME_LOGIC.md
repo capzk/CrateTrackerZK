@@ -297,6 +297,21 @@ PLAYER_TARGET_CHANGED:
   4. Data:SaveMapData(mapId)
   5. MainPanel:UpdateTable()  // 更新UI
 
+刷新按钮:
+  1. MainPanel:RefreshMap(mapId)
+  2. 立即更新内存数据（同步）
+     - mapData.lastRefresh = currentTimestamp
+     - mapData.lastRefreshInstance = mapData.instance
+     - Data:UpdateNextRefresh(mapId, mapData)
+  3. 立即更新UI显示（同步）
+     - MainPanel:UpdateTable()  // UI立即显示新时间
+  4. 异步保存数据（异步）
+     - C_Timer.After(0, function()
+         TimerManager:StartTimer(mapId, REFRESH_BUTTON, currentTimestamp)
+         - Data:SetLastRefresh(mapId, timestamp)
+         - Data:SaveMapData(mapId)
+       end)
+
 手动输入时间:
   1. MainPanel:EditLastRefresh(mapId)
   2. 弹出输入框

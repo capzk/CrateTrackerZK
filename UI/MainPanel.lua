@@ -521,25 +521,32 @@ function MainPanel:RefreshMap(mapId)
     end
     
     local mapData = Data:GetMap(mapId);
-    Logger:Debug("MainPanel", "用户操作", string.format("用户点击刷新按钮：地图ID=%d，地图=%s", 
-        mapId, mapData and Data:GetMapDisplayName(mapData) or "未知"));
-    
-    -- UI只负责调用统一的接口，不直接处理数据
-    if not TimerManager then
-        Logger:Error("MainPanel", "错误", "TimerManager 模块未加载");
+    if not mapData then
+        Logger:Error("MainPanel", "错误", "无法获取地图数据，地图ID=" .. tostring(mapId));
         return false;
     end
     
-    local success = TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON);
-    -- StartTimer 内部已调用 UpdateUI() -> UpdateTable()，无需重复调用
+    Logger:Debug("MainPanel", "用户操作", string.format("用户点击刷新按钮：地图ID=%d，地图=%s", 
+        mapId, Data:GetMapDisplayName(mapData)));
     
-    if not success then
-        Logger:Error("MainPanel", "错误", L["ErrorTimerStartFailedMapID"] .. tostring(mapId));
-    else
-        Logger:Debug("MainPanel", "用户操作", "刷新按钮操作成功");
-    end
+    -- 立即更新内存数据，用于UI显示
+    local currentTimestamp = time();
+    mapData.lastRefresh = currentTimestamp;
+    mapData.lastRefreshInstance = mapData.instance;
+    Data:UpdateNextRefresh(mapId, mapData);
     
-    return success;
+    -- 立即更新UI显示
+    self:UpdateTable();
+    
+    -- 异步处理数据保存和完整更新（确保日志记录等）
+    C_Timer.After(0, function()
+        if TimerManager then
+            TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON, currentTimestamp);
+        end
+    end);
+    
+    Logger:Debug("MainPanel", "用户操作", "刷新按钮操作成功");
+    return true;
 end
 
 function MainPanel:EditLastRefresh(mapId)
