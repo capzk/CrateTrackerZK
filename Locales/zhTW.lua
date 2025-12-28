@@ -89,8 +89,8 @@ localeData["NextRefresh"] = "下次刷新";
 localeData["Operation"] = "操作";
 localeData["Refresh"] = "刷新";
 localeData["Notify"] = "通知";
-localeData["NotAcquired"] = "未獲取";
-localeData["NoRecord"] = "無記錄";
+localeData["NotAcquired"] = "N/A";
+localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d分%02d秒";
 localeData["InputTimeHint"] = "請輸入上次刷新時間 (HH:MM:SS 或 HHMMSS):";
 localeData["Confirm"] = "確定";
@@ -102,6 +102,19 @@ localeData["DataModuleNotLoaded"] = "Data模組未載入";
 localeData["TimerManagerNotInitialized"] = "計時管理器尚未初始化";
 localeData["Return"] = "返回";
 localeData["UIFontSize"] = 15;
+localeData["HelpText"] = [[可用命令：
+
+/ctk help        顯示可用命令
+/ctk team on/off 開啟/關閉團隊通知
+/ctk clear       清除本地資料並重新初始化
+
+如何獲取位面ID：
+
+要獲取當前位面ID，您只需將滑鼠指向任意NPC。位面ID將自動檢測並顯示在主面板中。
+
+重要提示：
+
+如果插件升級後出現任何問題，請徹底刪除此插件目錄並重新安裝。]];
 
 -- 選單項
 localeData["MenuHelp"] = "幫助";

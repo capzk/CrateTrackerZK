@@ -89,8 +89,8 @@ localeData["NextRefresh"] = "Next Refresh";
 localeData["Operation"] = "Operation";
 localeData["Refresh"] = "Refresh";
 localeData["Notify"] = "Notify";
-localeData["NotAcquired"] = "Not Acquired";
-localeData["NoRecord"] = "No Record";
+localeData["NotAcquired"] = "N/A";
+localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%dm%02ds";
 localeData["InputTimeHint"] = "Please enter last refresh time (HH:MM:SS or HHMMSS):";
 localeData["Confirm"] = "Confirm";
@@ -102,6 +102,19 @@ localeData["DataModuleNotLoaded"] = "Data module not loaded";
 localeData["TimerManagerNotInitialized"] = "Timer manager not initialized";
 localeData["Return"] = "Return";
 localeData["UIFontSize"] = 15;
+localeData["HelpText"] = [[Available Commands:
+
+/ctk help        Show available commands
+/ctk team on/off Enable or disable team notifications
+/ctk clear       Clear local data and reinitialize
+
+How to Get Phasing ID:
+
+To get the current phasing ID, point your mouse at any NPC. The phasing ID will be automatically detected and displayed in the main panel.
+
+Important Notes:
+
+If you encounter any issues after updating the addon, please completely delete the addon folder and reinstall it from scratch.]];
 
 -- Menu Items
 localeData["MenuHelp"] = "Help";

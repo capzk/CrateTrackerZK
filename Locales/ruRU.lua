@@ -90,8 +90,8 @@ localeData["NextRefresh"] = "Следующий";
 localeData["Operation"] = "Действия";
 localeData["Refresh"] = "Обнов.";
 localeData["Notify"] = "Увед.";
-localeData["NotAcquired"] = "Не получено";
-localeData["NoRecord"] = "Нет записи";
+localeData["NotAcquired"] = "N/A";
+localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%dм%02dс";
 localeData["InputTimeHint"] = "Введите время последнего обновления (ЧЧ:ММ:СС или ЧЧММСС):";
 localeData["Confirm"] = "Подтвердить";
@@ -103,6 +103,19 @@ localeData["DataModuleNotLoaded"] = "Модуль данных не загруж
 localeData["TimerManagerNotInitialized"] = "Менеджер таймеров не инициализирован";
 localeData["Return"] = "Назад";
 localeData["UIFontSize"] = 15;
+localeData["HelpText"] = [[Доступные команды:
+
+/ctk help        Показать доступные команды
+/ctk team on/off Включить или выключить уведомления в группу
+/ctk clear       Очистить локальные данные и переинициализировать
+
+Как получить ID фазы:
+
+Чтобы получить текущий ID фазы, наведите курсор на любого NPC. ID фазы будет автоматически обнаружен и отображен на главной панели.
+
+Важные примечания:
+
+Если после обновления аддона возникнут проблемы, полностью удалите папку аддона и установите его заново.]];
 
 -- Menu Items
 localeData["MenuHelp"] = "Справка";
