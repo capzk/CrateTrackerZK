@@ -18,7 +18,7 @@ local ADDON_NAME = "CrateTrackerZK";
 
 local function GetAddonVersion()
     if not GetAddOnMetadata then
-        return "1.1.3-beta";
+        return "1.1.3";
     end
     
     local version = GetAddOnMetadata(ADDON_NAME, "Version");
@@ -36,7 +36,7 @@ local function GetAddonVersion()
         end
     end
     
-    return "1.1.3-beta";
+    return "1.1.3";
 end
 
 local function BuildAboutText()
