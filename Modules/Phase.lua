@@ -88,7 +88,7 @@ function Phase:UpdatePhaseInfo()
                         oldInstance, instanceID, Data:GetMapDisplayName(targetMapData)));
                 else
                     if not self.lastReportedInstanceID or self.lastReportedInstanceID ~= instanceID then
-                        Logger:Info("Phase", "位面", string.format(L["CurrentInstanceID"], instanceID));
+                        Logger:Debug("Phase", "位面", string.format(L["CurrentInstanceID"], instanceID));
                         Logger:Debug("Phase", "位面", string.format("获取到位面ID：%s，地图=%s", 
                             instanceID, Data:GetMapDisplayName(targetMapData)));
                         self.lastReportedInstanceID = instanceID;
