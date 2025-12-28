@@ -469,7 +469,7 @@ function MainPanel:UpdateTable()
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
         local instanceID = mapData.instance;
-        local instanceText = "N/A";
+        local instanceText = L["NotAcquired"] or "N/A";
         local color = {1, 1, 1};
         
         if instanceID then
@@ -478,7 +478,7 @@ function MainPanel:UpdateTable()
             local isAirdrop = false;
             if DetectionState then
                 local state = DetectionState:GetState(mapData.id);
-                isAirdrop = (state and state.status == "active");
+                isAirdrop = (state and state.status == DetectionState.STATES.PROCESSED);
             end
             local currentTime = time();
             local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
@@ -496,11 +496,11 @@ function MainPanel:UpdateTable()
         row.columns[2].Text:SetText(instanceText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or "--:--";
+        local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
         row.columns[3].Text:SetText(lastRefreshText);
         
         local remaining = mapData.remaining;
-        local remainingText = remaining and Data:FormatTime(remaining, true) or "--:--";
+        local remainingText = remaining and Data:FormatTime(remaining, true) or (L["NoRecord"] or "--:--");
         row.columns[4].Text:SetText(remainingText);
         if remaining then
             if remaining < 300 then row.columns[4].Text:SetTextColor(1, 0, 0)
