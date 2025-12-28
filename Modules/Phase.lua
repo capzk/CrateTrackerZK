@@ -109,7 +109,7 @@ function Phase:UpdatePhaseInfo()
                 if m.instance then hasAny = true; break end
             end
             if not hasAny then
-                Logger:Info("Phase", "位面", L["NoInstanceAcquiredHint"]);
+                Logger:Debug("Phase", "位面", L["NoInstanceAcquiredHint"]);
                 self.anyInstanceIDAcquired = true;
             end
         end
