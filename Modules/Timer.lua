@@ -1,3 +1,6 @@
+-- Timer.lua
+-- 核心检测循环管理器，协调地图图标检测、状态更新和通知
+
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -18,11 +21,6 @@ if not Utils then
     Utils = BuildEnv('Utils')
 end
 
--- 使用 Logger 模块统一输出
-local function SafeDebug(...)
-    Logger:Debug("Timer", "调试", ...);
-end
-
 TimerManager.detectionSources = {
     MANUAL_INPUT = "manual_input",
     REFRESH_BUTTON = "refresh_button",
@@ -30,17 +28,13 @@ TimerManager.detectionSources = {
     MAP_ICON = "map_icon"
 }
 
--- 注意：调试消息限流已迁移到 Logger 模块
-
 function TimerManager:Initialize()
     self.isInitialized = true;
-    self.lastStatusReportTime = self.lastStatusReportTime or 0; -- 上次状态报告时间
-    self.STATUS_REPORT_INTERVAL = 30; -- 状态报告间隔（秒，30秒一次，避免频繁输出）
-    -- 调试模式下显示初始化信息
+    self.lastStatusReportTime = self.lastStatusReportTime or 0;
+    self.STATUS_REPORT_INTERVAL = 30;
     Logger:DebugLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
 end
 
--- 使用 Logger 模块统一输出（限流）
 local function SafeDebugLimited(messageKey, ...)
     Logger:DebugLimited(messageKey, "Timer", "调试", ...);
 end
@@ -75,19 +69,14 @@ function TimerManager:StartTimer(mapId, source, timestamp)
     
     if isManualOperation then
         success = Data:SetLastRefresh(mapId, timestamp);
-        
         if success then
             local updatedMapData = Data:GetMap(mapId);
             if updatedMapData then
                 local sourceText = self:GetSourceDisplayName(source);
-                SafeDebug(string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
-                
-                SafeDebug("[Timer] Manual update", "Map=" .. Data:GetMapDisplayName(updatedMapData), "Source=" .. source, "Last=" .. Data:FormatDateTime(updatedMapData.lastRefresh), "Next=" .. Data:FormatDateTime(updatedMapData.nextRefresh));
+                Logger:Debug("Timer", "更新", string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
             end
-            
             self:UpdateUI();
         else
-            SafeDebug("[Timer] Timer start failed, MapID=" .. mapId .. ", reason=Data:SetLastRefresh returned false");
             Logger:Error("Timer", "错误", L["ErrorTimerStartFailedMapID"] .. tostring(mapId));
         end
     else
@@ -117,37 +106,28 @@ end
 
 
 function TimerManager:CheckAndClearLeftMaps(currentTime)
-    -- 委托给 MapTracker 模块处理（包括清除处理状态）
     if MapTracker and MapTracker.CheckAndClearLeftMaps then
         MapTracker:CheckAndClearLeftMaps(currentTime);
     end
 end
 
--- 输出当前状态汇总（定期输出，限流）
 function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTime)
     if not Logger or not Logger.debugEnabled then
-        return; -- 调试模式未启用，不输出
+        return;
     end
     
-    -- 检查是否需要输出状态报告
     if currentTime - self.lastStatusReportTime < self.STATUS_REPORT_INTERVAL then
         return;
     end
     
     self.lastStatusReportTime = currentTime;
-    
-    -- 1. 当前地图信息
-    local mapName = "未知";
     local mapDisplayName = "未知";
     if targetMapData then
         mapDisplayName = Data:GetMapDisplayName(targetMapData);
-        mapName = Localization and Localization:GetMapName(currentMapID) or (targetMapData.name or tostring(currentMapID));
     end
     
     Logger:Debug("Timer", "状态", string.format("【当前地图】ID=%d，名称=%s，配置ID=%d", 
         currentMapID, mapDisplayName, targetMapData and targetMapData.id or 0));
-    
-    -- 2. 当前区域状态
     local areaStatus = "未知";
     if Area then
         if Area.detectionPaused then
@@ -162,14 +142,11 @@ function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTi
     end
     Logger:Debug("Timer", "状态", string.format("【区域状态】%s", areaStatus));
     
-    -- 3. 当前位面信息
     if targetMapData then
         local instanceID = targetMapData.instance or "未获取";
         local lastInstance = targetMapData.lastInstance or "无";
         Logger:Debug("Timer", "状态", string.format("【位面信息】当前位面=%s，上次位面=%s", instanceID, lastInstance));
     end
-    
-    -- 4. 当前空投检测状态
     if targetMapData and DetectionState then
         local state = DetectionState:GetState(targetMapData.id);
         local stateText = "IDLE（未检测）";
@@ -190,16 +167,13 @@ function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTi
             stateText, iconDetected and "是" or "否"));
     end
     
-    -- 5. 检测功能状态
     local detectionRunning = self.mapIconDetectionTimer and true or false;
     Logger:Debug("Timer", "状态", string.format("【检测功能】地图图标检测=%s，位面检测=%s", 
         detectionRunning and "运行中" or "已停止",
         CrateTrackerZK.phaseTimerTicker and "运行中" or "已停止"));
 end
 
--- ========== 简化后的 DetectMapIcons 函数 ==========
 function TimerManager:DetectMapIcons()
-    -- 1. 获取当前地图ID
     if not C_Map or not C_Map.GetBestMapForUnit then
         SafeDebugLimited("detection_loop:api_unavailable", DT("DebugCMapAPINotAvailable"));
         return false;
@@ -211,11 +185,7 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 检测循环开始（限流显示，避免刷屏）
     SafeDebugLimited("detection_loop:start", "开始检测循环", "当前地图ID=" .. currentMapID);
-    
-    -- 2. 获取目标地图数据（支持父地图匹配）
-    -- 注意：地图匹配信息已在 MapTracker:GetTargetMapData() 中输出（只有地图变化时才输出）
     if not MapTracker or not MapTracker.GetTargetMapData then
         Logger:Error("Timer", "错误", "MapTracker 模块未加载");
         return false;
@@ -223,7 +193,6 @@ function TimerManager:DetectMapIcons()
     
     local targetMapData = MapTracker:GetTargetMapData(currentMapID);
     if not targetMapData then
-        -- 即使不在列表中，也要检查离开地图的状态清除
         if MapTracker and MapTracker.CheckAndClearLeftMaps then
             MapTracker:CheckAndClearLeftMaps(getCurrentTimestamp());
         end
@@ -231,29 +200,16 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- 3. 处理地图变化
     local currentTime = getCurrentTimestamp();
-    
-    -- 定期输出状态汇总（限流，每30秒一次）
     self:ReportCurrentStatus(currentMapID, targetMapData, currentTime);
-    
-    local changeInfo = MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime);
-    
-    -- 配置地图变化时，清除状态已在 MapTracker:OnMapChanged() 中处理
-    
-    -- 4. 检查并清除超时的离开地图状态（300秒）
+    MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime);
     self:CheckAndClearLeftMaps(currentTime);
-    
-    -- 5. 检查是否已处理
     if DetectionState and DetectionState:IsProcessed(targetMapData.id) then
-        -- 检查是否超时（5分钟）
         if DetectionState:IsProcessedTimeout(targetMapData.id, currentTime) then
-            -- 超时，清除状态，重新开始检测
             Logger:Debug("Timer", "状态", string.format(DT("DebugProcessedTimeout"), 
                 Data:GetMapDisplayName(targetMapData)));
             DetectionState:ClearProcessed(targetMapData.id);
         else
-            -- 未超时，跳过检测（限流输出，避免刷屏）
             local state = DetectionState:GetState(targetMapData.id);
             local timeSinceProcessed = currentTime - (state.processedTime or currentTime);
             local remainingTime = DetectionState.PROCESSED_TIMEOUT - timeSinceProcessed;
@@ -262,8 +218,6 @@ function TimerManager:DetectMapIcons()
             return false;
         end
     end
-    
-    -- 6. 检测图标（仅依赖名称匹配）
     if not IconDetector or not IconDetector.DetectIcon then
         Logger:Error("Timer", "错误", "IconDetector 模块未加载");
         return false;
@@ -271,7 +225,6 @@ function TimerManager:DetectMapIcons()
     
     local iconDetected = IconDetector:DetectIcon(currentMapID);
     
-    -- 7. 更新状态（状态机转换）
     if not DetectionState or not DetectionState.UpdateState then
         Logger:Error("Timer", "错误", "DetectionState 模块未加载");
         return iconDetected;
@@ -280,7 +233,6 @@ function TimerManager:DetectMapIcons()
     local oldState = DetectionState:GetState(targetMapData.id);
     local state = DetectionState:UpdateState(targetMapData.id, iconDetected, currentTime);
     
-    -- 输出状态变化
     if oldState and oldState.status ~= state.status then
         Logger:Debug("Timer", "检测", string.format("图标检测：地图=%s，检测到图标=%s，状态=%s -> %s", 
             Data:GetMapDisplayName(targetMapData), 
@@ -288,17 +240,12 @@ function TimerManager:DetectMapIcons()
             oldState.status,
             state.status));
     end
-    
-    -- 8. CONFIRMED 状态处理：通知 + 更新时间 + 标记为已处理
     if state.status == DetectionState.STATES.CONFIRMED then
         Logger:Debug("Timer", "处理", string.format("开始处理 CONFIRMED 状态：地图=%s，首次检测时间=%s", 
             Data:GetMapDisplayName(targetMapData),
             state.firstDetectedTime and Data:FormatDateTime(state.firstDetectedTime) or "无"));
         
-        -- 发送通知
         if Notification and Notification.NotifyAirdropDetected then
-            Logger:Debug("Timer", "通知", string.format("发送空投检测通知：地图=%s", 
-                Data:GetMapDisplayName(targetMapData)));
             Notification:NotifyAirdropDetected(
                 Data:GetMapDisplayName(targetMapData), 
                 self.detectionSources.MAP_ICON
@@ -308,19 +255,15 @@ function TimerManager:DetectMapIcons()
             NotificationCooldown:RecordNotification(targetMapData.id, currentTime);
         end
         
-        -- 更新时间（自动检测优先级最高，无条件更新）
         local success = Data:SetLastRefresh(targetMapData.id, state.firstDetectedTime);
         if success then
             DetectionState:SetLastUpdateTime(targetMapData.id, state.firstDetectedTime);
-            
-            -- 标记为已处理，记录处理时间
             DetectionState:MarkAsProcessed(targetMapData.id, currentTime);
             
             local updatedMapData = Data:GetMap(targetMapData.id);
             local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
             if updatedMapData and updatedMapData.nextRefresh then
-                SafeDebug(string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
-                SafeDebug(string.format(DT("DebugUpdatedRefreshTime"), Data:GetMapDisplayName(targetMapData), Data:FormatDateTime(updatedMapData.nextRefresh)));
+                Logger:Debug("Timer", "更新", string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(targetMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
             end
             
             Logger:Debug("Timer", "状态", string.format(DT("DebugAirdropProcessed"), 
@@ -329,7 +272,6 @@ function TimerManager:DetectMapIcons()
             self:UpdateUI();
         else
             Logger:Error("Timer", "错误", string.format(DT("DebugUpdateRefreshTimeFailed"), targetMapData.id));
-            SafeDebug(string.format(DT("DebugUpdateRefreshTimeFailed"), targetMapData.id));
         end
     end
     
@@ -352,7 +294,6 @@ function TimerManager:StartMapIconDetection(interval)
         end
     end);
     
-    -- 调试模式下显示检测启动信息
     Logger:DebugLimited("timer:detection_started", "Timer", "初始化", "地图图标检测已启动，间隔=" .. interval .. "秒");
     return true;
 end
@@ -361,7 +302,6 @@ function TimerManager:StopMapIconDetection()
     if self.mapIconDetectionTimer then
         self.mapIconDetectionTimer:Cancel();
         self.mapIconDetectionTimer = nil;
-        -- 调试模式下显示检测停止信息
         Logger:Debug("Timer", "状态", "地图图标检测已停止");
     end
     return true;

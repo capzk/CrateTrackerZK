@@ -1,3 +1,6 @@
+-- Commands.lua
+-- 处理斜杠命令（/ctk）
+
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -80,9 +83,7 @@ function Commands:HandleClearCommand(arg)
     if TimerManager then
         TimerManager.isInitialized = false;
     end
-    -- 清除检测状态
     if DetectionState and Data then
-        -- 清除所有地图的处理状态
         local maps = Data:GetAllMaps();
         if maps then
             for _, mapData in ipairs(maps) do

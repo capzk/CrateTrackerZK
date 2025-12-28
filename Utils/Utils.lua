@@ -1,3 +1,6 @@
+-- Utils.lua
+-- 工具函数：时间解析和格式化
+
 if not BuildEnv then
     BuildEnv = function(name)
         _G[name] = _G[name] or {};
@@ -77,7 +80,6 @@ function Utils.GetTimestampFromTime(hh, mm, ss)
     return time(dateTable);
 end
 
--- 使用 Logger 模块统一输出（不再保留旧接口）
 function Utils.PrintError(message)
     Logger:Error("Utils", "错误", message);
 end

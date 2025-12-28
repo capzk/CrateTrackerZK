@@ -1,3 +1,6 @@
+-- Notification.lua
+-- 处理空投检测通知和地图刷新通知
+
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -52,36 +55,28 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
     
-    -- 检查是否在小队或团队中
     local chatType = self:GetTeamChatType();
     
     if chatType then
-        -- 在小队或团队中：只发送到小队/团队，不发送到聊天框（避免重复）
         if IsInRaid() then
-            -- 在团队中：根据权限选择 RAID_WARNING 或 RAID（受 teamNotificationEnabled 控制）
             if self.teamNotificationEnabled then
                 local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
                 local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
                 Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"));
-                
                 pcall(function()
                     SendChatMessage(message, raidChatType);
                 end);
             else
-                -- teamNotificationEnabled = false：不发送团队通知，也不发送到聊天框
                 Logger:DebugLimited("notification:team_disabled", "Notification", "通知", 
                     string.format("团队通知已禁用，跳过发送：地图=%s", mapName));
             end
         else
-            -- 在小队中：发送到小队（不受 teamNotificationEnabled 控制）
             Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
             pcall(function()
                 SendChatMessage(message, chatType);
             end);
         end
-        -- 注意：在小队/团队中时，不发送到聊天框，避免重复
     else
-        -- 不在小队/团队中：发送到聊天框
         Logger:Info("Notification", "通知", message);
     end
 end
@@ -103,11 +98,9 @@ function Notification:NotifyMapRefresh(mapData)
     Logger:Debug("Notification", "通知", string.format("用户请求通知地图刷新：地图=%s", 
         Data:GetMapDisplayName(mapData)));
     
-    -- 使用 DetectionState 模块检查空投状态
     local isAirdropActive = false;
     if DetectionState then
         local state = DetectionState:GetState(mapData.id);
-        -- 检查是否处于已处理状态（空投已检测并处理）
         isAirdropActive = (state and state.status == DetectionState.STATES.PROCESSED);
     end
     
@@ -124,21 +117,17 @@ function Notification:NotifyMapRefresh(mapData)
         end
     end
     
-    -- 检查是否在小队或团队中
     local chatType = self:GetTeamChatType();
     
     if chatType then
-        -- 在小队或团队中：只发送到小队/团队，不发送到聊天框（避免重复）
         Logger:Debug("Notification", "通知", string.format("发送小队/团队通知：类型=%s", chatType));
         local success, err = pcall(function()
             SendChatMessage(message, chatType);
         end);
         if not success then
-            -- SendChatMessage 失败（可能是速率限制），记录但不影响用户体验
             Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
         end
     else
-        -- 不在小队/团队中：发送到聊天框
         Logger:Info("Notification", "通知", message);
     end
 end

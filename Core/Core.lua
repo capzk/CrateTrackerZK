@@ -1,3 +1,6 @@
+-- Core.lua
+-- 插件核心初始化、事件处理和模块协调
+
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -16,7 +19,6 @@ local function OnLogin()
         CRATETRACKERZK_UI_DB = {};
     end
     
-    -- 显示核心启动信息（使用SUCCESS级别，绿色显示）
     Logger:Success("Core", "启动", "插件初始化成功，祝您游戏愉快！");
     Logger:Success("Core", "启动", L["HelpCommandHint"]);
 
@@ -25,7 +27,6 @@ local function OnLogin()
     end
     
     if Data then Data:Initialize() end
-    -- Logger 已在 Load.xml 中自动初始化
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
     

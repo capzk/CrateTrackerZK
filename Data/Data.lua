@@ -1,3 +1,6 @@
+-- Data.lua
+-- 管理地图数据、刷新时间计算和持久化
+
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;

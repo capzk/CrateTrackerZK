@@ -1,3 +1,6 @@
+-- Phase.lua
+-- 检测和更新位面（Phase）信息，通过鼠标悬停NPC获取位面ID
+
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
@@ -66,7 +69,6 @@ function Phase:UpdatePhaseInfo()
     if targetMapData then
         local instanceID = self:GetLayerFromNPC();
         
-        -- 输出位面检测状态（限流：每10秒一次，避免频繁输出）
         if Logger and Logger.debugEnabled then
             Logger:DebugLimited("phase:status_" .. (targetMapData.id or 0), "Phase", "状态", 
                 string.format("【位面检测】地图=%s，当前位面=%s，尝试获取位面=%s", 
