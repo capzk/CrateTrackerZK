@@ -32,7 +32,7 @@ function Data:Initialize()
 
     local mapConfig = self.MAP_CONFIG and self.MAP_CONFIG.current_maps or {};
     if not mapConfig or #mapConfig == 0 then
-        Logger:Error("Data", "错误", "MAP_CONFIG.current_maps 为空或 nil");
+        Logger:Error("Data", "错误", L["ErrorMapConfigEmpty"]);
         return;
     end
 

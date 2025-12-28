@@ -19,7 +19,7 @@ local function OnLogin()
         CRATETRACKERZK_UI_DB = {};
     end
     
-    Logger:Success("Core", "启动", "插件初始化成功，祝您游戏愉快！");
+    Logger:Success("Core", "启动", L["AddonInitializedSuccess"]);
     Logger:Success("Core", "启动", L["HelpCommandHint"]);
 
     if Localization and not Localization.isInitialized then

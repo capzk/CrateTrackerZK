@@ -76,6 +76,15 @@ localeData["ErrorTimerStartFailedMapID"] = "Timer start failed: Map ID=";
 localeData["ErrorInvalidMapIDList"] = "Invalid map ID list";
 localeData["ErrorMapNotFound"] = "Map not found:";
 localeData["ErrorInvalidSourceParam"] = "Invalid detection source parameter";
+localeData["ErrorMapConfigEmpty"] = "MAP_CONFIG.current_maps is empty or nil";
+localeData["ErrorMapTrackerModuleNotLoaded"] = "MapTracker module not loaded";
+localeData["ErrorIconDetectorModuleNotLoaded"] = "IconDetector module not loaded";
+localeData["ErrorDetectionStateModuleNotLoaded"] = "DetectionState module not loaded";
+localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager module not loaded";
+localeData["ErrorRefreshButtonNoMapID"] = "Refresh button: Unable to get map ID, please try again later";
+localeData["ErrorNotifyButtonNoMapID"] = "Notify button: Unable to get map ID";
+localeData["ErrorCannotGetMapData"] = "Unable to get map data, Map ID=%s";
+localeData["AddonInitializedSuccess"] = "Addon initialized successfully, enjoy your game!";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";

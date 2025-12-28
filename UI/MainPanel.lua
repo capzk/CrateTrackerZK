@@ -181,7 +181,7 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
         else
             -- 如果 mapDataRef 无效，尝试从当前显示的数据获取
             -- 这种情况应该很少发生，但作为安全措施
-            Logger:Error("MainPanel", "错误", "刷新按钮：无法获取地图ID，请稍后重试");
+            Logger:Error("MainPanel", "错误", L["ErrorRefreshButtonNoMapID"]);
         end
     end);
     
@@ -189,7 +189,7 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
         -- 按钮点击防抖：防止快速连续点击
         local mapId = row.mapDataRef and row.mapDataRef.mapId;
         if not mapId then
-            Logger:Error("MainPanel", "错误", "通知按钮：无法获取地图ID");
+            Logger:Error("MainPanel", "错误", L["ErrorNotifyButtonNoMapID"]);
             return;
         end
         
@@ -213,10 +213,10 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
             if mapData then
                 MainPanel:NotifyMapRefresh(mapData);
             else
-                Logger:Error("MainPanel", "错误", "无法获取地图数据，地图ID=" .. tostring(mapId));
+                Logger:Error("MainPanel", "错误", string.format(L["ErrorCannotGetMapData"], tostring(mapId)));
             end
         else
-            Logger:Error("MainPanel", "错误", "Data 模块未加载");
+            Logger:Error("MainPanel", "错误", L["DataModuleNotLoaded"]);
         end
     end);
     
@@ -522,7 +522,7 @@ function MainPanel:RefreshMap(mapId)
     
     local mapData = Data:GetMap(mapId);
     if not mapData then
-        Logger:Error("MainPanel", "错误", "无法获取地图数据，地图ID=" .. tostring(mapId));
+        Logger:Error("MainPanel", "错误", string.format(L["ErrorCannotGetMapData"], tostring(mapId)));
         return false;
     end
     
@@ -581,7 +581,7 @@ function MainPanel:ProcessInput(mapId, input)
     
     -- UI只负责调用统一的接口，不直接处理数据
     if not TimerManager then
-        Logger:Error("MainPanel", "错误", "TimerManager 模块未加载");
+        Logger:Error("MainPanel", "错误", L["ErrorTimerManagerModuleNotLoaded"]);
         return false;
     end
     

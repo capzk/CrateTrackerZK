@@ -76,6 +76,15 @@ localeData["ErrorTimerStartFailedMapID"] = "计时器启动失败：地图ID=";
 localeData["ErrorInvalidMapIDList"] = "无效的地图ID列表";
 localeData["ErrorMapNotFound"] = "未找到地图：";
 localeData["ErrorInvalidSourceParam"] = "无效的检测来源参数";
+localeData["ErrorMapConfigEmpty"] = "MAP_CONFIG.current_maps 为空或 nil";
+localeData["ErrorMapTrackerModuleNotLoaded"] = "MapTracker 模块未加载";
+localeData["ErrorIconDetectorModuleNotLoaded"] = "IconDetector 模块未加载";
+localeData["ErrorDetectionStateModuleNotLoaded"] = "DetectionState 模块未加载";
+localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager 模块未加载";
+localeData["ErrorRefreshButtonNoMapID"] = "刷新按钮：无法获取地图ID，请稍后重试";
+localeData["ErrorNotifyButtonNoMapID"] = "通知按钮：无法获取地图ID";
+localeData["ErrorCannotGetMapData"] = "无法获取地图数据，地图ID=%s";
+localeData["AddonInitializedSuccess"] = "插件初始化成功，祝您游戏愉快！";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";

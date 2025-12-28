@@ -77,6 +77,15 @@ localeData["ErrorTimerStartFailedMapID"] = "Запуск таймера не у�
 localeData["ErrorInvalidMapIDList"] = "Неверный список ID карт";
 localeData["ErrorMapNotFound"] = "Карта не найдена:";
 localeData["ErrorInvalidSourceParam"] = "Неверный параметр источника обнаружения";
+localeData["ErrorMapConfigEmpty"] = "MAP_CONFIG.current_maps пуст или nil";
+localeData["ErrorMapTrackerModuleNotLoaded"] = "Модуль MapTracker не загружен";
+localeData["ErrorIconDetectorModuleNotLoaded"] = "Модуль IconDetector не загружен";
+localeData["ErrorDetectionStateModuleNotLoaded"] = "Модуль DetectionState не загружен";
+localeData["ErrorTimerManagerModuleNotLoaded"] = "Модуль TimerManager не загружен";
+localeData["ErrorRefreshButtonNoMapID"] = "Кнопка обновления: Не удалось получить ID карты, попробуйте позже";
+localeData["ErrorNotifyButtonNoMapID"] = "Кнопка уведомления: Не удалось получить ID карты";
+localeData["ErrorCannotGetMapData"] = "Не удалось получить данные карты, ID карты=%s";
+localeData["AddonInitializedSuccess"] = "Аддон успешно инициализирован, приятной игры!";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";

@@ -188,7 +188,7 @@ function TimerManager:DetectMapIcons()
     
     SafeDebugLimited("detection_loop:start", "开始检测循环", "当前地图ID=" .. currentMapID);
     if not MapTracker or not MapTracker.GetTargetMapData then
-        Logger:Error("Timer", "错误", "MapTracker 模块未加载");
+        Logger:Error("Timer", "错误", L["ErrorMapTrackerModuleNotLoaded"]);
         return false;
     end
     
@@ -220,14 +220,14 @@ function TimerManager:DetectMapIcons()
         end
     end
     if not IconDetector or not IconDetector.DetectIcon then
-        Logger:Error("Timer", "错误", "IconDetector 模块未加载");
+        Logger:Error("Timer", "错误", L["ErrorIconDetectorModuleNotLoaded"]);
         return false;
     end
     
     local iconDetected = IconDetector:DetectIcon(currentMapID);
     
     if not DetectionState or not DetectionState.UpdateState then
-        Logger:Error("Timer", "错误", "DetectionState 模块未加载");
+        Logger:Error("Timer", "错误", L["ErrorDetectionStateModuleNotLoaded"]);
         return iconDetected;
     end
     
