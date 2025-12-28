@@ -55,29 +55,30 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
     
+    -- 始终发送系统消息到聊天框
+    Logger:Info("Notification", "通知", message);
+    
     local chatType = self:GetTeamChatType();
     
-    if chatType then
+    -- 如果在团队或小队中，且团队通知已启用，则发送团队/小队消息
+    if chatType and self.teamNotificationEnabled then
         if IsInRaid() then
-            if self.teamNotificationEnabled then
-                local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
-                local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
-                Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"));
-                pcall(function()
-                    SendChatMessage(message, raidChatType);
-                end);
-            else
-                Logger:DebugLimited("notification:team_disabled", "Notification", "通知", 
-                    string.format("团队通知已禁用，跳过发送：地图=%s", mapName));
-            end
+            local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
+            local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
+            Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"));
+            pcall(function()
+                SendChatMessage(message, raidChatType);
+            end);
         else
+            -- 小队中发送小队消息
             Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
             pcall(function()
                 SendChatMessage(message, chatType);
             end);
         end
-    else
-        Logger:Info("Notification", "通知", message);
+    elseif chatType and not self.teamNotificationEnabled then
+        -- 在团队/小队中但团队通知已禁用，只发送系统消息（已在上面发送）
+        Logger:Debug("Notification", "通知", string.format("团队通知已禁用，仅发送系统消息：地图=%s", mapName));
     end
 end
 
