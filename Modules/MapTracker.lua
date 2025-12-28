@@ -126,13 +126,17 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
     
     if changeInfo.configMapChanged and self.lastDetectedMapId then
         if DetectionState then
-            DetectionState:ClearProcessed(self.lastDetectedMapId);
-        end
-        if not self.mapLeftTime[self.lastDetectedMapId] then
-            self.mapLeftTime[self.lastDetectedMapId] = currentTime;
-            local oldMapData = Data:GetMap(self.lastDetectedMapId);
-            Logger:Debug("MapTracker", "地图", string.format("玩家离开地图：%s（配置ID=%d），清除处理状态，记录离开时间", 
-                oldMapData and Data:GetMapDisplayName(oldMapData) or tostring(self.lastDetectedMapId), self.lastDetectedMapId));
+            if DetectionState:IsProcessed(self.lastDetectedMapId) then
+                DetectionState:ClearProcessed(self.lastDetectedMapId);
+                if not self.mapLeftTime[self.lastDetectedMapId] then
+                    self.mapLeftTime[self.lastDetectedMapId] = currentTime;
+                    local oldMapData = Data:GetMap(self.lastDetectedMapId);
+                    Logger:Debug("MapTracker", "地图", string.format("玩家离开地图：%s（配置ID=%d），清除处理状态，记录离开时间", 
+                        oldMapData and Data:GetMapDisplayName(oldMapData) or tostring(self.lastDetectedMapId), self.lastDetectedMapId));
+                end
+            else
+                DetectionState:ClearProcessed(self.lastDetectedMapId);
+            end
         end
     end
     
