@@ -23,12 +23,13 @@ local function DT(key)
 end
 
 function MapTracker:Initialize()
-    self.mapLeftTime = self.mapLeftTime or {};
-    self.lastDetectedMapId = self.lastDetectedMapId or nil;
-    self.lastDetectedGameMapID = self.lastDetectedGameMapID or nil;
+    -- 完全重置所有状态
+    self.mapLeftTime = {};
+    self.lastDetectedMapId = nil;
+    self.lastDetectedGameMapID = nil;
     self.MAP_LEFT_CLEAR_TIME = 300;
-    self.lastMatchedMapID = self.lastMatchedMapID or nil;
-    self.lastUnmatchedMapID = self.lastUnmatchedMapID or nil;
+    self.lastMatchedMapID = nil;
+    self.lastUnmatchedMapID = nil;
 end
 
 function MapTracker:GetTargetMapData(currentMapID)

@@ -26,7 +26,42 @@ local function OnLogin()
         Localization:Initialize();
     end
     
+    -- 初始化数据模块（必须在重置状态之前）
     if Data then Data:Initialize() end
+    
+    -- 【修复】角色切换时重置所有内存中的检测状态
+    -- 这些状态不应该跨角色共享，必须在每次登录时清除
+    if DetectionState and DetectionState.ClearAllStates then
+        DetectionState:ClearAllStates();
+    end
+    
+    if MapTracker then
+        MapTracker:Initialize();
+        Logger:Debug("Core", "重置", "已重置地图追踪器状态");
+    end
+    
+    if NotificationCooldown and NotificationCooldown.ClearAll then
+        NotificationCooldown:ClearAll();
+    end
+    
+    if Phase and Phase.Reset then
+        Phase:Reset();
+    end
+    
+    -- 重置 Area 模块状态
+    if Area then
+        Area.lastAreaValidState = nil;
+        Area.detectionPaused = false;
+    end
+    
+    -- 重置核心模块的定时器状态
+    if CrateTrackerZK.phaseTimerTicker then
+        CrateTrackerZK.phaseTimerTicker:Cancel();
+        CrateTrackerZK.phaseTimerTicker = nil;
+    end
+    CrateTrackerZK.phaseTimerPaused = false;
+    CrateTrackerZK.phaseResumePending = false;
+    
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
     

@@ -175,6 +175,18 @@ function DetectionState:SetLastUpdateTime(mapId, timestamp)
     self.lastUpdateTime[mapId] = timestamp;
 end
 
+function DetectionState:ClearAllStates()
+    self:Initialize();
+    
+    -- 清除所有地图的检测状态
+    self.mapIconFirstDetectedTime = {};
+    self.mapIconDetected = {};
+    self.lastUpdateTime = {};
+    self.processedTime = {};
+    
+    Logger:Debug("DetectionState", "重置", "已清除所有地图的检测状态");
+end
+
 DetectionState:Initialize();
 
 return DetectionState;

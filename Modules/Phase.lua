@@ -9,6 +9,12 @@ local Phase = BuildEnv("Phase");
 Phase.anyInstanceIDAcquired = false;
 Phase.lastReportedInstanceID = nil;
 
+function Phase:Reset()
+    self.anyInstanceIDAcquired = false;
+    self.lastReportedInstanceID = nil;
+    Logger:Debug("Phase", "重置", "已重置位面检测状态");
+end
+
 local function DebugPrint(msg, ...)
     Logger:Debug("Phase", "调试", msg, ...);
 end

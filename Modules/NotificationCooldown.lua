@@ -18,6 +18,12 @@ function NotificationCooldown:Initialize()
     self.lastNotificationTime = self.lastNotificationTime or {};
 end
 
+function NotificationCooldown:ClearAll()
+    self:Initialize();
+    self.lastNotificationTime = {};
+    Logger:Debug("NotificationCooldown", "重置", "已清除所有通知冷却记录");
+end
+
 function NotificationCooldown:RecordNotification(mapId, timestamp)
     if not mapId or not timestamp then
         return;
