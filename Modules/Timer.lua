@@ -62,7 +62,8 @@ function TimerManager:StartTimer(mapId, source, timestamp)
     source = source or self.detectionSources.API_INTERFACE;
     timestamp = timestamp or getCurrentTimestamp();
     
-    SafeDebug("[Timer] StartTimer", "MapID=" .. mapId, "Map=" .. Data:GetMapDisplayName(mapData), "Source=" .. source, "Time=" .. timestamp);
+    Logger:Debug("Timer", "更新", string.format("StartTimer: MapID=%d, Map=%s, Source=%s, Time=%d", 
+        mapId, Data:GetMapDisplayName(mapData), source, timestamp));
     
     local isManualOperation = (source == self.detectionSources.REFRESH_BUTTON or source == self.detectionSources.MANUAL_INPUT);
     local success = false;
