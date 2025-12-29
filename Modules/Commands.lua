@@ -35,7 +35,7 @@ end
 
 function Commands:HandleDebugCommand(arg)
     if not Logger then
-        Logger:Error("Commands", "错误", L["CommandModuleNotLoaded"]);
+        Logger:Error("Commands", "错误", "Command module not loaded, please reload addon");
         return;
     end
     local enableDebug = (arg == "on");
@@ -83,24 +83,15 @@ function Commands:HandleClearCommand(arg)
     if TimerManager then
         TimerManager.isInitialized = false;
     end
-    if DetectionState and Data then
-        local maps = Data:GetAllMaps();
-        if maps then
-            for _, mapData in ipairs(maps) do
-                if mapData then
-                    DetectionState:ClearProcessed(mapData.id);
-                end
-            end
-        end
+    -- 清除所有检测状态（包括DETECTING、CONFIRMED、PROCESSED）
+    if DetectionState and DetectionState.ClearAllStates then
+        DetectionState:ClearAllStates();
     end
     if MapTracker then
-        MapTracker.mapLeftTime = {};
         MapTracker.lastDetectedMapId = nil;
         MapTracker.lastDetectedGameMapID = nil;
     end
-    if NotificationCooldown then
-        NotificationCooldown.lastNotificationTime = {};
-    end
+    -- 通知冷却期已移除，通知与空投检测绑定
     if Notification then
         Notification.isInitialized = false;
     end
@@ -112,13 +103,13 @@ function Commands:HandleClearCommand(arg)
         CrateTrackerZK:Reinitialize();
         Logger:Success("Commands", "命令", L["DataCleared"]);
     else
-        Logger:Error("Commands", "错误", L["DataClearFailedModule"]);
+        Logger:Error("Commands", "错误", "Clear data failed: Data module not loaded");
     end
 end
 
 function Commands:HandleTeamNotificationCommand(arg)
     if not Notification then
-        Logger:Error("Commands", "错误", L["NotificationModuleNotLoaded"]);
+        Logger:Error("Commands", "错误", "Notification module not loaded");
         return;
     end
     

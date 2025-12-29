@@ -53,6 +53,13 @@ localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
 localeData["Enabled"] = "Enabled";
 localeData["Disabled"] = "Disabled";
+localeData["DebugEnabled"] = "Debug mode enabled";
+localeData["DebugDisabled"] = "Debug mode disabled";
+
+-- Invalid Airdrop Alerts
+localeData["InvalidAirdropDetecting"] = "[Invalid Airdrop] Map=%s, airdrop event disappeared within %.1f seconds, judged as invalid event, detection state cleared";
+localeData["InvalidAirdropConfirmed"] = "[Invalid Airdrop] Map=%s, confirmed airdrop event disappeared after %.1f seconds, judged as invalid event, detection state and confirmation mark cleared";
+localeData["InvalidAirdropHandled"] = "[Invalid Airdrop Handling] Map=%s, confirmed airdrop event judged as invalid, notification and refresh time update cancelled";
 
 -- Commands
 localeData["UnknownCommand"] = "Unknown command: %s";
@@ -84,6 +91,7 @@ localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager module not loaded
 localeData["ErrorRefreshButtonNoMapID"] = "Refresh button: Unable to get map ID, please try again later";
 localeData["ErrorNotifyButtonNoMapID"] = "Notify button: Unable to get map ID";
 localeData["ErrorCannotGetMapData"] = "Unable to get map data, Map ID=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "Failed to update refresh time: Map ID=%s";
 localeData["AddonInitializedSuccess"] = "Addon initialized successfully, enjoy your game!";
 
 -- UI

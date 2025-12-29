@@ -40,9 +40,7 @@ local function OnLogin()
         Logger:Debug("Core", "重置", "已重置地图追踪器状态");
     end
     
-    if NotificationCooldown and NotificationCooldown.ClearAll then
-        NotificationCooldown:ClearAll();
-    end
+    -- 通知冷却期已移除，通知与空投检测绑定（由PROCESSED状态和2秒确认期防止重复）
     
     if Phase and Phase.Reset then
         Phase:Reset();
@@ -62,8 +60,14 @@ local function OnLogin()
     CrateTrackerZK.phaseTimerPaused = false;
     CrateTrackerZK.phaseResumePending = false;
     
+    -- 清理Logger缓存（防止跨角色缓存污染）
+    if Logger and Logger.ClearMessageCache then
+        Logger:ClearMessageCache();
+    end
+    
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
+    if TeamMessageReader then TeamMessageReader:Initialize() end
     
     if TimerManager then
         TimerManager:Initialize();
@@ -77,6 +81,25 @@ local function OnLogin()
     
     if Area then
         Area:CheckAndUpdateAreaValid();
+        -- 如果区域有效，确保位面检测定时器已启动
+        if Area.lastAreaValidState == true and not Area.detectionPaused then
+            if not CrateTrackerZK.phaseResumePending and not CrateTrackerZK.phaseTimerTicker then
+                CrateTrackerZK.phaseResumePending = true;
+                C_Timer.After(6, function()
+                    CrateTrackerZK.phaseResumePending = false;
+                    if CrateTrackerZK.phaseTimerTicker then
+                        CrateTrackerZK.phaseTimerTicker:Cancel();
+                    end
+                    CrateTrackerZK.phaseTimerTicker = C_Timer.NewTicker(10, function()
+                        if Phase and Area and not Area.detectionPaused then
+                            Phase:UpdatePhaseInfo();
+                        end
+                    end);
+                    CrateTrackerZK.phaseTimerPaused = false;
+                    Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
+                end);
+            end
+        end
     end
     
     DebugPrint("[核心] 初始化完成");
@@ -115,21 +138,32 @@ local function OnEvent(self, event, ...)
 end
 
 function CrateTrackerZK:PauseAllDetections()
+    Logger:Debug("Core", "状态", "暂停所有检测功能");
+    
     if self.phaseTimerTicker then
         self.phaseTimerTicker:Cancel();
         self.phaseTimerTicker = nil;
         self.phaseTimerPaused = true;
+        Logger:Debug("Core", "状态", "已停止位面检测定时器");
     end
     
-    if TimerManager then TimerManager:StopMapIconDetection() end
-    
+    if TimerManager then 
+        TimerManager:StopMapIconDetection();
+        Logger:Debug("Core", "状态", "已停止地图图标检测");
+    end
 end
 
 function CrateTrackerZK:ResumeAllDetections()
-    if TimerManager then TimerManager:StartMapIconDetection(1) end
+    Logger:Debug("Core", "状态", "恢复所有检测功能");
+    
+    if TimerManager then 
+        TimerManager:StartMapIconDetection(1);
+        Logger:Debug("Core", "状态", "已启动地图图标检测");
+    end
     
     if not self.phaseResumePending then
         self.phaseResumePending = true;
+        Logger:Debug("Core", "状态", "将在6秒后启动位面检测定时器");
         C_Timer.After(6, function()
             self.phaseResumePending = false;
             if self.phaseTimerTicker then
@@ -141,6 +175,7 @@ function CrateTrackerZK:ResumeAllDetections()
                 end
             end);
             self.phaseTimerPaused = false;
+            Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
         end)
     end
 end
@@ -149,7 +184,7 @@ local function HandleSlashCommand(msg)
     if Commands then
         Commands:HandleCommand(msg);
     else
-        Logger:Error("Core", "错误", L["CommandModuleNotLoaded"]);
+        Logger:Error("Core", "错误", "Command module not loaded, please reload addon");
     end
 end
 

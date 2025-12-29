@@ -48,11 +48,18 @@ localeData["AirdropCratesCount"] = "缺失空投箱子名称: %d";
 
 -- 通知
 localeData["TeamNotificationStatus"] = "团队通知%s";
-localeData["AirdropDetected"] = "【%s】 发现 战争物资 正在空投！！！";
+localeData["AirdropDetected"] = "【%s】 发现战争物资正在空投！！！";
 localeData["NoTimeRecord"] = "【%s】 暂无时间记录！！！";
 localeData["TimeRemaining"] = "【%s】 距离 战争物资 空投还有：%s！！！";
 localeData["Enabled"] = "已开启";
 localeData["Disabled"] = "已关闭";
+localeData["DebugEnabled"] = "已开启调试";
+localeData["DebugDisabled"] = "已关闭调试";
+
+-- 无效空投提示
+localeData["InvalidAirdropDetecting"] = "【无效空投】地图=%s，检测到空投事件%.1f秒内消失，判定为无效事件，已清除检测状态";
+localeData["InvalidAirdropConfirmed"] = "【无效空投】地图=%s，已确认空投事件持续%.1f秒后消失，判定为无效事件，已清除检测状态和确认标记";
+localeData["InvalidAirdropHandled"] = "【无效空投处理】地图=%s，已确认的空投事件被判定为无效事件，已取消通知和刷新时间更新";
 
 -- 命令
 localeData["UnknownCommand"] = "未知命令：%s";
@@ -84,6 +91,7 @@ localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager 模块未加载";
 localeData["ErrorRefreshButtonNoMapID"] = "刷新按钮：无法获取地图ID，请稍后重试";
 localeData["ErrorNotifyButtonNoMapID"] = "通知按钮：无法获取地图ID";
 localeData["ErrorCannotGetMapData"] = "无法获取地图数据，地图ID=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "刷新时间更新失败：地图ID=%s";
 localeData["AddonInitializedSuccess"] = "插件初始化成功，祝您游戏愉快！";
 
 -- UI

@@ -40,7 +40,6 @@ Logger.MODULE_PREFIXES = {
     ["IconDetector"] = "图标检测",
     ["MapTracker"] = "地图追踪",
     ["DetectionState"] = "检测状态",
-    ["NotificationCooldown"] = "通知冷却",
     
     -- UI模块
     ["MainPanel"] = "主面板",
@@ -121,22 +120,25 @@ function Logger:Initialize()
     self.isInitialized = true;
     self.debugEnabled = false;
     self.lastDebugMessage = {};
-    self.messageCounts = {};
     self.DEBUG_MESSAGE_INTERVAL = 30;
     
     self.RATE_LIMITS = {
-        ["detection_loop:start"] = 5,
+        ["detection_loop:start"] = 30,  -- 检测循环开始：30秒限流
         ["detection_loop:map_matched"] = 0,
-        ["detection_loop:map_not_in_list"] = 10,
+        ["detection_loop:map_not_in_list"] = 60,  -- 地图不在列表：60秒限流
         ["icon_detection:result"] = 0,
         ["map_check:match"] = 0,
+        ["map_check:match_success"] = 60,  -- 地图匹配成功：60秒限流（只在状态变化时输出）
+        ["map_check:parent_match"] = 60,  -- 父地图匹配：60秒限流
         ["state_change"] = 0,
-        ["state_processed"] = 0,
+        ["state_processed"] = 10,  -- 已处理状态（倒计时）：10秒限流
+        ["state_processed:skipped"] = 10,  -- 已处理状态跳过检测（倒计时）：10秒限流
         ["phase_update"] = 0,
+        ["phase:status"] = 60,  -- 位面状态：60秒限流
         ["area_change"] = 0,
         ["detection_loop"] = 30,
         ["icon_detection"] = 20,
-        ["map_check"] = 20,
+        ["map_check"] = 60,  -- 地图检查：60秒限流
         ["state_check"] = 30,
         ["ui_update"] = 300,
         ["data_save"] = 10,
@@ -223,6 +225,7 @@ function Logger:LogLimited(messageKey, level, module, func, ...)
         startArg = 2;
     end
     
+    -- 查找匹配的限流规则（支持部分匹配）
     for limitType, limitInterval in pairs(self.RATE_LIMITS) do
         if messageKey:find(limitType, 1, true) == 1 then
             rateLimit = limitInterval;
@@ -235,18 +238,11 @@ function Logger:LogLimited(messageKey, level, module, func, ...)
     local timeSinceLast = currentTime - lastTime;
     
     if timeSinceLast >= rateLimit then
+        -- 到达限流间隔：输出当前消息
         self.lastDebugMessage[messageKey] = currentTime;
-        
-        local count = self.messageCounts[messageKey] or 0;
-        if count > 0 then
-            local message = FormatMessage(select(startArg, ...));
-            self:Log(level, module, func, string.format("%s（已限流 %d 条消息）", message, count));
-            self.messageCounts[messageKey] = 0;
-        else
-            self:Log(level, module, func, select(startArg, ...));
-        end
+        self:Log(level, module, func, select(startArg, ...));
     else
-        self.messageCounts[messageKey] = (self.messageCounts[messageKey] or 0) + 1;
+        -- 未到限流间隔：直接丢弃消息，不输出，不统计
     end
 end
 
@@ -286,7 +282,6 @@ end
 function Logger:ClearMessageCache()
     self:Initialize();
     self.lastDebugMessage = {};
-    self.messageCounts = {};
 end
 
 Logger:Initialize();

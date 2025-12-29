@@ -48,11 +48,18 @@ localeData["AirdropCratesCount"] = "缺失空投箱子名稱: %d";
 
 -- 通知
 localeData["TeamNotificationStatus"] = "團隊通知%s";
-localeData["AirdropDetected"] = "【%s】 發現 戰爭補給 正在空投！！！";
+localeData["AirdropDetected"] = "【%s】 發現戰爭補給正在空投！！！";
 localeData["NoTimeRecord"] = "【%s】 暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】 距離 戰爭補給 空投還有：%s！！！";
 localeData["Enabled"] = "已開啟";
 localeData["Disabled"] = "已關閉";
+localeData["DebugEnabled"] = "已開啟調試";
+localeData["DebugDisabled"] = "已關閉調試";
+
+-- 無效空投提示
+localeData["InvalidAirdropDetecting"] = "【無效空投】地圖=%s，檢測到空投事件%.1f秒內消失，判定為無效事件，已清除檢測狀態";
+localeData["InvalidAirdropConfirmed"] = "【無效空投】地圖=%s，已確認空投事件持續%.1f秒後消失，判定為無效事件，已清除檢測狀態和確認標記";
+localeData["InvalidAirdropHandled"] = "【無效空投處理】地圖=%s，已確認的空投事件被判定為無效事件，已取消通知和刷新時間更新";
 
 -- 命令
 localeData["UnknownCommand"] = "未知命令：%s";
@@ -84,6 +91,7 @@ localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager 模組未載入";
 localeData["ErrorRefreshButtonNoMapID"] = "刷新按鈕：無法獲取地圖ID，請稍後重試";
 localeData["ErrorNotifyButtonNoMapID"] = "通知按鈕：無法獲取地圖ID";
 localeData["ErrorCannotGetMapData"] = "無法獲取地圖資料，地圖ID=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "刷新時間更新失敗：地圖ID=%s";
 localeData["AddonInitializedSuccess"] = "插件已初始化成功，祝您遊戲愉快！";
 
 -- UI

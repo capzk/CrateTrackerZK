@@ -32,7 +32,7 @@ function Data:Initialize()
 
     local mapConfig = self.MAP_CONFIG and self.MAP_CONFIG.current_maps or {};
     if not mapConfig or #mapConfig == 0 then
-        Logger:Error("Data", "错误", L["ErrorMapConfigEmpty"]);
+        Logger:Error("Data", "错误", "MAP_CONFIG.current_maps is empty or nil");
         return;
     end
 
@@ -298,13 +298,10 @@ function Data:ClearAllData()
         end
     end
     if MapTracker then
-        MapTracker.mapLeftTime = {};
         MapTracker.lastDetectedMapId = nil;
         MapTracker.lastDetectedGameMapID = nil;
     end
-    if NotificationCooldown then
-        NotificationCooldown.lastNotificationTime = {};
-    end
+    -- 通知冷却期已移除，通知与空投检测绑定
     
     if MainPanel and MainPanel.UpdateTable then
         MainPanel:UpdateTable();

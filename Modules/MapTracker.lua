@@ -24,10 +24,8 @@ end
 
 function MapTracker:Initialize()
     -- 完全重置所有状态
-    self.mapLeftTime = {};
     self.lastDetectedMapId = nil;
     self.lastDetectedGameMapID = nil;
-    self.MAP_LEFT_CLEAR_TIME = 300;
     self.lastMatchedMapID = nil;
     self.lastUnmatchedMapID = nil;
 end
@@ -61,7 +59,8 @@ function MapTracker:GetTargetMapData(currentMapID)
             targetMapData = mapData;
             if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
                 local mapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
-                Logger:Debug("MapTracker", "地图", string.format("地图匹配成功：%s（地图ID=%d，配置ID=%d）", 
+                Logger:DebugLimited("map_check:match_success_" .. tostring(currentMapID), "MapTracker", "地图", 
+                    string.format("地图匹配成功：%s（地图ID=%d，配置ID=%d）", 
                     mapDisplayName, currentMapID, mapData.id));
                 self.lastMatchedMapID = currentMapID;
             end
@@ -76,7 +75,8 @@ function MapTracker:GetTargetMapData(currentMapID)
                 if not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID then
                     local currentMapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
                     local parentMapDisplayName = Localization and Localization:GetMapName(mapInfo.parentMapID) or tostring(mapInfo.parentMapID);
-                    Logger:Debug("MapTracker", "地图", string.format("父地图匹配成功：当前地图=%s（ID=%d），父地图=%s（ID=%d，配置ID=%d）", 
+                    Logger:DebugLimited("map_check:parent_match_" .. tostring(currentMapID), "MapTracker", "地图", 
+                        string.format("父地图匹配成功：当前地图=%s（ID=%d），父地图=%s（ID=%d，配置ID=%d）", 
                         currentMapDisplayName, currentMapID, parentMapDisplayName, mapInfo.parentMapID, mapData.id));
                     self.lastMatchedMapID = currentMapID;
                 end
@@ -125,27 +125,7 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
             oldMapName, self.lastDetectedMapId or 0, newMapName, targetMapData.id));
     end
     
-    if changeInfo.configMapChanged and self.lastDetectedMapId then
-        if DetectionState then
-            if DetectionState:IsProcessed(self.lastDetectedMapId) then
-                DetectionState:ClearProcessed(self.lastDetectedMapId);
-                if not self.mapLeftTime[self.lastDetectedMapId] then
-                    self.mapLeftTime[self.lastDetectedMapId] = currentTime;
-                    local oldMapData = Data:GetMap(self.lastDetectedMapId);
-                    Logger:Debug("MapTracker", "地图", string.format("玩家离开地图：%s（配置ID=%d），清除处理状态，记录离开时间", 
-                        oldMapData and Data:GetMapDisplayName(oldMapData) or tostring(self.lastDetectedMapId), self.lastDetectedMapId));
-                end
-            else
-                DetectionState:ClearProcessed(self.lastDetectedMapId);
-            end
-        end
-    end
-    
-    if self.mapLeftTime[targetMapData.id] then
-        self.mapLeftTime[targetMapData.id] = nil;
-        Logger:Debug("MapTracker", "地图", string.format("玩家回到地图：%s（配置ID=%d），清除离开时间", 
-            Data:GetMapDisplayName(targetMapData), targetMapData.id));
-    end
+    -- 简化：不再在地图切换时清除状态，状态清除由OnLogin()和PROCESSED超时处理
     
     self.lastDetectedMapId = targetMapData.id;
     self.lastDetectedGameMapID = currentMapID;
@@ -153,35 +133,8 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
     return changeInfo;
 end
 
-function MapTracker:CheckAndClearLeftMaps(currentTime)
-    if not self.mapLeftTime or not currentTime then
-        return;
-    end
-    
-    local mapsToClear = {};
-    
-    for mapId, leftTime in pairs(self.mapLeftTime) do
-        local timeSinceLeft = currentTime - leftTime;
-        if timeSinceLeft >= self.MAP_LEFT_CLEAR_TIME then
-            table.insert(mapsToClear, mapId);
-        end
-    end
-    
-    for _, mapId in ipairs(mapsToClear) do
-        local mapData = Data:GetMap(mapId);
-        if mapData then
-            local mapDisplayName = Data:GetMapDisplayName(mapData);
-            Logger:Debug("MapTracker", "地图", string.format("自动清除离开地图的状态：%s（离开 %d 秒）", 
-                mapDisplayName, currentTime - self.mapLeftTime[mapId]));
-        end
-        
-        if DetectionState and DetectionState.ClearProcessed then
-            DetectionState:ClearProcessed(mapId);
-        end
-        
-        self.mapLeftTime[mapId] = nil;
-    end
-end
+-- 简化：移除离开地图超时清除功能
+-- 状态清除由OnLogin()和PROCESSED超时处理
 
 MapTracker:Initialize();
 

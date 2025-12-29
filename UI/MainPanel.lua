@@ -181,7 +181,7 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
         else
             -- 如果 mapDataRef 无效，尝试从当前显示的数据获取
             -- 这种情况应该很少发生，但作为安全措施
-            Logger:Error("MainPanel", "错误", L["ErrorRefreshButtonNoMapID"]);
+            Logger:Error("MainPanel", "错误", "Refresh button: Unable to get map ID, please try again later");
         end
     end);
     
@@ -189,7 +189,7 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
         -- 按钮点击防抖：防止快速连续点击
         local mapId = row.mapDataRef and row.mapDataRef.mapId;
         if not mapId then
-            Logger:Error("MainPanel", "错误", L["ErrorNotifyButtonNoMapID"]);
+            Logger:Error("MainPanel", "错误", "Notify button: Unable to get map ID");
             return;
         end
         
@@ -213,10 +213,10 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
             if mapData then
                 MainPanel:NotifyMapRefresh(mapData);
             else
-                Logger:Error("MainPanel", "错误", string.format(L["ErrorCannotGetMapData"], tostring(mapId)));
+                Logger:Error("MainPanel", "错误", string.format("Unable to get map data, Map ID=%s", tostring(mapId)));
             end
         else
-            Logger:Error("MainPanel", "错误", L["DataModuleNotLoaded"]);
+            Logger:Error("MainPanel", "错误", "Data module not loaded");
         end
     end);
     
@@ -403,24 +403,32 @@ local function PrepareTableData()
     local maps = Data:GetAllMaps();
     if not maps then return {} end
     
+    local currentTime = time();
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
             -- 检查并更新已过期的刷新时间（倒计时结束后自动计算下一个刷新时间）
-            if mapData.nextRefresh and mapData.lastRefresh then
-                local currentTime = time();
-                if mapData.nextRefresh <= currentTime then
-                    -- 倒计时已结束，更新到下一个刷新时间
-                    Data:UpdateNextRefresh(mapData.id, mapData);
-                end
+            -- 优化：只在真正过期时才更新，避免频繁调用
+            if mapData.nextRefresh and mapData.lastRefresh and mapData.nextRefresh <= currentTime then
+                Data:UpdateNextRefresh(mapData.id, mapData);
             end
             
-            local mapDataCopy = {};
-            for k, v in pairs(mapData) do
-                mapDataCopy[k] = v;
-            end
-            mapDataCopy.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
-            mapDataCopy._original = mapData;
+            -- 优化：直接计算剩余时间，避免不必要的复制
+            local remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
+            
+            -- 只复制需要的数据字段，减少内存占用
+            local mapDataCopy = {
+                id = mapData.id,
+                mapID = mapData.mapID,
+                interval = mapData.interval,
+                instance = mapData.instance,
+                lastInstance = mapData.lastInstance,
+                lastRefreshInstance = mapData.lastRefreshInstance,
+                lastRefresh = mapData.lastRefresh,
+                nextRefresh = mapData.nextRefresh,
+                remaining = remaining,
+                _original = mapData
+            };
             table.insert(mapArray, mapDataCopy);
         end
     end
@@ -516,7 +524,7 @@ end
 
 function MainPanel:RefreshMap(mapId)
     if not mapId then
-        Logger:Error("MainPanel", "错误", L["ErrorInvalidMapID"] .. " " .. tostring(mapId));
+        Logger:Error("MainPanel", "错误", "Invalid map ID: " .. tostring(mapId));
         return false;
     end
     
@@ -538,7 +546,7 @@ function MainPanel:RefreshMap(mapId)
     -- 立即更新UI显示
     self:UpdateTable();
     
-    -- 异步处理数据保存和完整更新（确保日志记录等）
+    -- 异步处理数据保存（刷新按钮已经更新了内存数据和UI，StartTimer只需要保存数据）
     C_Timer.After(0, function()
         if TimerManager then
             TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON, currentTimestamp);
@@ -581,21 +589,21 @@ function MainPanel:ProcessInput(mapId, input)
     
     -- UI只负责调用统一的接口，不直接处理数据
     if not TimerManager then
-        Logger:Error("MainPanel", "错误", L["ErrorTimerManagerModuleNotLoaded"]);
+        Logger:Error("MainPanel", "错误", "TimerManager module not loaded");
         return false;
     end
     
     -- 解析时间输入（这是UI输入验证，不是数据处理）
     local hh, mm, ss = Utils.ParseTimeInput(input);
     if not hh then 
-        Logger:Error("MainPanel", "错误", L["TimeFormatError"]); 
+        Logger:Error("MainPanel", "错误", "Time format error, please enter HH:MM:SS or HHMMSS format"); 
         return false;
     end
     
     -- 转换为时间戳（这是UI输入转换，不是数据处理）
     local ts = Utils.GetTimestampFromTime(hh, mm, ss);
     if not ts then 
-        Logger:Error("MainPanel", "错误", L["TimestampError"]); 
+        Logger:Error("MainPanel", "错误", "Unable to create valid timestamp"); 
         return false;
     end
     
@@ -616,7 +624,7 @@ function MainPanel:NotifyMapRefresh(mapData)
     if Notification then 
         Notification:NotifyMapRefresh(mapData)
     else 
-        Logger:Error("MainPanel", "错误", L["NotificationModuleNotLoaded"])
+        Logger:Error("MainPanel", "错误", "Notification module not loaded")
     end
 end
 

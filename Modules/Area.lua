@@ -25,6 +25,7 @@ function Area:PauseAllDetections()
         return;
     end
     self.detectionPaused = true;
+    Logger:Debug("Area", "状态", "区域无效，暂停所有检测");
     if CrateTrackerZK.PauseAllDetections then
         CrateTrackerZK:PauseAllDetections();
     end
@@ -35,6 +36,7 @@ function Area:ResumeAllDetections()
         return;
     end
     self.detectionPaused = false;
+    Logger:Debug("Area", "状态", "区域有效，恢复所有检测");
     if CrateTrackerZK.ResumeAllDetections then
         CrateTrackerZK:ResumeAllDetections();
     end

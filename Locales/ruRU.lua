@@ -54,6 +54,13 @@ localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
+localeData["DebugEnabled"] = "Режим отладки включен";
+localeData["DebugDisabled"] = "Режим отладки выключен";
+
+-- Invalid Airdrop Alerts
+localeData["InvalidAirdropDetecting"] = "[Недействительный воздушный десант] Карта=%s, событие воздушного десанта исчезло в течение %.1f секунд, признано недействительным, состояние обнаружения очищено";
+localeData["InvalidAirdropConfirmed"] = "[Недействительный воздушный десант] Карта=%s, подтвержденное событие воздушного десанта исчезло через %.1f секунд, признано недействительным, состояние обнаружения и метка подтверждения очищены";
+localeData["InvalidAirdropHandled"] = "[Обработка недействительного воздушного десанта] Карта=%s, подтвержденное событие воздушного десанта признано недействительным, уведомление и обновление времени обновления отменены";
 
 -- Commands
 localeData["UnknownCommand"] = "Неизвестная команда: %s";
@@ -85,6 +92,7 @@ localeData["ErrorTimerManagerModuleNotLoaded"] = "Модуль TimerManager не
 localeData["ErrorRefreshButtonNoMapID"] = "Кнопка обновления: Не удалось получить ID карты, попробуйте позже";
 localeData["ErrorNotifyButtonNoMapID"] = "Кнопка уведомления: Не удалось получить ID карты";
 localeData["ErrorCannotGetMapData"] = "Не удалось получить данные карты, ID карты=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "Не удалось обновить время обновления: ID карты=%s";
 localeData["AddonInitializedSuccess"] = "Аддон успешно инициализирован, приятной игры!";
 
 -- UI

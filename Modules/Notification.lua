@@ -51,6 +51,7 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         return 
     end
     
+    -- 自动检测的消息保持原格式（不带前缀，用于TeamMessageReader识别）
     local message = string.format(L["AirdropDetected"], mapName);
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
@@ -60,7 +61,10 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local chatType = self:GetTeamChatType();
     
-    -- 如果在团队或小队中，且团队通知已启用，则发送团队/小队消息
+    Logger:Debug("Notification", "调试", string.format("团队通知检查：chatType=%s, teamNotificationEnabled=%s, IsInRaid=%s, IsInGroup=%s", 
+        tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
+    
+    -- 如果在团队或小队中，且团队通知已启用，则发送团队/小队消息（原格式，不带前缀）
     if chatType and self.teamNotificationEnabled then
         if IsInRaid() then
             local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
@@ -70,7 +74,7 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
                 SendChatMessage(message, raidChatType);
             end);
         else
-            -- 小队中发送小队消息
+            -- 小队中发送小队消息（原格式，不带前缀）
             Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
             pcall(function()
                 SendChatMessage(message, chatType);
@@ -106,22 +110,29 @@ function Notification:NotifyMapRefresh(mapData)
     end
     
     local message;
+    local systemMessage;  -- 用于不在队伍中时发送到聊天框
     local displayName = Data:GetMapDisplayName(mapData);
+    local remaining = nil;
+    
     if isAirdropActive then
-        message = string.format(L["AirdropDetected"], displayName);
+        -- 手动通知使用"通知："前缀，TeamMessageReader不会识别
+        message = string.format("通知：%s", string.format(L["AirdropDetected"], displayName));
+        systemMessage = string.format(L["AirdropDetected"], displayName);
     else
-        local remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
+        remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
         if not remaining then
-            message = string.format(L["NoTimeRecord"], displayName);
+            message = string.format("通知：%s", string.format(L["NoTimeRecord"], displayName));
+            systemMessage = string.format(L["NoTimeRecord"], displayName);
         else
-            message = string.format(L["TimeRemaining"], displayName, Data:FormatTime(remaining, true));
+            message = string.format("通知：%s", string.format(L["TimeRemaining"], displayName, Data:FormatTime(remaining, true)));
+            systemMessage = string.format(L["TimeRemaining"], displayName, Data:FormatTime(remaining, true));
         end
     end
     
     local chatType = self:GetTeamChatType();
     
     if chatType then
-        Logger:Debug("Notification", "通知", string.format("发送小队/团队通知：类型=%s", chatType));
+        Logger:Debug("Notification", "通知", string.format("发送小队/团队通知（手动）：类型=%s", chatType));
         local success, err = pcall(function()
             SendChatMessage(message, chatType);
         end);
@@ -129,7 +140,8 @@ function Notification:NotifyMapRefresh(mapData)
             Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
         end
     else
-        Logger:Info("Notification", "通知", message);
+        -- 不在队伍中，发送到聊天框（不带前缀）
+        Logger:Info("Notification", "通知", systemMessage);
     end
 end
 

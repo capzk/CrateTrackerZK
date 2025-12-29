@@ -8,6 +8,7 @@
 
 - **[功能概述](FUNCTIONALITY_OVERVIEW.md)** - 插件功能快速概览（简洁版）
 - **[功能与运行逻辑](FUNCTIONALITY_AND_LOGIC.md)** - 完整的功能详解和运行逻辑（详细版）⭐
+- **[消息格式区分](MESSAGE_FORMAT_DISTINCTION.md)** - 自动检测消息和手动通知消息的格式区分功能
 - **[空投检测宏](AIRDROP_DETECTION_MACRO.md)** - 手动检测空投的宏命令使用方法
 
 ### 🔧 技术文档

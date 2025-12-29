@@ -43,10 +43,9 @@ local function BuildAboutText()
     local version = GetAddonVersion();
     return string.format([[
 Version: %s
+Author: capzk
 Project: https://github.com/capzk/CrateTrackerZK
 License: MIT license
-Author: capzk
-Contact: capzk@outlook.com
 ]], version);
 end
 
