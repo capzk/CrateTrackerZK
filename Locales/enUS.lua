@@ -48,7 +48,8 @@ localeData["AirdropCratesCount"] = "Missing airdrop crate names: %d";
 
 -- Notifications
 localeData["TeamNotificationStatus"] = "Team notification %s";
-localeData["AirdropDetected"] = "[%s] War Supplies airdrop detected!!!";
+localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Auto detection message (with "Detected" keyword)
+localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
 localeData["Enabled"] = "Enabled";

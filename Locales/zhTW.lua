@@ -48,7 +48,8 @@ localeData["AirdropCratesCount"] = "缺失空投箱子名稱: %d";
 
 -- 通知
 localeData["TeamNotificationStatus"] = "團隊通知%s";
-localeData["AirdropDetected"] = "【%s】 發現戰爭補給正在空投！！！";
+localeData["AirdropDetected"] = "【%s】 檢測到戰爭補給正在空投！！！";  -- 自動檢測消息（帶"檢測到"關鍵字）
+localeData["AirdropDetectedManual"] = "【%s】 戰爭補給正在空投！！！";  -- 手動通知消息（不帶"檢測到"關鍵字）
 localeData["NoTimeRecord"] = "【%s】 暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】 距離 戰爭補給 空投還有：%s！！！";
 localeData["Enabled"] = "已開啟";

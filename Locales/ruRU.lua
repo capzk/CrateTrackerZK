@@ -49,7 +49,8 @@ localeData["AirdropCratesCount"] = "Отсутствующие названия 
 
 -- Notifications
 localeData["TeamNotificationStatus"] = "Уведомления в группу %s";
-localeData["AirdropDetected"] = "[%s] Обнаружен воздушный десант военных припасов!!!";
+localeData["AirdropDetected"] = "[%s] Обнаружен воздушный десант военных припасов!!!";  -- Автоматическое сообщение (с ключевым словом "Обнаружен")
+localeData["AirdropDetectedManual"] = "[%s] Воздушный десант военных припасов!!!";  -- Ручное уведомление (без ключевого слова "Обнаружен")
 localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
 localeData["Enabled"] = "включены";
