@@ -29,9 +29,11 @@ function Phase:GetLayerFromNPC()
     end
     
     if guid then
-        local unitType, _, serverID, _, layerUID = strsplit("-", guid);
-        if (unitType == "Creature" or unitType == "Vehicle") and serverID and layerUID then
-            return serverID .. "-" .. layerUID;
+        -- GUID格式: Creature-0-[分片ID]-[实例ID]-[zoneUID]-[NPC ID]-[spawnUID]
+        -- 位面ID = 分片ID-实例ID (第3部分-第4部分)
+        local unitType, _, shardID, instanceID = strsplit("-", guid);
+        if (unitType == "Creature" or unitType == "Vehicle") and shardID and instanceID then
+            return shardID .. "-" .. instanceID;
         end
     end
     return nil;

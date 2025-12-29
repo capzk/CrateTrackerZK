@@ -159,8 +159,8 @@ n 的计算逻辑：
    guid = UnitGUID("mouseover") 或 UnitGUID("target")
 
 2. 解析GUID获取位面信息
-   GUID格式: "Creature-服务器ID-实例ID-..."
-   位面ID = 服务器ID + "-" + 实例ID
+   GUID格式: "Creature-0-[分片ID]-[实例ID]-[zoneUID]-[NPC ID]-[spawnUID]"
+   位面ID = 分片ID + "-" + 实例ID (第3部分-第4部分)
 
 3. 更新地图数据
    - 如果位面ID变化，更新并提示
@@ -249,9 +249,9 @@ PLAYER_TARGET_CHANGED:
 {
   mapData = {
     [mapID] = {
-      instance = "服务器ID-实例ID",  -- 当前位面
-      lastInstance = "服务器ID-实例ID",  -- 上次位面
-      lastRefreshInstance = "服务器ID-实例ID",  -- 上次刷新时的位面
+      instance = "分片ID-实例ID",  -- 当前位面 (格式: 第3部分-第4部分)
+      lastInstance = "分片ID-实例ID",  -- 上次位面
+      lastRefreshInstance = "分片ID-实例ID",  -- 上次刷新时的位面
       lastRefresh = timestamp,  -- 上次刷新时间戳
       createTime = timestamp  -- 创建时间
     }

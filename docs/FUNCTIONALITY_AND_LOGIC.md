@@ -112,8 +112,8 @@ nextRefresh = lastRefresh + n * interval
 位面信息通过解析NPC的GUID获取：
 
 ```
-GUID格式: "Creature-服务器ID-实例ID-其他信息"
-位面ID = 服务器ID + "-" + 实例ID
+GUID格式: "Creature-0-[分片ID]-[实例ID]-[zoneUID]-[NPC ID]-[spawnUID]"
+位面ID = 分片ID + "-" + 实例ID (第3部分-第4部分)
 ```
 
 #### 检测触发时机
@@ -420,7 +420,7 @@ Area.lastAreaValidState:
     id = 1,                    -- 内部ID（从1开始）
     mapID = 2248,             -- 游戏地图ID
     interval = 1100,          -- 刷新间隔（秒）
-    instance = "123-456",     -- 当前位面ID
+    instance = "123-456",     -- 当前位面ID (格式: 分片ID-实例ID, 第3部分-第4部分)
     lastInstance = "123-456", -- 上次位面ID
     lastRefreshInstance = "123-456", -- 上次刷新时的位面ID
     lastRefresh = timestamp,  -- 上次刷新时间戳

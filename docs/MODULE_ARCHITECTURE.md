@@ -62,7 +62,7 @@ Data.maps = {
     id = 1,                    -- 内部ID
     mapID = 2248,             -- 游戏地图ID
     interval = 1100,          -- 刷新间隔（秒）
-    instance = "123-456",     -- 当前位面
+    instance = "123-456",     -- 当前位面 (格式: 分片ID-实例ID, 第3部分-第4部分)
     lastInstance = "123-456", -- 上次位面
     lastRefreshInstance = "123-456", -- 上次刷新时的位面
     lastRefresh = timestamp,  -- 上次刷新时间戳
@@ -226,8 +226,8 @@ MAP_CONFIG = {
 
 **检测方法**:
 - 从NPC的GUID中提取位面信息
-- GUID格式: `Creature-服务器ID-实例ID-...`
-- 位面ID = `服务器ID-实例ID`
+- GUID格式: `Creature-0-[分片ID]-[实例ID]-[zoneUID]-[NPC ID]-[spawnUID]`
+- 位面ID = `分片ID-实例ID` (第3部分-第4部分)
 
 **主要函数**:
 - `GetLayerFromNPC()`: 从NPC获取位面ID
