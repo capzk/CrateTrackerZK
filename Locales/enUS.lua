@@ -52,6 +52,7 @@ localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Aut
 localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
+localeData["TeamMessageUpdated"] = "Successfully obtained the latest airdrop time for [%s] from team members: %s";  -- Team message update notification
 localeData["Enabled"] = "Enabled";
 localeData["Disabled"] = "Disabled";
 localeData["DebugEnabled"] = "Debug mode enabled";

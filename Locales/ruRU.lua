@@ -53,6 +53,7 @@ localeData["AirdropDetected"] = "[%s] Обнаружен воздушный де
 localeData["AirdropDetectedManual"] = "[%s] Воздушный десант военных припасов!!!";  -- Ручное уведомление (без ключевого слова "Обнаружен")
 localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
+localeData["TeamMessageUpdated"] = "Успешно получено время последнего воздушного десанта для [%s] от участников группы: %s";  -- Уведомление об обновлении сообщения группы
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
 localeData["DebugEnabled"] = "Режим отладки включен";

@@ -52,6 +52,7 @@ localeData["AirdropDetected"] = "【%s】 檢測到戰爭補給正在空投！�
 localeData["AirdropDetectedManual"] = "【%s】 戰爭補給正在空投！！！";  -- 手動通知消息（不帶"檢測到"關鍵字）
 localeData["NoTimeRecord"] = "【%s】 暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】 距離 戰爭補給 空投還有：%s！！！";
+localeData["TeamMessageUpdated"] = "已成功通過團隊用戶獲取到【%s】最新空投時間：%s";  -- 團隊消息更新提示
 localeData["Enabled"] = "已開啟";
 localeData["Disabled"] = "已關閉";
 localeData["DebugEnabled"] = "已開啟調試";

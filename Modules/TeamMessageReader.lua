@@ -371,8 +371,14 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
         end
         
         if Logger and Logger.Info then
-            Logger:Info("TeamMessageReader", "更新", string.format("已根据团队消息更新刷新时间：地图=%s，时间=%s", 
-                mapName, Data:FormatDateTime(refreshTime)));
+            local currentL = CrateTrackerZK and CrateTrackerZK.L;
+            if currentL and currentL.TeamMessageUpdated then
+                Logger:Info("TeamMessageReader", "更新", string.format(currentL.TeamMessageUpdated, 
+                    mapName, Data:FormatDateTime(refreshTime)));
+            else
+                Logger:Info("TeamMessageReader", "更新", string.format("已成功通过团队用户获取到【%s】最新空投时间：%s", 
+                    mapName, Data:FormatDateTime(refreshTime)));
+            end
         end
     else
         -- 不需要更新，但返回true表示消息已处理
