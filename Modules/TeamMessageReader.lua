@@ -304,22 +304,82 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
     -- 记录收到团队消息的时间（用于防止之后进入地图时重复通知）
     TeamMessageReader.lastTeamMessageTime[mapId] = currentTime;
     
-    -- 更新刷新时间（使用当前时间作为刷新时间）
+    -- 检查是否应该更新刷新时间（防止短时间内多次更新）
     if not Data or not Data.SetLastRefresh then
         return false;
     end
     
-    local success = Data:SetLastRefresh(mapId, currentTime);
-    if not success then
-        if Logger and Logger.Error then
-            Logger:Error("TeamMessageReader", "错误", string.format("更新刷新时间失败：地图=%s", mapName));
+    -- 获取当前地图数据，检查是否已有刷新时间记录
+    local mapData = Data:GetMap(mapId);
+    local oldTime = mapData and mapData.lastRefresh;
+    local refreshTime = currentTime;
+    local shouldUpdate = true;
+    
+    if oldTime then
+        -- 已有旧记录，检查时间差异
+        local timeDiff = math.abs(currentTime - oldTime);
+        
+        -- 如果时间差异在30秒内，说明是同一个空投的多次报告
+        if timeDiff <= TeamMessageReader.MESSAGE_COOLDOWN then
+            -- 使用更早的时间（空投实际开始的时间）
+            if currentTime < oldTime then
+                -- 新时间更早，使用新时间
+                refreshTime = currentTime;
+                if Logger and Logger.Debug then
+                    Logger:Debug("TeamMessageReader", "更新", string.format("使用更早的时间：地图=%s，旧时间=%s，新时间=%s，使用时间=%s", 
+                        mapName,
+                        Data:FormatDateTime(oldTime),
+                        Data:FormatDateTime(currentTime),
+                        Data:FormatDateTime(refreshTime)));
+                end
+            else
+                -- 新时间不更早，保持旧时间（不更新）
+                shouldUpdate = false;
+                if Logger and Logger.Debug then
+                    Logger:Debug("TeamMessageReader", "更新", string.format("跳过重复更新：地图=%s，旧时间=%s，新时间=%s（时间差异在冷却期内，且新时间不更早）", 
+                        mapName, 
+                        Data:FormatDateTime(oldTime),
+                        Data:FormatDateTime(currentTime)));
+                end
+            end
+        else
+            -- 时间差异超过30秒，说明是新的空投，允许更新
+            if Logger and Logger.Debug then
+                Logger:Debug("TeamMessageReader", "更新", string.format("时间差异超过冷却期，视为新空投：地图=%s，旧时间=%s，新时间=%s，差异=%d秒", 
+                    mapName,
+                    Data:FormatDateTime(oldTime),
+                    Data:FormatDateTime(currentTime),
+                    timeDiff));
+            end
         end
-        return false;
+    else
+        -- 没有旧记录，允许更新（首次检测）
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamMessageReader", "更新", string.format("首次更新刷新时间：地图=%s，时间=%s", 
+                mapName, Data:FormatDateTime(currentTime)));
+        end
     end
     
-    if Logger and Logger.Info then
-        Logger:Info("TeamMessageReader", "更新", string.format("已根据团队消息更新刷新时间：地图=%s，时间=%s", 
-            mapName, Data:FormatDateTime(currentTime)));
+    -- 如果需要更新，执行更新
+    if shouldUpdate then
+        local success = Data:SetLastRefresh(mapId, refreshTime);
+        if not success then
+            if Logger and Logger.Error then
+                Logger:Error("TeamMessageReader", "错误", string.format("更新刷新时间失败：地图=%s", mapName));
+            end
+            return false;
+        end
+        
+        if Logger and Logger.Info then
+            Logger:Info("TeamMessageReader", "更新", string.format("已根据团队消息更新刷新时间：地图=%s，时间=%s", 
+                mapName, Data:FormatDateTime(refreshTime)));
+        end
+    else
+        -- 不需要更新，但返回true表示消息已处理
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamMessageReader", "更新", string.format("消息已处理但跳过更新：地图=%s（已使用更早的时间）", mapName));
+        end
+        return true;  -- 跳过更新，但返回true表示消息已处理
     end
     
     -- 更新UI
