@@ -51,7 +51,6 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         return 
     end
     
-    -- 自动检测的消息使用 AirdropDetected（带"检测到"关键字，用于TeamMessageReader识别）
     local message = string.format(L["AirdropDetected"], mapName);
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
@@ -61,7 +60,6 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     Logger:Debug("Notification", "调试", string.format("团队通知检查：chatType=%s, teamNotificationEnabled=%s, IsInRaid=%s, IsInGroup=%s", 
         tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
     
-    -- 如果在团队或小队中，且团队通知已启用，则发送团队/小队消息（不发送系统消息，避免重复）
     if chatType and self.teamNotificationEnabled then
         if IsInRaid() then
             local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
@@ -70,17 +68,13 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
             pcall(function()
                 SendChatMessage(message, raidChatType);
             end);
-            -- 已发送团队消息，不再发送系统消息（避免重复显示）
         else
-            -- 小队中发送小队消息（原格式，不带前缀）
             Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
             pcall(function()
                 SendChatMessage(message, chatType);
             end);
-            -- 已发送小队消息，不再发送系统消息（避免重复显示）
         end
     else
-        -- 不在队伍中，或团队通知已禁用，发送系统消息到聊天框
         Logger:Info("Notification", "通知", message);
         if chatType and not self.teamNotificationEnabled then
             Logger:Debug("Notification", "通知", string.format("团队通知已禁用，仅发送系统消息：地图=%s", mapName));
@@ -112,14 +106,11 @@ function Notification:NotifyMapRefresh(mapData)
     end
     
     local message;
-    local systemMessage;  -- 用于不在队伍中时发送到聊天框
+    local systemMessage;
     local displayName = Data:GetMapDisplayName(mapData);
     local remaining = nil;
     
     if isAirdropActive then
-        -- 手动通知使用 AirdropDetectedManual（不带"检测到"关键字，与自动消息区分）
-        -- 自动消息：【%s】 检测到战争物资正在空投！！！
-        -- 手动消息：【%s】 战争物资正在空投！！！
         message = string.format(L["AirdropDetectedManual"], displayName);
         systemMessage = message;
     else
@@ -144,7 +135,6 @@ function Notification:NotifyMapRefresh(mapData)
             Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
         end
     else
-        -- 不在队伍中，发送到聊天框（不带前缀）
         Logger:Info("Notification", "通知", systemMessage);
     end
 end

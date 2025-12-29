@@ -88,7 +88,6 @@ function Data:Initialize()
         end
     end
     
-    -- 调试模式下显示初始化信息
     Logger:DebugLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
 end
 
@@ -235,7 +234,6 @@ end
 function Data:CalculateRemainingTime(nextRefresh)
     if not nextRefresh then return nil end;
     local remaining = nextRefresh - time();
-    -- 当倒计时结束后，返回 nil 而不是 0，这样 UI 会显示 "--:--"
     return remaining > 0 and remaining or nil;
 end
 
@@ -288,9 +286,7 @@ function Data:ClearAllData()
         end
     end
     
-    -- 清除检测状态
     if DetectionState then
-        -- 清除所有地图的处理状态
         for i, mapData in ipairs(self.maps) do
             if mapData then
                 DetectionState:ClearProcessed(mapData.id);
@@ -301,7 +297,6 @@ function Data:ClearAllData()
         MapTracker.lastDetectedMapId = nil;
         MapTracker.lastDetectedGameMapID = nil;
     end
-    -- 通知冷却期已移除，通知与空投检测绑定
     
     if MainPanel and MainPanel.UpdateTable then
         MainPanel:UpdateTable();

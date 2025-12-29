@@ -125,9 +125,6 @@ function TimerManager:UpdateUI()
 end
 
 
--- 简化：移除离开地图超时清除功能
--- 状态清除由OnLogin()和PROCESSED超时处理
-
 function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTime)
     if not Logger or not Logger.debugEnabled then
         return;
@@ -262,12 +259,8 @@ function TimerManager:DetectMapIcons()
     end
     if state.status == DetectionState.STATES.CONFIRMED then
         -- 关键验证：再次检查图标是否仍然存在，确保只有真正的空投事件才进入PROCESSED
-        -- 重要：必须重新检测图标，因为UpdateState可能已经改变了状态，或者图标可能在检测后消失
         local currentIconDetected = IconDetector:DetectIcon(currentMapID);
         if not currentIconDetected then
-            -- 图标已消失，不应该进入PROCESSED状态（DetectionState应该已经清除状态）
-            -- 如果持续时间很短，可能是空投刚好结束，静默处理
-            -- 如果持续时间足够长，DetectionState会输出警告
             Logger:Debug("Timer", "状态", string.format("CONFIRMED状态下图标已消失（重新检测确认），跳过处理：地图=%s", 
                 Data:GetMapDisplayName(targetMapData)));
             return currentIconDetected;
@@ -278,19 +271,16 @@ function TimerManager:DetectMapIcons()
             state.firstDetectedTime and Data:FormatDateTime(state.firstDetectedTime) or "无"));
         
         -- 检查是否在30秒内收到过团队消息（防止重复通知）
-        -- 如果距离团队消息超过30秒，不再发送通知（因为空投已经发生30秒了，再发没意义）
         local shouldSendNotification = true;
         if TeamMessageReader and TeamMessageReader.lastTeamMessageTime then
             local lastTeamMessageTime = TeamMessageReader.lastTeamMessageTime[targetMapData.id];
             if lastTeamMessageTime then
                 local timeSinceTeamMessage = currentTime - lastTeamMessageTime;
                 if timeSinceTeamMessage < TeamMessageReader.MESSAGE_COOLDOWN then
-                    -- 在30秒内收到过团队消息，不发送通知（但会更新刷新时间）
                     shouldSendNotification = false;
                     Logger:Debug("Timer", "通知", string.format("30秒内收到过团队消息，不发送重复通知：地图=%s，距离团队消息=%d秒", 
                         Data:GetMapDisplayName(targetMapData), timeSinceTeamMessage));
                 else
-                    -- 超过30秒，不再发送通知（因为空投已经发生30秒了，再发没意义）
                     shouldSendNotification = false;
                     Logger:Debug("Timer", "通知", string.format("距离团队消息已超过30秒（%d秒），不再发送通知：地图=%s", 
                         timeSinceTeamMessage, Data:GetMapDisplayName(targetMapData)));
@@ -298,7 +288,6 @@ function TimerManager:DetectMapIcons()
             end
         end
         
-        -- 通知和刷新时间绑定：确认空投后同时发送通知和更新刷新时间
         if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
             Notification:NotifyAirdropDetected(
                 Data:GetMapDisplayName(targetMapData), 
@@ -320,15 +309,12 @@ function TimerManager:DetectMapIcons()
             Logger:Debug("Timer", "状态", string.format(DT("DebugAirdropProcessed"), 
                 Data:GetMapDisplayName(targetMapData)));
             
-            -- 更新UI显示（如果主面板显示，会立即更新；如果未显示，下次打开时会通过定时器更新）
             self:UpdateUI();
         else
             Logger:Error("Timer", "错误", string.format("Failed to update refresh time: Map ID=%s", targetMapData.id));
         end
     end
     
-    -- 检查状态变化，如果从CONFIRMED变为IDLE，说明图标消失了
-    -- 已通过2秒确认，视为有效空投，静默处理，不输出任何警告
     if oldState and oldState.status == DetectionState.STATES.CONFIRMED and state.status == DetectionState.STATES.IDLE then
         Logger:Debug("Timer", "状态", string.format("CONFIRMED状态已清除：地图=%s（已通过2秒确认，静默清除）", 
             Data:GetMapDisplayName(targetMapData)));

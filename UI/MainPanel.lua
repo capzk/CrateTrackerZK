@@ -3,9 +3,8 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local MainPanel = BuildEnv('MainPanel')
 
--- 按钮点击防抖（防止快速连续点击）
 MainPanel.lastNotifyClickTime = {};
-MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5; -- 按钮点击冷却时间（秒）
+MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5;
 
 local locale = GetLocale();
 local isChineseLocale = (locale == "zhCN" or locale == "zhTW");
@@ -175,39 +174,32 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     end);
     
     row.refreshBtn:SetScript('OnClick', function()
-        -- 确保 mapDataRef 存在且 mapId 有效
         if row.mapDataRef and row.mapDataRef.mapId then
             MainPanel:RefreshMap(row.mapDataRef.mapId);
         else
-            -- 如果 mapDataRef 无效，尝试从当前显示的数据获取
-            -- 这种情况应该很少发生，但作为安全措施
             Logger:Error("MainPanel", "错误", "Refresh button: Unable to get map ID, please try again later");
         end
     end);
     
     row.notifyBtn:SetScript('OnClick', function()
-        -- 按钮点击防抖：防止快速连续点击
         local mapId = row.mapDataRef and row.mapDataRef.mapId;
         if not mapId then
             Logger:Error("MainPanel", "错误", "Notify button: Unable to get map ID");
             return;
         end
         
-        local currentTime = GetTime(); -- 使用 GetTime() 获取更精确的时间
+        local currentTime = GetTime();
         local lastClickTime = MainPanel.lastNotifyClickTime[mapId] or 0;
         local timeSinceLastClick = currentTime - lastClickTime;
         
         if timeSinceLastClick < MainPanel.NOTIFY_BUTTON_COOLDOWN then
-            -- 在冷却期内，忽略点击
             Logger:Debug("MainPanel", "调试", string.format("通知按钮点击过快（距离上次 %.2f 秒，需要 %.2f 秒），忽略", 
                 timeSinceLastClick, MainPanel.NOTIFY_BUTTON_COOLDOWN));
             return;
         end
         
-        -- 记录点击时间
         MainPanel.lastNotifyClickTime[mapId] = currentTime;
         
-        -- 直接从 Data 模块获取最新数据，避免使用可能过时的 mapDataRef
         if Data then
             local mapData = Data:GetMap(mapId);
             if mapData then
@@ -346,21 +338,17 @@ function MainPanel:SortTable(field)
     local frame = self.mainFrame;
     if not frame then return end
     
-    -- 三种状态循环：正序 -> 倒序 -> 默认顺序 -> 正序
     if frame.sortField == field then
-        -- 同一个字段，在三种状态间循环
         if frame.sortOrder == 'asc' then
-            frame.sortOrder = 'desc';  -- 正序 -> 倒序
+            frame.sortOrder = 'desc';
         elseif frame.sortOrder == 'desc' then
-            frame.sortField = nil;     -- 倒序 -> 默认顺序（清除排序）
+            frame.sortField = nil;
             frame.sortOrder = nil;
         else
-            -- 这种情况不应该发生，但作为安全措施
             frame.sortField = field;
             frame.sortOrder = 'asc';
         end
     else
-        -- 不同字段，设置为新字段的正序
         frame.sortField = field;
         frame.sortOrder = 'asc';
     end
@@ -407,16 +395,12 @@ local function PrepareTableData()
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
-            -- 检查并更新已过期的刷新时间（倒计时结束后自动计算下一个刷新时间）
-            -- 优化：只在真正过期时才更新，避免频繁调用
             if mapData.nextRefresh and mapData.lastRefresh and mapData.nextRefresh <= currentTime then
                 Data:UpdateNextRefresh(mapData.id, mapData);
             end
             
-            -- 优化：直接计算剩余时间，避免不必要的复制
             local remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
             
-            -- 只复制需要的数据字段，减少内存占用
             local mapDataCopy = {
                 id = mapData.id,
                 mapID = mapData.mapID,

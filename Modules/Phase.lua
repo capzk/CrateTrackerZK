@@ -38,7 +38,6 @@ function Phase:GetLayerFromNPC()
 end
 
 function Phase:UpdatePhaseInfo()
-    -- 区域无效时静默返回，不输出日志
     if Area and Area.detectionPaused then
         return;
     end
@@ -46,7 +45,6 @@ function Phase:UpdatePhaseInfo()
     if not Data then return end
     
     local currentMapID = Area:GetCurrentMapId();
-    -- 无法获取地图ID时静默返回，不输出日志
     if not currentMapID then
         return;
     end
@@ -67,19 +65,16 @@ function Phase:UpdatePhaseInfo()
     if targetMapData then
         local instanceID = self:GetLayerFromNPC();
         
-        -- 只记录位面变化和首次获取位面
         if instanceID ~= targetMapData.instance then
             if instanceID then
                 local oldInstance = targetMapData.instance;
                 Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
                 
                 if oldInstance then
-                    -- 位面变化：输出日志
                     Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
                     Logger:Debug("Phase", "位面", string.format("位面变化：%s -> %s，地图=%s", 
                         oldInstance, instanceID, Data:GetMapDisplayName(targetMapData)));
                 else
-                    -- 首次获取位面：输出日志
                     if not self.lastReportedInstanceID or self.lastReportedInstanceID ~= instanceID then
                         Logger:Info("Phase", "位面", string.format(L["CurrentInstanceID"], instanceID));
                         Logger:Debug("Phase", "位面", string.format("首次获取到位面ID：%s，地图=%s", 
@@ -95,8 +90,6 @@ function Phase:UpdatePhaseInfo()
         elseif instanceID and instanceID == targetMapData.instance and not targetMapData.lastInstance then
             Data:UpdateMap(targetMapData.id, { lastInstance = targetMapData.instance });
         end
-        
-        -- 首次提示：未获取任何位面（只提示一次）
         if not self.anyInstanceIDAcquired then
             local hasAny = false;
             for _, m in ipairs(maps) do

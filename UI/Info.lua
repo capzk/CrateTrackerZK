@@ -9,8 +9,6 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local L = CrateTrackerZK.L;
 local Info = BuildEnv('Info');
 
--- Info.lua 不再依赖 Debug 模块，使用 Logger 模块
-
 Info.isInitialized = false;
 Info.currentFrame = nil;
 

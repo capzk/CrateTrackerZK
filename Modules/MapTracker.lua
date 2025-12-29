@@ -23,7 +23,6 @@ local function DT(key)
 end
 
 function MapTracker:Initialize()
-    -- 完全重置所有状态
     self.lastDetectedMapId = nil;
     self.lastDetectedGameMapID = nil;
     self.lastMatchedMapID = nil;

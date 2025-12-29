@@ -63,7 +63,6 @@ function IconDetector:DetectIcon(currentMapID)
             if vignetteName ~= "" then
                 local trimmedName = vignetteName:match("^%s*(.-)%s*$");
                 if crateName and crateName ~= "" and trimmedName == crateName then
-                    -- 核心操作：检测到空投图标
                     Logger:DebugLimited("icon_detection:detected_" .. tostring(currentMapID), "IconDetector", "检测", 
                         string.format("检测到空投图标：地图ID=%d，图标名称=%s", currentMapID, trimmedName));
                     return true;

@@ -26,11 +26,9 @@ local function OnLogin()
         Localization:Initialize();
     end
     
-    -- 初始化数据模块（必须在重置状态之前）
     if Data then Data:Initialize() end
     
-    -- 【修复】角色切换时重置所有内存中的检测状态
-    -- 这些状态不应该跨角色共享，必须在每次登录时清除
+    -- 角色切换时重置所有内存中的检测状态（防止跨角色污染）
     if DetectionState and DetectionState.ClearAllStates then
         DetectionState:ClearAllStates();
     end
@@ -40,13 +38,10 @@ local function OnLogin()
         Logger:Debug("Core", "重置", "已重置地图追踪器状态");
     end
     
-    -- 通知冷却期已移除，通知与空投检测绑定（由PROCESSED状态和2秒确认期防止重复）
-    
     if Phase and Phase.Reset then
         Phase:Reset();
     end
     
-    -- 重置 Area 模块状态
     if Area then
         Area.lastAreaValidState = nil;
         Area.detectionPaused = false;

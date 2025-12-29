@@ -83,7 +83,6 @@ function Commands:HandleClearCommand(arg)
     if TimerManager then
         TimerManager.isInitialized = false;
     end
-    -- 清除所有检测状态（包括DETECTING、CONFIRMED、PROCESSED）
     if DetectionState and DetectionState.ClearAllStates then
         DetectionState:ClearAllStates();
     end
@@ -91,7 +90,6 @@ function Commands:HandleClearCommand(arg)
         MapTracker.lastDetectedMapId = nil;
         MapTracker.lastDetectedGameMapID = nil;
     end
-    -- 通知冷却期已移除，通知与空投检测绑定
     if Notification then
         Notification.isInitialized = false;
     end

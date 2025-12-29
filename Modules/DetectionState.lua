@@ -105,30 +105,25 @@ function DetectionState:UpdateState(mapId, iconDetected, currentTime)
     else
         if state.status == self.STATES.DETECTING then
             local timeSinceFirstDetection = currentTime - state.firstDetectedTime;
-            -- 图标消失，清除DETECTING状态
             newState.firstDetectedTime = nil;
             newState.status = self.STATES.IDLE;
             self.mapIconFirstDetectedTime[mapId] = nil;
             
             if timeSinceFirstDetection < self.CONFIRM_TIME then
-                -- 无效空投：DETECTING状态下，图标在2秒确认期内消失
                 local mapDisplayName = Data:GetMapDisplayName(Data:GetMap(mapId));
                 local L = CrateTrackerZK.L;
                 Logger:Warn("DetectionState", "无效", string.format(L["InvalidAirdropDetecting"], mapDisplayName, timeSinceFirstDetection));
             else
-                -- 图标在2秒后消失，清除状态但不输出警告（可能是正常消失）
                 Logger:Debug("DetectionState", "状态", string.format("图标消失：地图=%s，已等待%.1f秒，清除DETECTING状态", 
                     Data:GetMapDisplayName(Data:GetMap(mapId)), timeSinceFirstDetection));
             end
         elseif state.status == self.STATES.CONFIRMED then
-            -- CONFIRMED状态下图标消失：已通过2秒确认，视为有效空投，静默清除状态
-            -- 不再区分持续时间，不再发送无效通知（空投即将结束的情况不再处理）
             newState.firstDetectedTime = nil;
             newState.status = self.STATES.IDLE;
             newState.isDetected = false;
             self.mapIconDetected[mapId] = nil;
             self.mapIconFirstDetectedTime[mapId] = nil;
-            self.confirmedTime[mapId] = nil;  -- 清除CONFIRMED时间记录
+            self.confirmedTime[mapId] = nil;
             
             local mapDisplayName = Data:GetMapDisplayName(Data:GetMap(mapId));
             Logger:Debug("DetectionState", "状态", string.format("图标消失：地图=%s，已通过2秒确认，静默清除CONFIRMED状态", mapDisplayName));
@@ -142,7 +137,6 @@ function DetectionState:UpdateState(mapId, iconDetected, currentTime)
     if newState.status == self.STATES.CONFIRMED then
         self.mapIconDetected[mapId] = true;
         newState.isDetected = true;
-        -- 记录CONFIRMED状态的开始时间（如果还没有记录）
         if not self.confirmedTime[mapId] then
             self.confirmedTime[mapId] = currentTime;
         end
