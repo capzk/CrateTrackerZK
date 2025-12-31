@@ -427,12 +427,9 @@ function MainPanel:UpdateTable()
     local frame = self.mainFrame;
     if not frame or not frame:IsShown() then return end
     
-    -- UI只负责显示，不处理数据
-    -- UI更新信息限流
     Logger:DebugLimited("ui_update:table", "MainPanel", "界面", "更新表格显示");
     local mapArray = PrepareTableData();
     
-    -- 只有在有排序字段且排序顺序不为 nil 时才排序
     if frame.sortField and frame.sortOrder and (frame.sortField == 'lastRefresh' or frame.sortField == 'remaining') then
         local comparator = CreateSortComparator(frame.sortField, frame.sortOrder);
         table.sort(mapArray, comparator);
@@ -463,21 +460,12 @@ function MainPanel:UpdateTable()
         
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
-        -- 位面信息显示逻辑：
-        -- 1. 存储的位面ID（lastRefreshPhase）：从空投的 objectGUID 提取的位面ID
-        -- 2. 实时检测的位面ID（currentPhaseID）：Phase 模块检测到的位面ID（用于UI显示）
-        -- 3. UI显示：显示 Phase 模块检测到的位面ID（currentPhaseID）
-        -- 4. 颜色判断：当 currentPhaseID 和 lastRefreshPhase 不同时，红色显示
-        
-        -- 存储的位面ID（从空投的 objectGUID 提取）
+        -- 位面显示：显示 Phase 模块检测的 currentPhaseID，与存储的 lastRefreshPhase 比较
         local storedPhaseID = mapData.lastRefreshPhase;
-        -- 实时检测的位面ID（Phase 模块检测，用于UI显示）
         local currentPhaseID = mapData.currentPhaseID;
         
         local phaseText = L["NotAcquired"] or "N/A";
         local color = {1, 1, 1};
-        
-        -- UI显示：显示 Phase 模块检测到的位面ID（currentPhaseID）
         local displayPhaseID = currentPhaseID;
         
         if displayPhaseID then
@@ -490,8 +478,6 @@ function MainPanel:UpdateTable()
             
             local currentTime = time();
             local isAirdrop = false;
-            -- 优先使用 airdropActiveTimestamp（内存变量，表示空投持续中）
-            -- 如果没有，则使用 currentAirdropTimestamp（核心数据，空投事件开始时间）
             if mapData.airdropActiveTimestamp then
                 local timeSinceActive = currentTime - mapData.airdropActiveTimestamp;
                 isAirdrop = timeSinceActive <= 30;
@@ -501,17 +487,12 @@ function MainPanel:UpdateTable()
             end
             local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
             
-            -- 颜色判断逻辑：
-            -- 1. 如果已过刷新时间：白色
-            -- 2. 如果空投活跃中：绿色
-            -- 3. 如果存储的位面ID（从objectGUID提取）和实时检测的位面ID（Phase模块）不同：红色（位面变化提醒）
-            -- 4. 其他情况：绿色
+            -- 颜色：已过刷新=白色，空投中=绿色，位面变化=红色，其他=绿色
             if mapData.nextRefresh and currentTime >= mapData.nextRefresh then
                 color = {1, 1, 1};
             elseif isAirdrop then
                 color = {0, 1, 0};
             elseif isBeforeRefresh and storedPhaseID and currentPhaseID and currentPhaseID ~= storedPhaseID then
-                -- 位面变化：存储的位面ID（从objectGUID提取）和实时检测的位面ID（Phase模块）不同
                 color = {1, 0, 0};
             else
                 color = {0, 1, 0};
@@ -520,7 +501,6 @@ function MainPanel:UpdateTable()
         row.columns[2].Text:SetText(phaseText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        -- 使用 FormatTimeForDisplay 只显示时分秒
         local lastRefreshText = mapData.lastRefresh and Data:FormatTimeForDisplay(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
         row.columns[3].Text:SetText(lastRefreshText);
         
@@ -606,7 +586,6 @@ function MainPanel:ProcessInput(mapId, input)
     Logger:Debug("MainPanel", "用户操作", string.format("用户手动输入时间：地图ID=%d，地图=%s，输入=%s", 
         mapId, mapData and Data:GetMapDisplayName(mapData) or "未知", input));
     
-    -- UI只负责调用统一的接口，不直接处理数据
     if not TimerManager then
         Logger:Error("MainPanel", "错误", "TimerManager module not loaded");
         return false;
@@ -647,7 +626,6 @@ function MainPanel:NotifyMapRefresh(mapData)
         return
     end
     
-    -- 在UI上实时检测飞机图标是否存在
     -- 如果图标存在，说明空投正在进行中；否则发送剩余时间
     -- 注意：只有当前地图才能检测图标，不在当前地图时直接发送剩余时间
     local currentMapID = nil;
@@ -658,8 +636,22 @@ function MainPanel:NotifyMapRefresh(mapData)
     end
     
     local isAirdropActive = false;
-    if currentMapID and mapData.mapID == currentMapID then
-        -- 在当前地图，检测图标是否存在
+    -- 检查是否在当前地图或子地图（支持子地图场景）
+    local isOnMap = false;
+    if currentMapID then
+        if mapData.mapID == currentMapID then
+            isOnMap = true;
+        else
+            -- 检查是否是子地图（子地图的父地图是配置的主地图）
+            local mapInfo = C_Map and C_Map.GetMapInfo(currentMapID);
+            if mapInfo and mapInfo.parentMapID == mapData.mapID then
+                isOnMap = true;
+            end
+        end
+    end
+    
+    if isOnMap then
+        -- 在当前地图或子地图，检测图标是否存在
         if IconDetector and IconDetector.DetectIcon then
             local iconResult = IconDetector:DetectIcon(currentMapID);
             if iconResult and iconResult.detected then
@@ -672,8 +664,8 @@ function MainPanel:NotifyMapRefresh(mapData)
             end
         end
     else
-        -- 不在当前地图，无法检测图标，直接发送剩余时间
-        Logger:Debug("MainPanel", "通知", string.format("不在当前地图，无法检测图标，发送剩余时间：地图=%s", 
+        -- 不在当前地图或子地图，无法检测图标，直接发送剩余时间
+        Logger:Debug("MainPanel", "通知", string.format("不在当前地图或子地图，无法检测图标，发送剩余时间：地图=%s", 
             Data:GetMapDisplayName(mapData)));
     end
     

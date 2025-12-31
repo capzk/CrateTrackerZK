@@ -1,4 +1,4 @@
--- IconDetector.lua - 检测地图上的空投图标
+-- IconDetector.lua - 图标检测模块
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -38,7 +38,7 @@ local function GetCrateName()
     return crateName;
 end
 
--- 提取 SpawnUID（GUID第7部分）
+-- 提取 SpawnUID（GUID 第7部分）
 local function ExtractSpawnUID(objectGUID)
     if not objectGUID or type(objectGUID) ~= "string" then 
         return nil;
@@ -52,7 +52,7 @@ local function ExtractSpawnUID(objectGUID)
     return nil;
 end
 
--- 提取位面ID（GUID第3-4部分）
+-- 提取位面ID（GUID 第3-4部分：分片ID-实例ID）
 local function ExtractPhaseID(objectGUID)
     if not objectGUID or type(objectGUID) ~= "string" then 
         return nil;
@@ -87,7 +87,7 @@ function IconDetector:DetectIcon(currentMapID)
         return { detected = false };
     end
     
-    -- 只检测飞机图标（vignetteID = 3689）
+    -- 仅检测飞机图标（vignetteID = 3689）
     for _, vignetteGUID in ipairs(vignettes) do
         local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID);
         if vignetteInfo then

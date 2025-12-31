@@ -1,4 +1,4 @@
--- Phase.lua - 检测和更新位面信息
+-- Phase.lua - 位面检测模块
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -7,14 +7,11 @@ local Phase = BuildEnv("Phase");
 
 Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
--- 位面ID缓存（以mapID为key，存储每个地图的位面ID，用于UI显示）
--- 退出游戏或切换角色时清除
-Phase.phaseCache = {};
+Phase.phaseCache = {};  -- 位面ID缓存，使用 targetMapData.mapID 作为key
 
 function Phase:Reset()
     self.lastReportedInstanceID = nil;
     self.lastReportedMapPhaseKey = nil;
-    -- 清除位面ID缓存（切换角色或退出游戏时清除）
     self.phaseCache = {};
     Logger:Debug("Phase", "重置", "已重置位面检测状态和缓存");
 end
@@ -29,7 +26,7 @@ function Phase:GetLayerFromNPC()
     end
     
     if guid then
-        -- 位面ID = 分片ID-实例ID
+        -- 位面ID = 分片ID-实例ID（GUID第3-4部分）
         local unitType, _, shardID, instancePart = strsplit("-", guid);
         if (unitType == "Creature" or unitType == "Vehicle") and shardID and instancePart then
             return shardID .. "-" .. instancePart;
@@ -56,7 +53,6 @@ function Phase:UpdatePhaseInfo()
     local maps = Data:GetAllMaps();
     local targetMapData = nil;
     
-    -- 首先尝试匹配当前地图ID
     for _, mapData in ipairs(maps) do
         if mapData.mapID == currentMapID then
             targetMapData = mapData;
@@ -64,7 +60,7 @@ function Phase:UpdatePhaseInfo()
         end
     end
     
-    -- 如果当前地图不在追踪列表中，尝试匹配父地图（支持子地图场景）
+    -- 支持父地图匹配（子地图场景）
     if not targetMapData and mapInfo.parentMapID then
         for _, mapData in ipairs(maps) do
             if mapData.mapID == mapInfo.parentMapID then
@@ -78,63 +74,80 @@ function Phase:UpdatePhaseInfo()
     
     if targetMapData then
         local detectedPhaseID = self:GetLayerFromNPC();
-        local cachedPhaseID = self.phaseCache[currentMapID];
-        
-        -- 位面ID缓存机制：
-        -- 1. 如果检测到新的位面ID，且与缓存不同，更新缓存和targetMapData.currentPhaseID
-        -- 2. 如果检测不到位面ID，使用缓存的位面ID（如果存在）
-        -- 3. 只有当位面发生变化时才更新缓存
-        -- 注意：重载插件（/reload）会清除所有缓存，这是 WoW 插件的正常行为
+        -- 使用 targetMapData.mapID 作为缓存key，确保子地图和主地图共享同一缓存
+        local cacheKey = targetMapData.mapID;
+        local cachedPhaseID = self.phaseCache[cacheKey];
         
         local shouldUpdate = false;
+        local isPhaseChanged = false;  -- 区分真正的位面变化和首次检测
         local currentPhaseID = nil;
         
         if detectedPhaseID then
-            -- 检测到新的位面ID
             if cachedPhaseID ~= detectedPhaseID then
-                -- 位面发生变化，更新缓存
-                self.phaseCache[currentMapID] = detectedPhaseID;
+                self.phaseCache[cacheKey] = detectedPhaseID;
                 currentPhaseID = detectedPhaseID;
                 shouldUpdate = true;
-                Logger:Debug("Phase", "缓存", string.format("位面ID已更新：地图ID=%d，旧位面=%s，新位面=%s", 
-                    currentMapID, cachedPhaseID or "无", detectedPhaseID));
+                isPhaseChanged = (cachedPhaseID ~= nil);
+                Logger:Debug("Phase", "缓存", string.format("位面ID已更新：配置地图ID=%d，当前地图ID=%d，旧位面=%s，新位面=%s，是否变化=%s", 
+                    targetMapData.mapID, currentMapID, cachedPhaseID or "无", detectedPhaseID, isPhaseChanged and "是" or "否（首次检测）"));
             else
-                -- 位面未变化，使用缓存的位面ID
                 currentPhaseID = detectedPhaseID;
             end
         elseif cachedPhaseID then
-            -- 检测不到位面ID，但缓存中存在，使用缓存的位面ID
             currentPhaseID = cachedPhaseID;
-            Logger:Debug("Phase", "缓存", string.format("使用缓存的位面ID：地图ID=%d，位面ID=%s", 
-                currentMapID, cachedPhaseID));
+            Logger:Debug("Phase", "缓存", string.format("使用缓存的位面ID：配置地图ID=%d，当前地图ID=%d，位面ID=%s", 
+                targetMapData.mapID, currentMapID, cachedPhaseID));
         end
         
-        -- 更新targetMapData.currentPhaseID（用于UI显示）
         if currentPhaseID then
             targetMapData.currentPhaseID = currentPhaseID;
             
-            -- 检查是否需要发送消息（避免重复发送）
-            -- 使用地图ID+位面ID作为唯一标识，避免跨地图的位面ID冲突
+            -- 消息发送逻辑：使用 targetMapData.mapID 作为key，避免子地图和主地图重复发送
             if shouldUpdate then
-                local mapPhaseKey = currentMapID .. "-" .. currentPhaseID;
+                local mapPhaseKey = targetMapData.mapID .. "-" .. currentPhaseID;
                 local lastReportedKey = self.lastReportedMapPhaseKey;
                 
-                if not lastReportedKey then
-                    -- 首次获取到位面ID，发送系统消息提醒
+                local lastReportedMapID = nil;
+                if lastReportedKey then
+                    local parts = {strsplit("-", lastReportedKey)};
+                    if #parts >= 1 then
+                        lastReportedMapID = tonumber(parts[1]);
+                    end
+                end
+                
+                if lastReportedKey == mapPhaseKey then
+                    if self.lastReportedMapPhaseKey ~= mapPhaseKey then
+                        self.lastReportedMapPhaseKey = mapPhaseKey;
+                    end
+                elseif not lastReportedKey then
                     local mapName = Data:GetMapDisplayName(targetMapData);
                     Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
                     self.lastReportedInstanceID = currentPhaseID;
                     self.lastReportedMapPhaseKey = mapPhaseKey;
-                elseif lastReportedKey ~= mapPhaseKey then
-                    -- 位面发生变化（可能是地图变化或位面变化），发送系统消息提醒
-                    local mapName = Data:GetMapDisplayName(targetMapData);
-                    Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], mapName, currentPhaseID));
-                    self.lastReportedInstanceID = currentPhaseID;
-                    self.lastReportedMapPhaseKey = mapPhaseKey;
+                elseif lastReportedMapID == targetMapData.mapID then
+                    if isPhaseChanged then
+                        local mapName = Data:GetMapDisplayName(targetMapData);
+                        Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], mapName, currentPhaseID));
+                        self.lastReportedInstanceID = currentPhaseID;
+                        self.lastReportedMapPhaseKey = mapPhaseKey;
+                    else
+                        local mapName = Data:GetMapDisplayName(targetMapData);
+                        Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
+                        self.lastReportedInstanceID = currentPhaseID;
+                        self.lastReportedMapPhaseKey = mapPhaseKey;
+                    end
+                else
+                    if isPhaseChanged then
+                        self.lastReportedMapPhaseKey = mapPhaseKey;
+                    else
+                        local mapName = Data:GetMapDisplayName(targetMapData);
+                        Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
+                        self.lastReportedInstanceID = currentPhaseID;
+                        self.lastReportedMapPhaseKey = mapPhaseKey;
+                    end
                 end
             end
             
-            -- 更新UI显示
             if MainPanel and MainPanel.UpdateTable then
                 MainPanel:UpdateTable();
             end

@@ -1,4 +1,4 @@
--- Timer.lua - 核心检测循环管理器
+-- Timer.lua - 检测循环管理器
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -70,7 +70,6 @@ function TimerManager:StartTimer(mapId, source, timestamp)
     local success = false;
     
     if isManualOperation then
-    -- 手动操作
         local mapData = Data:GetMap(mapId);
         local needsUpdate = not mapData or mapData.lastRefresh ~= timestamp;
         
@@ -82,8 +81,6 @@ function TimerManager:StartTimer(mapId, source, timestamp)
                     local sourceText = self:GetSourceDisplayName(source);
                     Logger:Debug("Timer", "更新", string.format(DT("DebugTimerStarted"), Data:GetMapDisplayName(updatedMapData), sourceText, Data:FormatDateTime(updatedMapData.nextRefresh)));
                 end
-                -- 刷新按钮已经在 RefreshMap 中更新了UI，这里不再重复更新
-                -- 手动输入需要更新UI
                 if source == self.detectionSources.MANUAL_INPUT then
                     self:UpdateUI();
                 end
@@ -91,7 +88,6 @@ function TimerManager:StartTimer(mapId, source, timestamp)
                 Logger:Error("Timer", "错误", string.format(L["ErrorTimerStartFailedMapID"], tostring(mapId)));
             end
         else
-            -- 数据已更新，只保存
             if mapData then
                 Data:SaveMapData(mapId);
                 Logger:Debug("Timer", "更新", string.format("数据已更新，仅保存：地图=%s，时间=%s", 
@@ -100,7 +96,6 @@ function TimerManager:StartTimer(mapId, source, timestamp)
             success = true;
         end
     else
-        -- 自动检测走 DetectMapIcons
         success = true;
     end
     
@@ -120,7 +115,6 @@ function TimerManager:GetSourceDisplayName(source)
 end
 
 function TimerManager:UpdateUI()
-    -- 更新UI显示
     if MainPanel and MainPanel.UpdateTable then
         MainPanel:UpdateTable();
     end
@@ -142,7 +136,6 @@ function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTi
         mapDisplayName = Data:GetMapDisplayName(targetMapData);
     end
     
-    -- 合并状态报告为一条消息，减少输出
     local statusParts = {};
     table.insert(statusParts, string.format("【当前地图】ID=%d，名称=%s，配置ID=%d", 
         currentMapID, mapDisplayName, targetMapData and targetMapData.id or 0));

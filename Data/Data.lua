@@ -1,4 +1,4 @@
--- Data.lua - 管理地图数据、刷新时间计算和持久化
+-- Data.lua - 数据管理模块
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -47,7 +47,6 @@ function Data:Initialize()
             local savedData = CRATETRACKERZK_DB.mapData[mapID];
             local isNewInstall = false;
             
-            -- 全新安装检查
             if type(savedData) ~= "table" then 
                 savedData = {};
                 isNewInstall = true;
@@ -58,8 +57,7 @@ function Data:Initialize()
             local createTime = sanitizeTimestamp(savedData.createTime) or time();
             local interval = cfg.interval or defaults.interval or self.DEFAULT_REFRESH_INTERVAL;
 
-            -- 旧数据清理：清除旧版本的字段（如果存在）
-            -- 旧版本使用 currentAirdropSpawnUID，新版本不再使用
+            -- 旧版本数据迁移
             if savedData.currentAirdropSpawnUID ~= nil then
                 savedData.currentAirdropSpawnUID = nil;
                 Logger:Debug("Data", "迁移", string.format("已清除旧版本字段 currentAirdropSpawnUID（地图ID=%d）", mapID));
@@ -68,16 +66,13 @@ function Data:Initialize()
                 savedData.lastRefreshInstance = nil;
                 Logger:Debug("Data", "迁移", string.format("已清除旧版本字段 lastRefreshInstance（地图ID=%d）", mapID));
             end
-            -- 注意：lastRefreshPhase 用于存储从空投的 objectGUID 提取的位面ID
             
-            -- 加载新版本的 currentAirdropObjectGUID
             local currentAirdropObjectGUID = savedData.currentAirdropObjectGUID;
             if currentAirdropObjectGUID and type(currentAirdropObjectGUID) ~= "string" then
                 currentAirdropObjectGUID = nil;
             end
             
-            -- 数据清理：如果 objectGUID 格式不正确（不是完整的 GUID 格式），清除它
-            -- 完整的 objectGUID 格式应该是：Type-0-xxx-xxx-xxx-xxx-xxx（至少7部分）
+            -- 验证 objectGUID 格式（至少7部分）
             if currentAirdropObjectGUID then
                 local parts = {strsplit("-", currentAirdropObjectGUID)};
                 if #parts < 7 then
@@ -87,7 +82,6 @@ function Data:Initialize()
                 end
             end
 
-            -- 加载位面ID（从空投的 objectGUID 提取的，存储在 lastRefreshPhase）
             local lastRefreshPhase = savedData.lastRefreshPhase;
             if lastRefreshPhase and type(lastRefreshPhase) ~= "string" then
                 lastRefreshPhase = nil;

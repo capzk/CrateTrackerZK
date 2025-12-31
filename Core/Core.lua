@@ -1,4 +1,4 @@
--- Core.lua - 插件核心初始化、事件处理和模块协调
+-- Core.lua - 插件核心模块
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -11,14 +11,12 @@ end
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
-    -- 初始化 SavedVariables
     if not CRATETRACKERZK_UI_DB then
         CRATETRACKERZK_UI_DB = {};
     end
     if type(CRATETRACKERZK_UI_DB) ~= "table" then
         CRATETRACKERZK_UI_DB = {};
     end
-    -- 初始化团队时间共享功能开关（默认关闭）
     if CRATETRACKERZK_UI_DB.teamTimeShareEnabled == nil then
         CRATETRACKERZK_UI_DB.teamTimeShareEnabled = false;
     end
@@ -41,8 +39,7 @@ local function OnLogin()
     
     if Data then Data:Initialize() end
     
-    -- 重置内存检测状态（防止跨角色污染）
-    
+    -- 重置内存状态（防止跨角色污染）
     if TimerManager then
         TimerManager.detectionState = {};
         Logger:Debug("Core", "重置", "已清除检测状态（2秒确认期的临时状态）");
@@ -62,23 +59,20 @@ local function OnLogin()
         Area.detectionPaused = false;
     end
     
-    -- 清除地图数据中的内存状态
     if Data and Data.maps then
         for _, mapData in ipairs(Data.maps) do
             if mapData then
                 mapData.currentPhaseID = nil;
-                mapData.airdropActiveTimestamp = nil;  -- 清除空投活跃状态时间戳（内存变量）
+                mapData.airdropActiveTimestamp = nil;
             end
         end
     end
     
-    -- 清除通知模块的通知时间记录
     if Notification then
         Notification.firstNotificationTime = {};
         Notification.playerSentNotification = {};
     end
     
-    -- 重置定时器状态
     if CrateTrackerZK.phaseTimerTicker then
         CrateTrackerZK.phaseTimerTicker:Cancel();
         CrateTrackerZK.phaseTimerTicker = nil;
@@ -86,12 +80,10 @@ local function OnLogin()
     CrateTrackerZK.phaseTimerPaused = false;
     CrateTrackerZK.phaseResumePending = false;
     
-    -- 清理Logger缓存
     if Logger and Logger.ClearMessageCache then
         Logger:ClearMessageCache();
     end
     
-    -- 清除MainPanel内存状态
     if MainPanel then
         MainPanel.lastNotifyClickTime = {};
     end
@@ -112,7 +104,6 @@ local function OnLogin()
     
     if Area then
         Area:CheckAndUpdateAreaValid();
-        -- 启动位面检测定时器（取消延迟，立即启动）
         if Area.lastAreaValidState == true and not Area.detectionPaused then
             if not CrateTrackerZK.phaseTimerTicker then
                 if CrateTrackerZK.phaseTimerTicker then
@@ -125,7 +116,6 @@ local function OnLogin()
                 end);
                 CrateTrackerZK.phaseTimerPaused = false;
                 Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-                -- 立即执行一次位面检测
                 if Phase then Phase:UpdatePhaseInfo() end
             end
         end
@@ -149,7 +139,6 @@ local function OnEvent(self, event, ...)
             
             if Area and not Area.detectionPaused then
                 if TimerManager then TimerManager:DetectMapIcons() end
-                -- 取消延迟，立即检测位面
                 if Phase then Phase:UpdatePhaseInfo() end
             end
         end)
@@ -158,7 +147,6 @@ local function OnEvent(self, event, ...)
             if Phase then Phase:UpdatePhaseInfo() end
         end
     elseif event == "PLAYER_LOGOUT" then
-        -- 退出游戏时清除位面ID缓存
         if Phase and Phase.Reset then
             Phase:Reset();
             Logger:Debug("Core", "状态", "退出游戏，已清除位面ID缓存");
@@ -190,7 +178,6 @@ function CrateTrackerZK:ResumeAllDetections()
         Logger:Debug("Core", "状态", "已启动地图图标检测");
     end
     
-    -- 取消延迟，立即启动位面检测定时器
     if self.phaseTimerTicker then
         self.phaseTimerTicker:Cancel();
     end
@@ -201,7 +188,6 @@ function CrateTrackerZK:ResumeAllDetections()
     end);
     self.phaseTimerPaused = false;
     Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-    -- 立即执行一次位面检测
     if Phase then Phase:UpdatePhaseInfo() end
 end
 
