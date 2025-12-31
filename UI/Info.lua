@@ -9,8 +9,6 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local L = CrateTrackerZK.L;
 local Info = BuildEnv('Info');
 
--- Info.lua 不再依赖 Debug 模块，使用 Logger 模块
-
 Info.isInitialized = false;
 Info.currentFrame = nil;
 
@@ -18,7 +16,7 @@ local ADDON_NAME = "CrateTrackerZK";
 
 local function GetAddonVersion()
     if not GetAddOnMetadata then
-        return "1.1.3";
+        return "1.1.4.20251229_beta";
     end
     
     local version = GetAddOnMetadata(ADDON_NAME, "Version");
@@ -36,17 +34,16 @@ local function GetAddonVersion()
         end
     end
     
-    return "1.1.3";
+    return "1.1.4.20251229_beta";
 end
 
 local function BuildAboutText()
     local version = GetAddonVersion();
     return string.format([[
 Version: %s
+Author: capzk
 Project: https://github.com/capzk/CrateTrackerZK
 License: MIT license
-Author: capzk
-Contact: capzk@outlook.com
 ]], version);
 end
 
