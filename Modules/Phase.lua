@@ -56,10 +56,23 @@ function Phase:UpdatePhaseInfo()
     local maps = Data:GetAllMaps();
     local targetMapData = nil;
     
+    -- 首先尝试匹配当前地图ID
     for _, mapData in ipairs(maps) do
         if mapData.mapID == currentMapID then
             targetMapData = mapData;
             break;
+        end
+    end
+    
+    -- 如果当前地图不在追踪列表中，尝试匹配父地图（支持子地图场景）
+    if not targetMapData and mapInfo.parentMapID then
+        for _, mapData in ipairs(maps) do
+            if mapData.mapID == mapInfo.parentMapID then
+                targetMapData = mapData;
+                Logger:Debug("Phase", "匹配", string.format("父地图匹配成功：当前地图ID=%d，父地图ID=%d（配置ID=%d）", 
+                    currentMapID, mapInfo.parentMapID, mapData.id));
+                break;
+            end
         end
     end
     
