@@ -67,9 +67,12 @@ function Commands:HandleClearCommand(arg)
     end
 
     if CRATETRACKERZK_DB and CRATETRACKERZK_DB.mapData then
+        -- 清除所有地图数据（包括旧版本字段）
         for k in pairs(CRATETRACKERZK_DB.mapData) do
             CRATETRACKERZK_DB.mapData[k] = nil;
         end
+        -- 确保 mapData 表本身也被重置
+        CRATETRACKERZK_DB.mapData = {};
     end
     if CRATETRACKERZK_UI_DB then
         -- 清除所有UI设置

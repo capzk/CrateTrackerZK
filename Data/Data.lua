@@ -171,10 +171,10 @@ function Data:SaveMapData(mapId)
                     mapData.mapID, mapData.currentAirdropObjectGUID or "nil", verifyData.currentAirdropObjectGUID or "nil"));
             end
             -- 确保旧版本字段已被清除
-            if verifyData.currentAirdropSpawnUID or verifyData.lastRefreshPhase or verifyData.lastRefreshInstance then
+            -- 注意：lastRefreshPhase 是新版本的正确字段，不应该被清除
+            if verifyData.currentAirdropSpawnUID or verifyData.lastRefreshInstance then
                 Logger:Warn("Data", "清理", string.format("检测到保存的数据中仍有旧版本字段（地图ID=%d），已清除", mapData.mapID));
                 verifyData.currentAirdropSpawnUID = nil;
-                verifyData.lastRefreshPhase = nil;
                 verifyData.lastRefreshInstance = nil;
             end
         end
