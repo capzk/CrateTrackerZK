@@ -1,5 +1,4 @@
--- TeamMessageReader.lua
--- 读取团队通知消息，自动更新空投刷新时间
+-- TeamMessageReader.lua - 读取团队通知消息，自动更新空投刷新时间
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -23,10 +22,8 @@ end
 
 TeamMessageReader.isInitialized = false;
 TeamMessageReader.messagePatterns = {};
-TeamMessageReader.lastTeamMessageTime = {};
-TeamMessageReader.MESSAGE_COOLDOWN = 30;
 
--- 初始化消息模式（匹配插件自动发送的团队消息，使用 AirdropDetected 格式）
+-- 初始化消息模式
 local function InitializeMessagePatterns()
     TeamMessageReader.messagePatterns = {};
     
@@ -102,7 +99,7 @@ local function InitializeMessagePatterns()
     end
 end
 
--- 检查是否是自动消息（通过匹配 AirdropDetected 格式）
+-- 检查是否是自动消息
 local function IsAutoMessage(message)
     if not message or type(message) ~= "string" then
         return false;
@@ -150,7 +147,7 @@ local function ParseTeamMessage(message)
     return nil;
 end
 
--- 根据地图名称获取地图ID（支持多语言地图名称匹配）
+-- 根据地图名称获取地图ID
 local function GetMapIdByName(mapName)
     if not mapName or not Data then
         return nil;
@@ -190,22 +187,13 @@ local function GetMapIdByName(mapName)
     return nil;
 end
 
-local function ShouldSendNotification(mapId, currentTime)
-    if not mapId then
+function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
+    if not message or type(message) ~= "string" then
         return false;
     end
     
-    local lastTime = TeamMessageReader.lastTeamMessageTime[mapId];
-    if not lastTime then
-        return true;
-    end
-    
-    local timeSinceTeamMessage = currentTime - lastTime;
-    return timeSinceTeamMessage < TeamMessageReader.MESSAGE_COOLDOWN;
-end
-
-function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
-    if not message or type(message) ~= "string" then
+    -- 检查功能是否启用
+    if not CRATETRACKERZK_UI_DB or not CRATETRACKERZK_UI_DB.teamTimeShareEnabled then
         return false;
     end
     
@@ -230,7 +218,7 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
         return false;
     end
     
-    -- 防重复更新机制 #1: 跳过自己发送的消息
+    -- 跳过自己发送的消息
     local playerName = UnitName("player");
     local realmName = GetRealmName();
     local fullPlayerName = playerName;
@@ -245,21 +233,12 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
         return false;
     end
     
-    -- 防重复更新机制 #2: 如果当前地图是 PROCESSED 状态，跳过处理
-    if DetectionState then
-        local state = DetectionState:GetState(mapId);
-        if state and state.status == DetectionState.STATES.PROCESSED then
-            local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player");
-            local mapData = Data:GetMap(mapId);
-            local isOnMap = mapData and currentMapID == mapData.mapID;
-            if isOnMap then
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamMessageReader", "处理", string.format("跳过当前地图的PROCESSED状态消息（可能是自己发送的）：地图=%s，发送者=%s", mapName, sender or "未知"));
-                end
-                return false;
-            end
-        end
-    end
+    -- 检查是否在空投地图
+    local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player");
+    local mapData = Data:GetMap(mapId);
+    local isOnMap = mapData and currentMapID == mapData.mapID;
+    
+    -- 如果不在空投地图，处理团队消息
     
     if Logger and Logger.Debug then
         Logger:Debug("TeamMessageReader", "处理", string.format("检测到团队空投消息：发送者=%s，地图=%s，聊天类型=%s", 
@@ -267,45 +246,33 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
     end
     
     local currentTime = time();
-    TeamMessageReader.lastTeamMessageTime[mapId] = currentTime;
     
     if not Data or not Data.SetLastRefresh then
         return false;
     end
     
-    -- 防重复更新机制 #3: 时间窗口检查（如果时间差异≤30秒，使用更早的时间）
-    local mapData = Data:GetMap(mapId);
-    local oldTime = mapData and mapData.lastRefresh;
-    local refreshTime = currentTime;
-    local shouldUpdate = true;
-    
-    if oldTime then
-        local timeDiff = math.abs(currentTime - oldTime);
-        
-        if timeDiff <= TeamMessageReader.MESSAGE_COOLDOWN then
-            if currentTime < oldTime then
-                refreshTime = currentTime;
+    -- 如果不在空投地图，处理团队消息
+    if not isOnMap then
+        -- 检查30秒时间窗口
+        local mapData = Data:GetMap(mapId);
+        if mapData and mapData.currentAirdropTimestamp then
+            local timeSinceLastUpdate = currentTime - mapData.currentAirdropTimestamp;
+            -- 如果新时间在30秒内，且新时间更晚，说明是同一空投的多次消息，跳过更新
+            if timeSinceLastUpdate <= 30 and currentTime > mapData.currentAirdropTimestamp then
                 if Logger and Logger.Debug then
-                    Logger:Debug("TeamMessageReader", "更新", string.format("使用更早的时间：地图=%s，旧时间=%s，新时间=%s，使用时间=%s", 
-                        mapName,
-                        Data:FormatDateTime(oldTime),
-                        Data:FormatDateTime(currentTime),
-                        Data:FormatDateTime(refreshTime)));
-                end
-            else
-                shouldUpdate = false;
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamMessageReader", "更新", string.format("跳过重复更新：地图=%s，旧时间=%s，新时间=%s（时间差异在冷却期内，且新时间不更早）", 
+                    Logger:Debug("TeamMessageReader", "处理", string.format("跳过重复的团队消息（30秒内，新时间更晚）：地图=%s，上次更新时间=%s，新消息时间=%s，时间差=%d秒", 
                         mapName, 
-                        Data:FormatDateTime(oldTime),
-                        Data:FormatDateTime(currentTime)));
+                        Data:FormatDateTime(mapData.currentAirdropTimestamp),
+                        Data:FormatDateTime(currentTime),
+                        timeSinceLastUpdate));
                 end
+                return true;
             end
         end
-    end
-    
-    if shouldUpdate then
-        local success = Data:SetLastRefresh(mapId, refreshTime);
+        
+        -- 不在空投地图的玩家，无论自己插件当前时间是多少，统统更新
+        -- 以空投消息时间为准，自己的时间不再有效
+        local success = Data:SetLastRefresh(mapId, currentTime);
         if not success then
             if Logger and Logger.Error then
                 Logger:Error("TeamMessageReader", "错误", string.format("更新刷新时间失败：地图=%s", mapName));
@@ -313,60 +280,46 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
             return false;
         end
         
-        if Logger and Logger.Info then
-            local currentL = CrateTrackerZK and CrateTrackerZK.L;
-            if currentL and currentL.TeamMessageUpdated then
-                Logger:Info("TeamMessageReader", "更新", string.format(currentL.TeamMessageUpdated, 
-                    mapName, Data:FormatDateTime(refreshTime)));
-            else
-                Logger:Info("TeamMessageReader", "更新", string.format("已成功通过团队用户获取到【%s】最新空投时间：%s", 
-                    mapName, Data:FormatDateTime(refreshTime)));
-            end
-        end
-    else
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamMessageReader", "更新", string.format("消息已处理但跳过更新：地图=%s（已使用更早的时间）", mapName));
-        end
-        return true;
-    end
-    
-    if TimerManager and TimerManager.UpdateUI then
-        TimerManager:UpdateUI();
-    end
-    
-    local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player");
-    local mapData = Data:GetMap(mapId);
-    local isOnMap = mapData and currentMapID == mapData.mapID;
-    
-    if isOnMap then
-        local shouldSend = true;
-        if DetectionState then
-            local state = DetectionState:GetState(mapId);
-            if state and state.status == DetectionState.STATES.PROCESSED then
-                shouldSend = false;
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamMessageReader", "通知", string.format("空投还在进行中，不发送重复通知：地图=%s", mapName));
-                end
-            end
+        -- 更新空投事件时间戳
+        if mapData then
+            mapData.currentAirdropTimestamp = currentTime;
+            mapData.currentAirdropObjectGUID = nil;
+            Data:SaveMapData(mapId);
         end
         
-        if shouldSend then
-            if Logger and Logger.Info then
-                local currentL = CrateTrackerZK and CrateTrackerZK.L;
-                if currentL and currentL.AirdropDetected then
-                    Logger:Info("Notification", "通知", string.format(currentL.AirdropDetected, mapName));
-                else
-                    Logger:Info("Notification", "通知", string.format("【%s】 发现战争物资正在空投！！！", mapName));
-                end
-            end
+        
+        if TimerManager and TimerManager.UpdateUI then
+            TimerManager:UpdateUI();
+        end
+    else
+        -- 在空投地图，不更新时间
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamMessageReader", "处理", string.format("在空投地图，跳过团队消息更新（由自己的检测处理）：地图=%s", mapName));
         end
     end
     
     return true;
 end
 
+-- 检查历史 objectGUID
+function TeamMessageReader:CheckHistoricalObjectGUID(mapId, objectGUID)
+    if not mapId or not objectGUID then
+        return false;
+    end
+    
+    local mapData = Data:GetMap(mapId);
+    if mapData and mapData.currentAirdropObjectGUID == objectGUID then
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamMessageReader", "比对", string.format("重载后比对：相同 objectGUID，是同一事件，忽略：地图ID=%d，objectGUID=%s", 
+                mapId, objectGUID));
+        end
+        return true;
+    end
+    
+    return false;
+end
+
 function TeamMessageReader:Initialize()
-    TeamMessageReader.lastTeamMessageTime = {};
     InitializeMessagePatterns();
     
     if not self.chatFrame then
@@ -403,13 +356,6 @@ function TeamMessageReader:Initialize()
     
     if Logger and Logger.Debug then
         Logger:Debug("TeamMessageReader", "初始化", "团队消息读取器已初始化");
-    end
-end
-
-function TeamMessageReader:ClearNotificationRecords()
-    TeamMessageReader.lastTeamMessageTime = {};
-    if Logger and Logger.Debug then
-        Logger:Debug("TeamMessageReader", "重置", "已清除所有团队消息记录");
     end
 end
 

@@ -1,5 +1,4 @@
--- Logger.lua
--- 统一的日志输出模块，支持多级别日志和智能限流
+-- Logger.lua - 统一的日志输出模块，支持多级别日志和智能限流
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -39,7 +38,6 @@ Logger.MODULE_PREFIXES = {
     -- 重构后的检测模块
     ["IconDetector"] = "图标检测",
     ["MapTracker"] = "地图追踪",
-    ["DetectionState"] = "检测状态",
     
     -- UI模块
     ["MainPanel"] = "主面板",
@@ -123,22 +121,22 @@ function Logger:Initialize()
     self.DEBUG_MESSAGE_INTERVAL = 30;
     
     self.RATE_LIMITS = {
-        ["detection_loop:start"] = 30,  -- 检测循环开始：30秒限流
+        ["detection_loop:start"] = 30,
         ["detection_loop:map_matched"] = 0,
-        ["detection_loop:map_not_in_list"] = 60,  -- 地图不在列表：60秒限流
+        ["detection_loop:map_not_in_list"] = 60,
         ["icon_detection:result"] = 0,
         ["map_check:match"] = 0,
-        ["map_check:match_success"] = 60,  -- 地图匹配成功：60秒限流（只在状态变化时输出）
-        ["map_check:parent_match"] = 60,  -- 父地图匹配：60秒限流
+        ["map_check:match_success"] = 60,
+        ["map_check:parent_match"] = 60,
         ["state_change"] = 0,
-        ["state_processed"] = 10,  -- 已处理状态（倒计时）：10秒限流
-        ["state_processed:skipped"] = 10,  -- 已处理状态跳过检测（倒计时）：10秒限流
+        ["state_processed"] = 10,
+        ["state_processed:skipped"] = 10,
         ["phase_update"] = 0,
-        ["phase:status"] = 60,  -- 位面状态：60秒限流
+        ["phase:status"] = 60,
         ["area_change"] = 0,
         ["detection_loop"] = 30,
         ["icon_detection"] = 20,
-        ["map_check"] = 60,  -- 地图检查：60秒限流
+        ["map_check"] = 60,
         ["state_check"] = 30,
         ["ui_update"] = 300,
         ["data_save"] = 10,
@@ -225,7 +223,7 @@ function Logger:LogLimited(messageKey, level, module, func, ...)
         startArg = 2;
     end
     
-    -- 查找匹配的限流规则（支持部分匹配）
+    -- 查找匹配的限流规则
     for limitType, limitInterval in pairs(self.RATE_LIMITS) do
         if messageKey:find(limitType, 1, true) == 1 then
             rateLimit = limitInterval;
@@ -238,11 +236,8 @@ function Logger:LogLimited(messageKey, level, module, func, ...)
     local timeSinceLast = currentTime - lastTime;
     
     if timeSinceLast >= rateLimit then
-        -- 到达限流间隔：输出当前消息
         self.lastDebugMessage[messageKey] = currentTime;
         self:Log(level, module, func, select(startArg, ...));
-    else
-        -- 未到限流间隔：直接丢弃消息，不输出，不统计
     end
 end
 

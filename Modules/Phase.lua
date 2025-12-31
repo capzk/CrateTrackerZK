@@ -1,22 +1,22 @@
--- Phase.lua
--- 检测和更新位面（Phase）信息，通过鼠标悬停NPC获取位面ID
+-- Phase.lua - 检测和更新位面信息
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
 
-Phase.anyInstanceIDAcquired = false;
 Phase.lastReportedInstanceID = nil;
+Phase.lastReportedMapPhaseKey = nil;
+-- 位面ID缓存（以mapID为key，存储每个地图的位面ID，用于UI显示）
+-- 退出游戏或切换角色时清除
+Phase.phaseCache = {};
 
 function Phase:Reset()
-    self.anyInstanceIDAcquired = false;
     self.lastReportedInstanceID = nil;
-    Logger:Debug("Phase", "重置", "已重置位面检测状态");
-end
-
-local function DT(key)
-    return Logger:GetDebugText(key);
+    self.lastReportedMapPhaseKey = nil;
+    -- 清除位面ID缓存（切换角色或退出游戏时清除）
+    self.phaseCache = {};
+    Logger:Debug("Phase", "重置", "已重置位面检测状态和缓存");
 end
 
 function Phase:GetLayerFromNPC()
@@ -29,11 +29,10 @@ function Phase:GetLayerFromNPC()
     end
     
     if guid then
-        -- GUID格式: Creature-0-[分片ID]-[实例ID]-[zoneUID]-[NPC ID]-[spawnUID]
-        -- 位面ID = 分片ID-实例ID (第3部分-第4部分)
-        local unitType, _, shardID, instanceID = strsplit("-", guid);
-        if (unitType == "Creature" or unitType == "Vehicle") and shardID and instanceID then
-            return shardID .. "-" .. instanceID;
+        -- 位面ID = 分片ID-实例ID
+        local unitType, _, shardID, instancePart = strsplit("-", guid);
+        if (unitType == "Creature" or unitType == "Vehicle") and shardID and instancePart then
+            return shardID .. "-" .. instancePart;
         end
     end
     return nil;
@@ -65,41 +64,65 @@ function Phase:UpdatePhaseInfo()
     end
     
     if targetMapData then
-        local instanceID = self:GetLayerFromNPC();
+        local detectedPhaseID = self:GetLayerFromNPC();
+        local cachedPhaseID = self.phaseCache[currentMapID];
         
-        if instanceID ~= targetMapData.instance then
-            if instanceID then
-                local oldInstance = targetMapData.instance;
-                Data:UpdateMap(targetMapData.id, { lastInstance = oldInstance, instance = instanceID });
-                
-                if oldInstance then
-                    Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], Data:GetMapDisplayName(targetMapData), instanceID));
-                    Logger:Debug("Phase", "位面", string.format("位面变化：%s -> %s，地图=%s", 
-                        oldInstance, instanceID, Data:GetMapDisplayName(targetMapData)));
-                else
-                    if not self.lastReportedInstanceID or self.lastReportedInstanceID ~= instanceID then
-                        Logger:Info("Phase", "位面", string.format(L["CurrentInstanceID"], instanceID));
-                        Logger:Debug("Phase", "位面", string.format("首次获取到位面ID：%s，地图=%s", 
-                            instanceID, Data:GetMapDisplayName(targetMapData)));
-                        self.lastReportedInstanceID = instanceID;
-                    end
-                end
-                
-                if MainPanel and MainPanel.UpdateTable then
-                    MainPanel:UpdateTable();
-                end
+        -- 位面ID缓存机制：
+        -- 1. 如果检测到新的位面ID，且与缓存不同，更新缓存和targetMapData.currentPhaseID
+        -- 2. 如果检测不到位面ID，使用缓存的位面ID（如果存在）
+        -- 3. 只有当位面发生变化时才更新缓存
+        
+        local shouldUpdate = false;
+        local currentPhaseID = nil;
+        
+        if detectedPhaseID then
+            -- 检测到新的位面ID
+            if cachedPhaseID ~= detectedPhaseID then
+                -- 位面发生变化，更新缓存
+                self.phaseCache[currentMapID] = detectedPhaseID;
+                currentPhaseID = detectedPhaseID;
+                shouldUpdate = true;
+                Logger:Debug("Phase", "缓存", string.format("位面ID已更新：地图ID=%d，旧位面=%s，新位面=%s", 
+                    currentMapID, cachedPhaseID or "无", detectedPhaseID));
+            else
+                -- 位面未变化，使用缓存的位面ID
+                currentPhaseID = detectedPhaseID;
             end
-        elseif instanceID and instanceID == targetMapData.instance and not targetMapData.lastInstance then
-            Data:UpdateMap(targetMapData.id, { lastInstance = targetMapData.instance });
+        elseif cachedPhaseID then
+            -- 检测不到位面ID，但缓存中存在，使用缓存的位面ID
+            currentPhaseID = cachedPhaseID;
+            Logger:Debug("Phase", "缓存", string.format("使用缓存的位面ID：地图ID=%d，位面ID=%s", 
+                currentMapID, cachedPhaseID));
         end
-        if not self.anyInstanceIDAcquired then
-            local hasAny = false;
-            for _, m in ipairs(maps) do
-                if m.instance then hasAny = true; break end
+        
+        -- 更新targetMapData.currentPhaseID（用于UI显示）
+        if currentPhaseID then
+            targetMapData.currentPhaseID = currentPhaseID;
+            
+            -- 检查是否需要发送消息（避免重复发送）
+            -- 使用地图ID+位面ID作为唯一标识，避免跨地图的位面ID冲突
+            if shouldUpdate then
+                local mapPhaseKey = currentMapID .. "-" .. currentPhaseID;
+                local lastReportedKey = self.lastReportedMapPhaseKey;
+                
+                if not lastReportedKey then
+                    -- 首次获取到位面ID，发送系统消息提醒
+                    local mapName = Data:GetMapDisplayName(targetMapData);
+                    Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
+                    self.lastReportedInstanceID = currentPhaseID;
+                    self.lastReportedMapPhaseKey = mapPhaseKey;
+                elseif lastReportedKey ~= mapPhaseKey then
+                    -- 位面发生变化（可能是地图变化或位面变化），发送系统消息提醒
+                    local mapName = Data:GetMapDisplayName(targetMapData);
+                    Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], mapName, currentPhaseID));
+                    self.lastReportedInstanceID = currentPhaseID;
+                    self.lastReportedMapPhaseKey = mapPhaseKey;
+                end
             end
-            if not hasAny then
-                Logger:Info("Phase", "位面", L["NoInstanceAcquiredHint"]);
-                self.anyInstanceIDAcquired = true;
+            
+            -- 更新UI显示
+            if MainPanel and MainPanel.UpdateTable then
+                MainPanel:UpdateTable();
             end
         end
     end

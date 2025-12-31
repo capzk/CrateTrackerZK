@@ -25,14 +25,6 @@ localeData["FloatingButtonTooltipTitle"] = "CrateTrackerZK";
 localeData["FloatingButtonTooltipLine1"] = "Клик — открыть/закрыть панель отслеживания";
 localeData["FloatingButtonTooltipLine2"] = "Перетащите, чтобы переместить кнопку";
 
--- Phase Detection
-localeData["NoInstanceAcquiredHint"] = "ID фазы не получен. Наведите курсор на любого НПС, чтобы получить текущий ID фазы";
-localeData["CurrentInstanceID"] = "Текущий ID фазы: |cffffff00%s|r";
-localeData["InstanceChangedTo"] = "ID фазы карты [|cffffcc00%s|r] изменён на: |cffffff00%s|r";
-
--- Message Prefix
-localeData["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
-
 -- Errors/Hints
 localeData["CommandModuleNotLoaded"] = "Модуль команд не загружен, пожалуйста, перезагрузите аддон";
 localeData["LocalizationWarning"] = "Предупреждение";
@@ -53,55 +45,46 @@ localeData["AirdropDetected"] = "[%s] Обнаружен воздушный де
 localeData["AirdropDetectedManual"] = "[%s] Воздушный десант военных припасов!!!";  -- Ручное уведомление (без ключевого слова "Обнаружен")
 localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
-localeData["TeamMessageUpdated"] = "Успешно получено время последнего воздушного десанта для [%s] от участников группы: %s";  -- Уведомление об обновлении сообщения группы
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
-localeData["DebugEnabled"] = "Режим отладки включен";
-localeData["DebugDisabled"] = "Режим отладки выключен";
+
+-- Phase Detection Alerts
+localeData["PhaseDetectedFirstTime"] = "[%s] Текущий ID фазы: |cffffff00%s|r";
+localeData["InstanceChangedTo"] = "[%s] Текущий ID фазы изменён на: |cffffff00%s|r";
 
 -- Invalid Airdrop Alerts
-localeData["InvalidAirdropDetecting"] = "[Недействительный воздушный десант] Карта=%s, событие воздушного десанта исчезло в течение %.1f секунд, признано недействительным, состояние обнаружения очищено";
-localeData["InvalidAirdropConfirmed"] = "[Недействительный воздушный десант] Карта=%s, подтвержденное событие воздушного десанта исчезло через %.1f секунд, признано недействительным, состояние обнаружения и метка подтверждения очищены";
-localeData["InvalidAirdropHandled"] = "[Обработка недействительного воздушного десанта] Карта=%s, подтвержденное событие воздушного десанта признано недействительным, уведомление и обновление времени обновления отменены";
+localeData["InvalidAirdropNotification"] = "[%s] Обнаружено недействительное событие воздушного десанта, самолёт с припасами существовал слишком короткое время, признано недействительным событием.";
 
 -- Commands
 localeData["UnknownCommand"] = "Неизвестная команда: %s";
 localeData["ClearingData"] = "Очистка всех данных о времени и фазировании...";
 localeData["DataCleared"] = "Все данные очищены, аддон переинициализирован";
 localeData["DataClearFailedModule"] = "Очистка данных не удалась: модуль данных не загружен";
-localeData["ClearUsage"] = "Команда очистки: /ctk clear или /ctk reset";
-localeData["NotificationModuleNotLoaded"] = "Модуль уведомлений не загружен";
 localeData["TeamUsage1"] = "Команды уведомлений в группу:";
 localeData["TeamUsage2"] = "/ctk team on — Включить уведомления в группу";
 localeData["TeamUsage3"] = "/ctk team off — Выключить уведомления в группу";
 localeData["HelpTitle"] = "Доступные команды:";
 localeData["HelpClear"] = "/ctk clear или /ctk reset — Очистить все данные и переинициализировать аддон";
 localeData["HelpTeam"] = "/ctk team on|off — Включить/выключить уведомления в группу";
+localeData["HelpTimeShare"] = "/ctk timeshare on|off — Включить/выключить совместное использование времени группы (тестовая функция, по умолчанию выключено)";
 localeData["HelpHelp"] = "/ctk help — Показать эту справку";
 localeData["HelpUpdateWarning"] = "Если после обновления возникнут проблемы, полностью удалите папку аддона и установите заново!!";
 
 localeData["ErrorTimerManagerNotInitialized"] = "Менеджер таймеров не инициализирован";
-localeData["ErrorInvalidMapID"] = "Неверный ID карты:";
-localeData["ErrorTimerStartFailedMapID"] = "Запуск таймера не удался: ID карты=";
-localeData["ErrorInvalidMapIDList"] = "Неверный список ID карт";
-localeData["ErrorMapNotFound"] = "Карта не найдена:";
-localeData["ErrorInvalidSourceParam"] = "Неверный параметр источника обнаружения";
-localeData["ErrorMapConfigEmpty"] = "MAP_CONFIG.current_maps пуст или nil";
+localeData["ErrorInvalidMapID"] = "Неверный ID карты: %s";
+localeData["ErrorTimerStartFailedMapID"] = "Запуск таймера не удался: ID карты=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "Не удалось обновить время обновления: ID карты=%s";
 localeData["ErrorMapTrackerModuleNotLoaded"] = "Модуль MapTracker не загружен";
 localeData["ErrorIconDetectorModuleNotLoaded"] = "Модуль IconDetector не загружен";
-localeData["ErrorDetectionStateModuleNotLoaded"] = "Модуль DetectionState не загружен";
 localeData["ErrorTimerManagerModuleNotLoaded"] = "Модуль TimerManager не загружен";
-localeData["ErrorRefreshButtonNoMapID"] = "Кнопка обновления: Не удалось получить ID карты, попробуйте позже";
-localeData["ErrorNotifyButtonNoMapID"] = "Кнопка уведомления: Не удалось получить ID карты";
 localeData["ErrorCannotGetMapData"] = "Не удалось получить данные карты, ID карты=%s";
-localeData["ErrorUpdateRefreshTimeFailed"] = "Не удалось обновить время обновления: ID карты=%s";
+localeData["TimeFormatError"] = "Ошибка формата времени, введите в формате ЧЧ:ММ:СС или ЧЧММСС";
+localeData["TimestampError"] = "Не удалось создать корректную метку времени";
 localeData["AddonInitializedSuccess"] = "Аддон успешно инициализирован, приятной игры!";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";
 localeData["InfoButton"] = "Инфо";
-localeData["AnnouncementButton"] = "Анонс";
-localeData["IntroButton"] = "Введение";
 localeData["Map"] = "Карта";
 localeData["Phase"] = "Фаза";
 localeData["LastRefresh"] = "Последний";
@@ -115,11 +98,6 @@ localeData["MinuteSecond"] = "%dм%02dс";
 localeData["InputTimeHint"] = "Введите время последнего обновления (ЧЧ:ММ:СС или ЧЧММСС):";
 localeData["Confirm"] = "Подтвердить";
 localeData["Cancel"] = "Отмена";
-localeData["TimeFormatError"] = "Ошибка формата времени, введите в формате ЧЧ:ММ:СС или ЧЧММСС";
-localeData["TimestampError"] = "Не удалось создать корректную метку времени";
-localeData["InfoModuleNotLoaded"] = "Модуль информации не загружен";
-localeData["DataModuleNotLoaded"] = "Модуль данных не загружен";
-localeData["TimerManagerNotInitialized"] = "Менеджер таймеров не инициализирован";
 localeData["Return"] = "Назад";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[Доступные команды:
@@ -127,6 +105,7 @@ localeData["HelpText"] = [[Доступные команды:
 /ctk help        Показать доступные команды
 /ctk team on/off Включить или выключить уведомления в группу
 /ctk clear       Очистить локальные данные и переинициализировать
+/ctk timeshare on/off Включить/выключить совместное использование времени группы (тестовая функция, по умолчанию выключено)
 
 Как получить ID фазы:
 
@@ -139,7 +118,6 @@ localeData["HelpText"] = [[Доступные команды:
 -- Menu Items
 localeData["MenuHelp"] = "Справка";
 localeData["MenuAbout"] = "О аддоне";
-localeData["MenuSettings"] = "Настройки";
 
 -- Map name translations (using map ID as key)
 localeData.MapNames = {

@@ -1,5 +1,4 @@
--- MapTracker.lua
--- 管理地图匹配和变化，支持父地图匹配
+-- MapTracker.lua - 管理地图匹配和变化，支持父地图匹配
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -124,16 +123,12 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
             oldMapName, self.lastDetectedMapId or 0, newMapName, targetMapData.id));
     end
     
-    -- 简化：不再在地图切换时清除状态，状态清除由OnLogin()和PROCESSED超时处理
     
     self.lastDetectedMapId = targetMapData.id;
     self.lastDetectedGameMapID = currentMapID;
     
     return changeInfo;
 end
-
--- 简化：移除离开地图超时清除功能
--- 状态清除由OnLogin()和PROCESSED超时处理
 
 MapTracker:Initialize();
 

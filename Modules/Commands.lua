@@ -1,5 +1,4 @@
--- Commands.lua
--- 处理斜杠命令（/ctk）
+-- Commands.lua - 处理斜杠命令
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -25,6 +24,8 @@ function Commands:HandleCommand(msg)
         self:HandleClearCommand(arg);
     elseif command == "team" or command == "teamnotify" then
         self:HandleTeamNotificationCommand(arg);
+    elseif command == "timeshare" or command == "sharetime" then
+        self:HandleTeamTimeShareCommand(arg);
     elseif command == "help" or command == "" or command == nil then
         self:ShowHelp();
     else
@@ -71,10 +72,10 @@ function Commands:HandleClearCommand(arg)
         end
     end
     if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.position = nil;
-        CRATETRACKERZK_UI_DB.minimapButton = nil;
-        CRATETRACKERZK_UI_DB.debugEnabled = nil;
-        CRATETRACKERZK_UI_DB.teamNotificationEnabled = nil;
+        -- 清除所有UI设置
+        for k in pairs(CRATETRACKERZK_UI_DB) do
+            CRATETRACKERZK_UI_DB[k] = nil;
+        end
     end
 
     if Data then
@@ -82,19 +83,56 @@ function Commands:HandleClearCommand(arg)
     end
     if TimerManager then
         TimerManager.isInitialized = false;
-    end
-    if DetectionState and DetectionState.ClearAllStates then
-        DetectionState:ClearAllStates();
+        TimerManager.lastStatusReportTime = 0;  -- 重置状态报告时间
+        -- 清除检测状态
+        if TimerManager.detectionState then
+            TimerManager.detectionState = {};
+        end
     end
     if MapTracker then
-        MapTracker.lastDetectedMapId = nil;
-        MapTracker.lastDetectedGameMapID = nil;
+        MapTracker:Initialize();  -- 重置所有地图追踪状态
+    end
+    if Phase and Phase.Reset then
+        Phase:Reset();  -- 重置位面检测状态
+    end
+    if Area then
+        Area.lastAreaValidState = nil;
+        Area.detectionPaused = false;
     end
     if Notification then
         Notification.isInitialized = false;
     end
+    if TeamMessageReader then
+        TeamMessageReader.isInitialized = false;
+        TeamMessageReader.messagePatterns = {};
+        -- 清理聊天框架
+        if TeamMessageReader.chatFrame then
+            TeamMessageReader.chatFrame:UnregisterAllEvents();
+            TeamMessageReader.chatFrame:SetScript("OnEvent", nil);
+            TeamMessageReader.chatFrame = nil;
+        end
+    end
     if Logger then
         Logger:ClearMessageCache();
+    end
+    -- 重置核心模块的定时器状态
+    if CrateTrackerZK then
+        CrateTrackerZK.phaseTimerPaused = false;
+        CrateTrackerZK.phaseResumePending = false;
+    end
+    
+    -- 清除MainPanel的内存状态
+    if MainPanel then
+        MainPanel.lastNotifyClickTime = {};
+    end
+    
+    -- 清除所有地图数据中的内存状态
+    if Data and Data.maps then
+        for _, mapData in ipairs(Data.maps) do
+            if mapData then
+                mapData.currentPhaseID = nil;
+            end
+        end
     end
 
     if CrateTrackerZK and CrateTrackerZK.Reinitialize then
@@ -122,11 +160,31 @@ function Commands:HandleTeamNotificationCommand(arg)
     end
 end
 
+function Commands:HandleTeamTimeShareCommand(arg)
+    if not CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    
+    if arg == "on" or arg == "enable" then
+        CRATETRACKERZK_UI_DB.teamTimeShareEnabled = true;
+        Logger:Info("Commands", "命令", "团队时间共享已开启（测试功能）");
+    elseif arg == "off" or arg == "disable" then
+        CRATETRACKERZK_UI_DB.teamTimeShareEnabled = false;
+        Logger:Info("Commands", "命令", "团队时间共享已关闭");
+    else
+        local status = CRATETRACKERZK_UI_DB.teamTimeShareEnabled and "已开启" or "已关闭";
+        Logger:Info("Commands", "命令", string.format("团队时间共享：%s", status));
+        Logger:Info("Commands", "命令", "/ctk timeshare on - 开启团队时间共享（测试功能）");
+        Logger:Info("Commands", "命令", "/ctk timeshare off - 关闭团队时间共享");
+    end
+end
+
 function Commands:ShowHelp()
     Logger:Info("Commands", "帮助", L["HelpTitle"]);
     Logger:Info("Commands", "帮助", L["HelpClear"]);
     Logger:Info("Commands", "帮助", L["HelpTeam"]);
     Logger:Info("Commands", "帮助", L["HelpHelp"]);
+    Logger:Info("Commands", "帮助", "更多帮助信息请查看UI帮助菜单（点击主面板的'帮助'按钮）");
     if L["HelpUpdateWarning"] then
         Logger:Warn("Commands", "警告", L["HelpUpdateWarning"]);
     end

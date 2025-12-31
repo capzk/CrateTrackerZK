@@ -24,7 +24,6 @@
     <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
     <Script file="Modules/IconDetector.lua"/>
     <Script file="Modules/MapTracker.lua"/>
-    <Script file="Modules/DetectionState.lua"/>
     <Script file="Modules/Timer.lua"/>
     <Script file="Modules/Area.lua"/>
     <Script file="Modules/Phase.lua"/>

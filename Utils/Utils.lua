@@ -1,5 +1,4 @@
--- Utils.lua
--- 工具函数：时间解析和格式化
+-- Utils.lua - 工具函数：时间解析和格式化
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -68,32 +67,17 @@ function Utils.GetTimestampFromTime(hh, mm, ss)
     local currentTime = time();
     local currentDate = date('*t', currentTime);
     
+    -- 用户输入的时间作为过去时间处理
     local dateTable = {
         year = currentDate.year,
         month = currentDate.month,
-        day = currentDate.day,
+        day = currentDate.day - 1,  -- 前一天
         hour = hh,
         min = mm,
         sec = ss
     };
     
     return time(dateTable);
-end
-
-function Utils.PrintError(message)
-    Logger:Error("Utils", "错误", message);
-end
-
-function Utils.Print(message)
-    Logger:Info("Utils", nil, message);
-end
-
-function Utils.SetDebugEnabled(enabled)
-    Logger:SetDebugEnabled(enabled);
-end
-
-function Utils.Debug(...)
-    Logger:Debug("Utils", "调试", ...);
 end
 
 return Utils;

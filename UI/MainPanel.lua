@@ -119,6 +119,10 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
             textObj:SetWidth(textWidth);
             textObj:SetMaxLines(1);
         end
+    elseif colIndex == 2 then
+        -- 位面列：防止换行
+        textObj:SetNonSpaceWrap(false);
+        textObj:SetMaxLines(1);
     end
     cell.Text = textObj;
     
@@ -405,12 +409,12 @@ local function PrepareTableData()
                 id = mapData.id,
                 mapID = mapData.mapID,
                 interval = mapData.interval,
-                instance = mapData.instance,
-                lastInstance = mapData.lastInstance,
-                lastRefreshInstance = mapData.lastRefreshInstance,
                 lastRefresh = mapData.lastRefresh,
                 nextRefresh = mapData.nextRefresh,
                 remaining = remaining,
+                currentAirdropObjectGUID = mapData.currentAirdropObjectGUID,
+                currentAirdropTimestamp = mapData.currentAirdropTimestamp,
+                currentPhaseID = mapData.currentPhaseID,
                 _original = mapData
             };
             table.insert(mapArray, mapDataCopy);
@@ -424,8 +428,7 @@ function MainPanel:UpdateTable()
     if not frame or not frame:IsShown() then return end
     
     -- UI只负责显示，不处理数据
-    -- 数据更新应该由定时器或其他模块负责
-    -- UI更新信息限流很长，避免刷屏（关键信息在其他模块输出）
+    -- UI更新信息限流
     Logger:DebugLimited("ui_update:table", "MainPanel", "界面", "更新表格显示");
     local mapArray = PrepareTableData();
     
@@ -460,35 +463,60 @@ function MainPanel:UpdateTable()
         
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
-        local instanceID = mapData.instance;
-        local instanceText = L["NotAcquired"] or "N/A";
+        -- 位面信息显示逻辑：
+        -- 1. 存储的位面ID（lastRefreshPhase）：从空投的 objectGUID 提取的位面ID
+        -- 2. 实时检测的位面ID（currentPhaseID）：Phase 模块检测到的位面ID（用于UI显示）
+        -- 3. UI显示：显示 Phase 模块检测到的位面ID（currentPhaseID）
+        -- 4. 颜色判断：当 currentPhaseID 和 lastRefreshPhase 不同时，红色显示
+        
+        -- 存储的位面ID（从空投的 objectGUID 提取）
+        local storedPhaseID = mapData.lastRefreshPhase;
+        -- 实时检测的位面ID（Phase 模块检测，用于UI显示）
+        local currentPhaseID = mapData.currentPhaseID;
+        
+        local phaseText = L["NotAcquired"] or "N/A";
         local color = {1, 1, 1};
         
-        if instanceID then
-            instanceText = tostring(instanceID):sub(-5);
-            -- 使用 DetectionState 模块检查空投状态
-            local isAirdrop = false;
-            if DetectionState then
-                local state = DetectionState:GetState(mapData.id);
-                isAirdrop = (state and state.status == DetectionState.STATES.PROCESSED);
+        -- UI显示：显示 Phase 模块检测到的位面ID（currentPhaseID）
+        local displayPhaseID = currentPhaseID;
+        
+        if displayPhaseID then
+            local fullText = tostring(displayPhaseID);
+            if #fullText > 8 then
+                phaseText = string.sub(fullText, 1, 8);
+            else
+                phaseText = fullText;
             end
+            
             local currentTime = time();
+            local isAirdrop = false;
+            if mapData.currentAirdropTimestamp then
+                local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
+                isAirdrop = timeSinceAirdrop <= 30;
+            end
             local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
             
+            -- 颜色判断逻辑：
+            -- 1. 如果已过刷新时间：白色
+            -- 2. 如果空投活跃中：绿色
+            -- 3. 如果存储的位面ID（从objectGUID提取）和实时检测的位面ID（Phase模块）不同：红色（位面变化提醒）
+            -- 4. 其他情况：绿色
             if mapData.nextRefresh and currentTime >= mapData.nextRefresh then
                 color = {1, 1, 1};
             elseif isAirdrop then
                 color = {0, 1, 0};
-            elseif isBeforeRefresh and mapData.lastRefreshInstance and instanceID ~= mapData.lastRefreshInstance then
+            elseif isBeforeRefresh and storedPhaseID and currentPhaseID and currentPhaseID ~= storedPhaseID then
+                -- 位面变化：存储的位面ID（从objectGUID提取）和实时检测的位面ID（Phase模块）不同
                 color = {1, 0, 0};
             else
                 color = {0, 1, 0};
             end
         end
-        row.columns[2].Text:SetText(instanceText);
+        row.columns[2].Text:SetText(phaseText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
+        -- 使用 FormatTimeForDisplay 只显示时分秒
+        local lastRefreshText = mapData.lastRefresh and Data:FormatTimeForDisplay(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
         row.columns[3].Text:SetText(lastRefreshText);
         
         local remaining = mapData.remaining;
@@ -508,7 +536,7 @@ end
 
 function MainPanel:RefreshMap(mapId)
     if not mapId then
-        Logger:Error("MainPanel", "错误", "Invalid map ID: " .. tostring(mapId));
+        Logger:Error("MainPanel", "错误", string.format(L["ErrorInvalidMapID"], tostring(mapId)));
         return false;
     end
     
@@ -521,16 +549,15 @@ function MainPanel:RefreshMap(mapId)
     Logger:Debug("MainPanel", "用户操作", string.format("用户点击刷新按钮：地图ID=%d，地图=%s", 
         mapId, Data:GetMapDisplayName(mapData)));
     
-    -- 立即更新内存数据，用于UI显示
     local currentTimestamp = time();
     mapData.lastRefresh = currentTimestamp;
-    mapData.lastRefreshInstance = mapData.instance;
+    mapData.currentAirdropObjectGUID = nil;
+    mapData.currentAirdropTimestamp = nil;
     Data:UpdateNextRefresh(mapId, mapData);
     
-    -- 立即更新UI显示
     self:UpdateTable();
     
-    -- 异步处理数据保存（刷新按钮已经更新了内存数据和UI，StartTimer只需要保存数据）
+    -- 异步保存数据
     C_Timer.After(0, function()
         if TimerManager then
             TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON, currentTimestamp);
@@ -552,7 +579,10 @@ function MainPanel:EditLastRefresh(mapId)
         hasEditBox = true,
         OnAccept = function(sf) 
             local input = sf.EditBox:GetText();
-            MainPanel:ProcessInput(mapId, input);
+            local success = MainPanel:ProcessInput(mapId, input);
+            if success then
+                StaticPopup_Hide('CRATETRACKERZK_EDIT_LASTREFRESH');
+            end
         end,
         EditBoxOnEnterPressed = function(editBox)
             local input = editBox:GetText();
@@ -577,31 +607,28 @@ function MainPanel:ProcessInput(mapId, input)
         return false;
     end
     
-    -- 解析时间输入（这是UI输入验证，不是数据处理）
+    -- 解析时间输入
     local hh, mm, ss = Utils.ParseTimeInput(input);
     if not hh then 
-        Logger:Error("MainPanel", "错误", "Time format error, please enter HH:MM:SS or HHMMSS format"); 
+        Logger:Error("MainPanel", "错误", L["TimeFormatError"]); 
         return false;
     end
     
-    -- 转换为时间戳（这是UI输入转换，不是数据处理）
+    -- 转换为时间戳
     local ts = Utils.GetTimestampFromTime(hh, mm, ss);
     if not ts then 
-        Logger:Error("MainPanel", "错误", "Unable to create valid timestamp"); 
+        Logger:Error("MainPanel", "错误", L["TimestampError"]); 
         return false;
     end
     
     Logger:Debug("MainPanel", "用户操作", string.format("时间解析成功：%02d:%02d:%02d -> 时间戳=%d", hh, mm, ss, ts));
     
     -- 通过统一接口处理数据
-    local success = TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
-    -- StartTimer 内部已调用 UpdateUI() -> UpdateTable()，无需重复调用
+    TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
     
-    if success then
-        Logger:Debug("MainPanel", "用户操作", "手动输入时间操作成功");
-    end
+    Logger:Debug("MainPanel", "用户操作", "手动输入时间操作成功");
     
-    return success;
+    return true;
 end
 
 function MainPanel:NotifyMapRefresh(mapData)

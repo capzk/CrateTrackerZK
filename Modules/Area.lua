@@ -1,5 +1,4 @@
--- Area.lua
--- 检查玩家所在区域是否有效（非副本/战场），控制检测功能开关
+-- Area.lua - 检查玩家所在区域是否有效，控制检测功能开关
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -7,10 +6,6 @@ local Area = BuildEnv("Area");
 
 Area.lastAreaValidState = nil;
 Area.detectionPaused = false;
-
-local function DebugPrint(msg, ...)
-    Logger:Debug("Area", "调试", msg, ...);
-end
 
 local function DT(key)
     return Logger:GetDebugText(key);

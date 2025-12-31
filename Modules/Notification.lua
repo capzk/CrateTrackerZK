@@ -1,5 +1,4 @@
--- Notification.lua
--- 处理空投检测通知和地图刷新通知
+-- Notification.lua - 处理空投检测通知和地图刷新通知
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -89,6 +88,18 @@ function Notification:GetTeamChatType()
     return nil;
 end
 
+function Notification:NotifyInvalidAirdrop(mapName)
+    if not self.isInitialized then self:Initialize() end
+    if not mapName then 
+        Logger:Debug("Notification", "通知", "通知无效空投失败：地图名称为空");
+        return 
+    end
+    
+    local message = string.format(L["InvalidAirdropNotification"], mapName);
+    
+    Logger:Info("Notification", "通知", message);
+end
+
 function Notification:NotifyMapRefresh(mapData)
     if not self.isInitialized then self:Initialize() end
     if not mapData then 
@@ -99,10 +110,13 @@ function Notification:NotifyMapRefresh(mapData)
     Logger:Debug("Notification", "通知", string.format("用户请求通知地图刷新：地图=%s", 
         Data:GetMapDisplayName(mapData)));
     
+    -- 检查空投状态
     local isAirdropActive = false;
-    if DetectionState then
-        local state = DetectionState:GetState(mapData.id);
-        isAirdropActive = (state and state.status == DetectionState.STATES.PROCESSED);
+    if mapData.currentAirdropTimestamp then
+        local currentTime = time();
+        local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
+        -- 30秒内认为是空投活跃状态
+        isAirdropActive = timeSinceAirdrop <= 30;
     end
     
     local message;

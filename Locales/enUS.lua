@@ -24,14 +24,6 @@ localeData["FloatingButtonTooltipTitle"] = "CrateTrackerZK";
 localeData["FloatingButtonTooltipLine1"] = "Click to open/close tracking panel";
 localeData["FloatingButtonTooltipLine2"] = "Drag to move button position";
 
--- Phase Detection
-localeData["NoInstanceAcquiredHint"] = "No phasing ID acquired. Please hover over any NPC to get current phasing ID";
-localeData["CurrentInstanceID"] = "Current phasing ID: |cffffff00%s|r";
-localeData["InstanceChangedTo"] = "Map [|cffffcc00%s|r] phasing ID changed to: |cffffff00%s|r";
-
--- Message Prefix
-localeData["Prefix"] = "|cff00ff88[CrateTrackerZK]|r ";
-
 -- Errors/Hints
 localeData["CommandModuleNotLoaded"] = "Command module not loaded, please reload addon";
 localeData["LocalizationWarning"] = "Warning";
@@ -52,55 +44,46 @@ localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Aut
 localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
-localeData["TeamMessageUpdated"] = "Successfully obtained the latest airdrop time for [%s] from team members: %s";  -- Team message update notification
 localeData["Enabled"] = "Enabled";
 localeData["Disabled"] = "Disabled";
-localeData["DebugEnabled"] = "Debug mode enabled";
-localeData["DebugDisabled"] = "Debug mode disabled";
+
+-- Phase Detection Alerts
+localeData["PhaseDetectedFirstTime"] = "[%s] Current phasing ID: |cffffff00%s|r";
+localeData["InstanceChangedTo"] = "[%s] Current phasing ID changed to: |cffffff00%s|r";
 
 -- Invalid Airdrop Alerts
-localeData["InvalidAirdropDetecting"] = "[Invalid Airdrop] Map=%s, airdrop event disappeared within %.1f seconds, judged as invalid event, detection state cleared";
-localeData["InvalidAirdropConfirmed"] = "[Invalid Airdrop] Map=%s, confirmed airdrop event disappeared after %.1f seconds, judged as invalid event, detection state and confirmation mark cleared";
-localeData["InvalidAirdropHandled"] = "[Invalid Airdrop Handling] Map=%s, confirmed airdrop event judged as invalid, notification and refresh time update cancelled";
+localeData["InvalidAirdropNotification"] = "[%s] Detected invalid airdrop event, airdrop plane existed for too short a time, judged as invalid event.";
 
 -- Commands
 localeData["UnknownCommand"] = "Unknown command: %s";
 localeData["ClearingData"] = "Clearing all time and instance data...";
 localeData["DataCleared"] = "All data cleared, addon reinitialized";
 localeData["DataClearFailedModule"] = "Clear data failed: Data module not loaded";
-localeData["ClearUsage"] = "Clear command: /ctk clear or /ctk reset";
-localeData["NotificationModuleNotLoaded"] = "Notification module not loaded";
 localeData["TeamUsage1"] = "Team notification commands:";
 localeData["TeamUsage2"] = "/ctk team on - Enable team notification";
 localeData["TeamUsage3"] = "/ctk team off - Disable team notification";
 localeData["HelpTitle"] = "Available commands:";
 localeData["HelpClear"] = "/ctk clear or /ctk reset - Clear all data and reinitialize addon";
 localeData["HelpTeam"] = "/ctk team on|off - Enable/disable team notification";
+localeData["HelpTimeShare"] = "/ctk timeshare on|off - Enable/disable team time sharing (test feature, disabled by default)";
 localeData["HelpHelp"] = "/ctk help - Show this help information";
 localeData["HelpUpdateWarning"] = "If any problem occurs after updating, please completely delete this addon folder and reinstall it from scratch!!";
 
 localeData["ErrorTimerManagerNotInitialized"] = "Timer manager not initialized";
-localeData["ErrorInvalidMapID"] = "Invalid map ID:";
-localeData["ErrorTimerStartFailedMapID"] = "Timer start failed: Map ID=";
-localeData["ErrorInvalidMapIDList"] = "Invalid map ID list";
-localeData["ErrorMapNotFound"] = "Map not found:";
-localeData["ErrorInvalidSourceParam"] = "Invalid detection source parameter";
-localeData["ErrorMapConfigEmpty"] = "MAP_CONFIG.current_maps is empty or nil";
+localeData["ErrorInvalidMapID"] = "Invalid map ID: %s";
+localeData["ErrorTimerStartFailedMapID"] = "Timer start failed: Map ID=%s";
+localeData["ErrorUpdateRefreshTimeFailed"] = "Failed to update refresh time: Map ID=%s";
 localeData["ErrorMapTrackerModuleNotLoaded"] = "MapTracker module not loaded";
 localeData["ErrorIconDetectorModuleNotLoaded"] = "IconDetector module not loaded";
-localeData["ErrorDetectionStateModuleNotLoaded"] = "DetectionState module not loaded";
 localeData["ErrorTimerManagerModuleNotLoaded"] = "TimerManager module not loaded";
-localeData["ErrorRefreshButtonNoMapID"] = "Refresh button: Unable to get map ID, please try again later";
-localeData["ErrorNotifyButtonNoMapID"] = "Notify button: Unable to get map ID";
 localeData["ErrorCannotGetMapData"] = "Unable to get map data, Map ID=%s";
-localeData["ErrorUpdateRefreshTimeFailed"] = "Failed to update refresh time: Map ID=%s";
+localeData["TimeFormatError"] = "Time format error, please enter HH:MM:SS or HHMMSS format";
+localeData["TimestampError"] = "Unable to create valid timestamp";
 localeData["AddonInitializedSuccess"] = "Addon initialized successfully, enjoy your game!";
 
 -- UI
 localeData["MainPanelTitle"] = "|cff00ff88[CrateTrackerZK]|r";
 localeData["InfoButton"] = "Info";
-localeData["AnnouncementButton"] = "Announcement";
-localeData["IntroButton"] = "Introduction";
 localeData["Map"] = "Map";
 localeData["Phase"] = "Phasing";
 localeData["LastRefresh"] = "Last Refresh";
@@ -114,11 +97,6 @@ localeData["MinuteSecond"] = "%dm%02ds";
 localeData["InputTimeHint"] = "Please enter last refresh time (HH:MM:SS or HHMMSS):";
 localeData["Confirm"] = "Confirm";
 localeData["Cancel"] = "Cancel";
-localeData["TimeFormatError"] = "Time format error, please enter HH:MM:SS or HHMMSS format";
-localeData["TimestampError"] = "Unable to create valid timestamp";
-localeData["InfoModuleNotLoaded"] = "Info module not loaded";
-localeData["DataModuleNotLoaded"] = "Data module not loaded";
-localeData["TimerManagerNotInitialized"] = "Timer manager not initialized";
 localeData["Return"] = "Return";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[Available Commands:
@@ -126,6 +104,7 @@ localeData["HelpText"] = [[Available Commands:
 /ctk help        Show available commands
 /ctk team on/off Enable or disable team notifications
 /ctk clear       Clear local data and reinitialize
+/ctk timeshare on/off Enable/disable team time sharing (test feature, disabled by default)
 
 How to Get Phasing ID:
 
@@ -138,7 +117,6 @@ If you encounter any issues after updating the addon, please completely delete t
 -- Menu Items
 localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
-localeData["MenuSettings"] = "Settings";
 
 -- Map names (using map ID as key)
 localeData.MapNames = {
