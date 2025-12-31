@@ -19,5 +19,7 @@ prod/
 *.swp
 *.swo
 
-
-
+# 排除目录（不提交到主仓库）
+docs/
+issues/
+.cursorrules
