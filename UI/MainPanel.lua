@@ -3,9 +3,8 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local MainPanel = BuildEnv('MainPanel')
 
--- 按钮点击防抖（防止快速连续点击）
 MainPanel.lastNotifyClickTime = {};
-MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5; -- 按钮点击冷却时间（秒）
+MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5;
 
 local locale = GetLocale();
 local isChineseLocale = (locale == "zhCN" or locale == "zhTW");
@@ -120,6 +119,10 @@ local function CreateTableCell(parent, colIndex, rowHeight, isHeader)
             textObj:SetWidth(textWidth);
             textObj:SetMaxLines(1);
         end
+    elseif colIndex == 2 then
+        -- 位面列：防止换行
+        textObj:SetNonSpaceWrap(false);
+        textObj:SetMaxLines(1);
     end
     cell.Text = textObj;
     
@@ -175,48 +178,41 @@ local function CreateTableRow(parent, rowIndex, rowHeight)
     end);
     
     row.refreshBtn:SetScript('OnClick', function()
-        -- 确保 mapDataRef 存在且 mapId 有效
         if row.mapDataRef and row.mapDataRef.mapId then
             MainPanel:RefreshMap(row.mapDataRef.mapId);
         else
-            -- 如果 mapDataRef 无效，尝试从当前显示的数据获取
-            -- 这种情况应该很少发生，但作为安全措施
-            Logger:Error("MainPanel", "错误", "刷新按钮：无法获取地图ID，请稍后重试");
+            Logger:Error("MainPanel", "错误", "Refresh button: Unable to get map ID, please try again later");
         end
     end);
     
     row.notifyBtn:SetScript('OnClick', function()
-        -- 按钮点击防抖：防止快速连续点击
         local mapId = row.mapDataRef and row.mapDataRef.mapId;
         if not mapId then
-            Logger:Error("MainPanel", "错误", "通知按钮：无法获取地图ID");
+            Logger:Error("MainPanel", "错误", "Notify button: Unable to get map ID");
             return;
         end
         
-        local currentTime = GetTime(); -- 使用 GetTime() 获取更精确的时间
+        local currentTime = GetTime();
         local lastClickTime = MainPanel.lastNotifyClickTime[mapId] or 0;
         local timeSinceLastClick = currentTime - lastClickTime;
         
         if timeSinceLastClick < MainPanel.NOTIFY_BUTTON_COOLDOWN then
-            -- 在冷却期内，忽略点击
             Logger:Debug("MainPanel", "调试", string.format("通知按钮点击过快（距离上次 %.2f 秒，需要 %.2f 秒），忽略", 
                 timeSinceLastClick, MainPanel.NOTIFY_BUTTON_COOLDOWN));
             return;
         end
         
-        -- 记录点击时间
         MainPanel.lastNotifyClickTime[mapId] = currentTime;
         
-        -- 直接从 Data 模块获取最新数据，避免使用可能过时的 mapDataRef
         if Data then
             local mapData = Data:GetMap(mapId);
             if mapData then
                 MainPanel:NotifyMapRefresh(mapData);
             else
-                Logger:Error("MainPanel", "错误", "无法获取地图数据，地图ID=" .. tostring(mapId));
+                Logger:Error("MainPanel", "错误", string.format("Unable to get map data, Map ID=%s", tostring(mapId)));
             end
         else
-            Logger:Error("MainPanel", "错误", "Data 模块未加载");
+            Logger:Error("MainPanel", "错误", "Data module not loaded");
         end
     end);
     
@@ -346,21 +342,17 @@ function MainPanel:SortTable(field)
     local frame = self.mainFrame;
     if not frame then return end
     
-    -- 三种状态循环：正序 -> 倒序 -> 默认顺序 -> 正序
     if frame.sortField == field then
-        -- 同一个字段，在三种状态间循环
         if frame.sortOrder == 'asc' then
-            frame.sortOrder = 'desc';  -- 正序 -> 倒序
+            frame.sortOrder = 'desc';
         elseif frame.sortOrder == 'desc' then
-            frame.sortField = nil;     -- 倒序 -> 默认顺序（清除排序）
+            frame.sortField = nil;
             frame.sortOrder = nil;
         else
-            -- 这种情况不应该发生，但作为安全措施
             frame.sortField = field;
             frame.sortOrder = 'asc';
         end
     else
-        -- 不同字段，设置为新字段的正序
         frame.sortField = field;
         frame.sortOrder = 'asc';
     end
@@ -403,24 +395,28 @@ local function PrepareTableData()
     local maps = Data:GetAllMaps();
     if not maps then return {} end
     
+    local currentTime = time();
     local mapArray = {};
     for _, mapData in ipairs(maps) do
         if mapData then
-            -- 检查并更新已过期的刷新时间（倒计时结束后自动计算下一个刷新时间）
-            if mapData.nextRefresh and mapData.lastRefresh then
-                local currentTime = time();
-                if mapData.nextRefresh <= currentTime then
-                    -- 倒计时已结束，更新到下一个刷新时间
-                    Data:UpdateNextRefresh(mapData.id, mapData);
-                end
+            if mapData.nextRefresh and mapData.lastRefresh and mapData.nextRefresh <= currentTime then
+                Data:UpdateNextRefresh(mapData.id, mapData);
             end
             
-            local mapDataCopy = {};
-            for k, v in pairs(mapData) do
-                mapDataCopy[k] = v;
-            end
-            mapDataCopy.remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
-            mapDataCopy._original = mapData;
+            local remaining = Data:CalculateRemainingTime(mapData.nextRefresh);
+            
+            local mapDataCopy = {
+                id = mapData.id,
+                mapID = mapData.mapID,
+                interval = mapData.interval,
+                lastRefresh = mapData.lastRefresh,
+                nextRefresh = mapData.nextRefresh,
+                remaining = remaining,
+                currentAirdropObjectGUID = mapData.currentAirdropObjectGUID,
+                currentAirdropTimestamp = mapData.currentAirdropTimestamp,
+                currentPhaseID = mapData.currentPhaseID,
+                _original = mapData
+            };
             table.insert(mapArray, mapDataCopy);
         end
     end
@@ -431,13 +427,9 @@ function MainPanel:UpdateTable()
     local frame = self.mainFrame;
     if not frame or not frame:IsShown() then return end
     
-    -- UI只负责显示，不处理数据
-    -- 数据更新应该由定时器或其他模块负责
-    -- UI更新信息限流很长，避免刷屏（关键信息在其他模块输出）
     Logger:DebugLimited("ui_update:table", "MainPanel", "界面", "更新表格显示");
     local mapArray = PrepareTableData();
     
-    -- 只有在有排序字段且排序顺序不为 nil 时才排序
     if frame.sortField and frame.sortOrder and (frame.sortField == 'lastRefresh' or frame.sortField == 'remaining') then
         local comparator = CreateSortComparator(frame.sortField, frame.sortOrder);
         table.sort(mapArray, comparator);
@@ -468,35 +460,48 @@ function MainPanel:UpdateTable()
         
         row.columns[1].Text:SetText(Data:GetMapDisplayName(mapData));
         
-        local instanceID = mapData.instance;
-        local instanceText = L["NotAcquired"] or "N/A";
-        local color = {1, 1, 1};
+        -- 位面显示：显示 Phase 模块检测的 currentPhaseID，与存储的 lastRefreshPhase 比较
+        local storedPhaseID = mapData.lastRefreshPhase;
+        local currentPhaseID = mapData.currentPhaseID;
         
-        if instanceID then
-            instanceText = tostring(instanceID):sub(-5);
-            -- 使用 DetectionState 模块检查空投状态
-            local isAirdrop = false;
-            if DetectionState then
-                local state = DetectionState:GetState(mapData.id);
-                isAirdrop = (state and state.status == DetectionState.STATES.PROCESSED);
+        local phaseText = L["NotAcquired"] or "N/A";
+        local color = {1, 1, 1};
+        local displayPhaseID = currentPhaseID;
+        
+        if displayPhaseID then
+            local fullText = tostring(displayPhaseID);
+            if #fullText > 8 then
+                phaseText = string.sub(fullText, 1, 8);
+            else
+                phaseText = fullText;
             end
+            
             local currentTime = time();
+            local isAirdrop = false;
+            if mapData.airdropActiveTimestamp then
+                local timeSinceActive = currentTime - mapData.airdropActiveTimestamp;
+                isAirdrop = timeSinceActive <= 30;
+            elseif mapData.currentAirdropTimestamp then
+                local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
+                isAirdrop = timeSinceAirdrop <= 30;
+            end
             local isBeforeRefresh = mapData.nextRefresh and currentTime < mapData.nextRefresh;
             
+            -- 颜色：已过刷新=白色，空投中=绿色，位面变化=红色，其他=绿色
             if mapData.nextRefresh and currentTime >= mapData.nextRefresh then
                 color = {1, 1, 1};
             elseif isAirdrop then
                 color = {0, 1, 0};
-            elseif isBeforeRefresh and mapData.lastRefreshInstance and instanceID ~= mapData.lastRefreshInstance then
+            elseif isBeforeRefresh and storedPhaseID and currentPhaseID and currentPhaseID ~= storedPhaseID then
                 color = {1, 0, 0};
             else
                 color = {0, 1, 0};
             end
         end
-        row.columns[2].Text:SetText(instanceText);
+        row.columns[2].Text:SetText(phaseText);
         row.columns[2].Text:SetTextColor(unpack(color));
         
-        local lastRefreshText = mapData.lastRefresh and Data:FormatDateTime(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
+        local lastRefreshText = mapData.lastRefresh and Data:FormatTimeForDisplay(mapData.lastRefresh) or (L["NoRecord"] or "--:--");
         row.columns[3].Text:SetText(lastRefreshText);
         
         local remaining = mapData.remaining;
@@ -516,29 +521,28 @@ end
 
 function MainPanel:RefreshMap(mapId)
     if not mapId then
-        Logger:Error("MainPanel", "错误", L["ErrorInvalidMapID"] .. " " .. tostring(mapId));
+        Logger:Error("MainPanel", "错误", string.format(L["ErrorInvalidMapID"], tostring(mapId)));
         return false;
     end
     
     local mapData = Data:GetMap(mapId);
     if not mapData then
-        Logger:Error("MainPanel", "错误", "无法获取地图数据，地图ID=" .. tostring(mapId));
+        Logger:Error("MainPanel", "错误", string.format(L["ErrorCannotGetMapData"], tostring(mapId)));
         return false;
     end
     
     Logger:Debug("MainPanel", "用户操作", string.format("用户点击刷新按钮：地图ID=%d，地图=%s", 
         mapId, Data:GetMapDisplayName(mapData)));
     
-    -- 立即更新内存数据，用于UI显示
     local currentTimestamp = time();
     mapData.lastRefresh = currentTimestamp;
-    mapData.lastRefreshInstance = mapData.instance;
+    mapData.currentAirdropObjectGUID = nil;
+    mapData.currentAirdropTimestamp = nil;
     Data:UpdateNextRefresh(mapId, mapData);
     
-    -- 立即更新UI显示
     self:UpdateTable();
     
-    -- 异步处理数据保存和完整更新（确保日志记录等）
+    -- 异步保存数据
     C_Timer.After(0, function()
         if TimerManager then
             TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON, currentTimestamp);
@@ -560,7 +564,10 @@ function MainPanel:EditLastRefresh(mapId)
         hasEditBox = true,
         OnAccept = function(sf) 
             local input = sf.EditBox:GetText();
-            MainPanel:ProcessInput(mapId, input);
+            local success = MainPanel:ProcessInput(mapId, input);
+            if success then
+                StaticPopup_Hide('CRATETRACKERZK_EDIT_LASTREFRESH');
+            end
         end,
         EditBoxOnEnterPressed = function(editBox)
             local input = editBox:GetText();
@@ -579,20 +586,19 @@ function MainPanel:ProcessInput(mapId, input)
     Logger:Debug("MainPanel", "用户操作", string.format("用户手动输入时间：地图ID=%d，地图=%s，输入=%s", 
         mapId, mapData and Data:GetMapDisplayName(mapData) or "未知", input));
     
-    -- UI只负责调用统一的接口，不直接处理数据
     if not TimerManager then
-        Logger:Error("MainPanel", "错误", "TimerManager 模块未加载");
+        Logger:Error("MainPanel", "错误", "TimerManager module not loaded");
         return false;
     end
     
-    -- 解析时间输入（这是UI输入验证，不是数据处理）
+    -- 解析时间输入
     local hh, mm, ss = Utils.ParseTimeInput(input);
     if not hh then 
         Logger:Error("MainPanel", "错误", L["TimeFormatError"]); 
         return false;
     end
     
-    -- 转换为时间戳（这是UI输入转换，不是数据处理）
+    -- 转换为时间戳
     local ts = Utils.GetTimestampFromTime(hh, mm, ss);
     if not ts then 
         Logger:Error("MainPanel", "错误", L["TimestampError"]); 
@@ -602,22 +608,69 @@ function MainPanel:ProcessInput(mapId, input)
     Logger:Debug("MainPanel", "用户操作", string.format("时间解析成功：%02d:%02d:%02d -> 时间戳=%d", hh, mm, ss, ts));
     
     -- 通过统一接口处理数据
-    local success = TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
-    -- StartTimer 内部已调用 UpdateUI() -> UpdateTable()，无需重复调用
+    TimerManager:StartTimer(mapId, TimerManager.detectionSources.MANUAL_INPUT, ts);
     
-    if success then
-        Logger:Debug("MainPanel", "用户操作", "手动输入时间操作成功");
-    end
+    Logger:Debug("MainPanel", "用户操作", "手动输入时间操作成功");
     
-    return success;
+    return true;
 end
 
 function MainPanel:NotifyMapRefresh(mapData)
-    if Notification then 
-        Notification:NotifyMapRefresh(mapData)
-    else 
-        Logger:Error("MainPanel", "错误", L["NotificationModuleNotLoaded"])
+    if not Notification then 
+        Logger:Error("MainPanel", "错误", "Notification module not loaded")
+        return
     end
+    
+    if not mapData then
+        Logger:Error("MainPanel", "错误", "地图数据为空")
+        return
+    end
+    
+    -- 如果图标存在，说明空投正在进行中；否则发送剩余时间
+    -- 注意：只有当前地图才能检测图标，不在当前地图时直接发送剩余时间
+    local currentMapID = nil;
+    if Area and Area.GetCurrentMapId then
+        currentMapID = Area:GetCurrentMapId();
+    elseif C_Map and C_Map.GetBestMapForUnit then
+        currentMapID = C_Map.GetBestMapForUnit("player");
+    end
+    
+    local isAirdropActive = false;
+    -- 检查是否在当前地图或子地图（支持子地图场景）
+    local isOnMap = false;
+    if currentMapID then
+        if mapData.mapID == currentMapID then
+            isOnMap = true;
+        else
+            -- 检查是否是子地图（子地图的父地图是配置的主地图）
+            local mapInfo = C_Map and C_Map.GetMapInfo(currentMapID);
+            if mapInfo and mapInfo.parentMapID == mapData.mapID then
+                isOnMap = true;
+            end
+        end
+    end
+    
+    if isOnMap then
+        -- 在当前地图或子地图，检测图标是否存在
+        if IconDetector and IconDetector.DetectIcon then
+            local iconResult = IconDetector:DetectIcon(currentMapID);
+            if iconResult and iconResult.detected then
+                isAirdropActive = true;
+                Logger:Debug("MainPanel", "通知", string.format("检测到飞机图标存在，空投正在进行中：地图=%s", 
+                    Data:GetMapDisplayName(mapData)));
+            else
+                Logger:Debug("MainPanel", "通知", string.format("未检测到飞机图标，空投未在进行中：地图=%s", 
+                    Data:GetMapDisplayName(mapData)));
+            end
+        end
+    else
+        -- 不在当前地图或子地图，无法检测图标，直接发送剩余时间
+        Logger:Debug("MainPanel", "通知", string.format("不在当前地图或子地图，无法检测图标，发送剩余时间：地图=%s", 
+            Data:GetMapDisplayName(mapData)));
+    end
+    
+    -- 调用通知模块，传递空投状态
+    Notification:NotifyMapRefresh(mapData, isAirdropActive)
 end
 
 function MainPanel:Toggle()
