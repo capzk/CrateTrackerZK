@@ -490,7 +490,12 @@ function MainPanel:UpdateTable()
             
             local currentTime = time();
             local isAirdrop = false;
-            if mapData.currentAirdropTimestamp then
+            -- 优先使用 airdropActiveTimestamp（内存变量，表示空投持续中）
+            -- 如果没有，则使用 currentAirdropTimestamp（核心数据，空投事件开始时间）
+            if mapData.airdropActiveTimestamp then
+                local timeSinceActive = currentTime - mapData.airdropActiveTimestamp;
+                isAirdrop = timeSinceActive <= 30;
+            elseif mapData.currentAirdropTimestamp then
                 local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
                 isAirdrop = timeSinceAirdrop <= 30;
             end
@@ -632,11 +637,48 @@ function MainPanel:ProcessInput(mapId, input)
 end
 
 function MainPanel:NotifyMapRefresh(mapData)
-    if Notification then 
-        Notification:NotifyMapRefresh(mapData)
-    else 
+    if not Notification then 
         Logger:Error("MainPanel", "错误", "Notification module not loaded")
+        return
     end
+    
+    if not mapData then
+        Logger:Error("MainPanel", "错误", "地图数据为空")
+        return
+    end
+    
+    -- 在UI上实时检测飞机图标是否存在
+    -- 如果图标存在，说明空投正在进行中；否则发送剩余时间
+    -- 注意：只有当前地图才能检测图标，不在当前地图时直接发送剩余时间
+    local currentMapID = nil;
+    if Area and Area.GetCurrentMapId then
+        currentMapID = Area:GetCurrentMapId();
+    elseif C_Map and C_Map.GetBestMapForUnit then
+        currentMapID = C_Map.GetBestMapForUnit("player");
+    end
+    
+    local isAirdropActive = false;
+    if currentMapID and mapData.mapID == currentMapID then
+        -- 在当前地图，检测图标是否存在
+        if IconDetector and IconDetector.DetectIcon then
+            local iconResult = IconDetector:DetectIcon(currentMapID);
+            if iconResult and iconResult.detected then
+                isAirdropActive = true;
+                Logger:Debug("MainPanel", "通知", string.format("检测到飞机图标存在，空投正在进行中：地图=%s", 
+                    Data:GetMapDisplayName(mapData)));
+            else
+                Logger:Debug("MainPanel", "通知", string.format("未检测到飞机图标，空投未在进行中：地图=%s", 
+                    Data:GetMapDisplayName(mapData)));
+            end
+        end
+    else
+        -- 不在当前地图，无法检测图标，直接发送剩余时间
+        Logger:Debug("MainPanel", "通知", string.format("不在当前地图，无法检测图标，发送剩余时间：地图=%s", 
+            Data:GetMapDisplayName(mapData)));
+    end
+    
+    -- 调用通知模块，传递空投状态
+    Notification:NotifyMapRefresh(mapData, isAirdropActive)
 end
 
 function MainPanel:Toggle()

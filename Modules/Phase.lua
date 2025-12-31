@@ -71,6 +71,7 @@ function Phase:UpdatePhaseInfo()
         -- 1. 如果检测到新的位面ID，且与缓存不同，更新缓存和targetMapData.currentPhaseID
         -- 2. 如果检测不到位面ID，使用缓存的位面ID（如果存在）
         -- 3. 只有当位面发生变化时才更新缓存
+        -- 注意：重载插件（/reload）会清除所有缓存，这是 WoW 插件的正常行为
         
         local shouldUpdate = false;
         local currentPhaseID = nil;

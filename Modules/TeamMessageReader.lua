@@ -192,10 +192,7 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
         return false;
     end
     
-    -- 检查功能是否启用
-    if not CRATETRACKERZK_UI_DB or not CRATETRACKERZK_UI_DB.teamTimeShareEnabled then
-        return false;
-    end
+    -- 团队消息检测始终运行，开关只控制时间更新
     
     if not self.isInitialized then
         self:Initialize();
@@ -251,6 +248,13 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
         return false;
     end
     
+    local teamTimeShareEnabled = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.teamTimeShareEnabled;
+    
+    -- 更新首次通知时间（用于30秒限制）
+    if Notification and Notification.UpdateFirstNotificationTime then
+        Notification:UpdateFirstNotificationTime(mapName, currentTime);
+    end
+    
     -- 如果不在空投地图，处理团队消息
     if not isOnMap then
         -- 检查30秒时间窗口
@@ -270,8 +274,12 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
             end
         end
         
-        -- 不在空投地图的玩家，无论自己插件当前时间是多少，统统更新
-        -- 以空投消息时间为准，自己的时间不再有效
+        if not teamTimeShareEnabled then
+            if Logger and Logger.Debug then
+                Logger:Debug("TeamMessageReader", "处理", string.format("团队时间共享功能已关闭，检测到消息但不更新时间：地图=%s", mapName));
+            end
+            return true;
+        end
         local success = Data:SetLastRefresh(mapId, currentTime);
         if not success then
             if Logger and Logger.Error then
@@ -301,7 +309,6 @@ function TeamMessageReader:ProcessTeamMessage(message, chatType, sender)
     return true;
 end
 
--- 检查历史 objectGUID
 function TeamMessageReader:CheckHistoricalObjectGUID(mapId, objectGUID)
     if not mapId or not objectGUID then
         return false;

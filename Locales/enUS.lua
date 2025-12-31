@@ -101,17 +101,14 @@ localeData["Return"] = "Return";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[Available Commands:
 
-/ctk help        Show available commands
-/ctk team on/off Enable or disable team notifications
-/ctk clear       Clear local data and reinitialize
-/ctk timeshare on/off Enable/disable team time sharing (test feature, disabled by default)
+/ctk help                Show available commands
+/ctk team on/off         Enable or disable team notifications
+/ctk clear               Clear local data and reinitialize
+/ctk timeshare on/off    Enable/disable team time sharing (test feature, disabled by default)
 
-How to Get Phasing ID:
+Team time sharing requires team members to enable both team notification and team time sharing features to work.
 
 To get the current phasing ID, point your mouse at any NPC. The phasing ID will be automatically detected and displayed in the main panel.
-
-Important Notes:
-
 If you encounter any issues after updating the addon, please completely delete the addon folder and reinstall it from scratch.]];
 
 -- Menu Items

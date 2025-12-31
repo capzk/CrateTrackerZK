@@ -285,30 +285,25 @@ function TimerManager:DetectMapIcons()
         return false;
     end
     
-    -- objectGUID 比对（只比对当前地图的数据）
+    -- objectGUID 比对：相同则跳过（同一事件）
     if targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID == objectGUID then
+        targetMapData.airdropActiveTimestamp = currentTime;
         Logger:DebugLimited("detection:same_event_" .. targetMapData.id, "Timer", "检测", 
-            string.format("检测到相同 objectGUID，跳过处理（同一事件）：地图=%s（地图ID=%d，配置ID=%d），当前检测objectGUID=%s，存储的objectGUID=%s", 
-                Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID, targetMapData.currentAirdropObjectGUID));
+            string.format("检测到相同 objectGUID，更新活跃状态（同一事件持续中）：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，空投开始时间=%s，活跃时间戳=%s", 
+                Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
+                targetMapData.currentAirdropTimestamp and Data:FormatDateTime(targetMapData.currentAirdropTimestamp) or "无",
+                Data:FormatDateTime(currentTime)));
         return true;
-    end
-    
-    -- 调试：输出详细的比对信息
-    if Logger and Logger.Debug then
-        Logger:Debug("Timer", "比对", string.format("objectGUID 比对结果：地图=%s（地图ID=%d，配置ID=%d），当前检测objectGUID=%s，存储的objectGUID=%s，比对结果=%s", 
-            Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, 
-            objectGUID or "nil", 
-            targetMapData.currentAirdropObjectGUID or "nil",
-            (targetMapData.currentAirdropObjectGUID == objectGUID) and "相同" or "不同"));
-    end
-    
-    -- 重载后比对（仅在团队时间共享功能启用时执行）
-    local teamTimeShareEnabled = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.teamTimeShareEnabled;
-    if teamTimeShareEnabled and TeamMessageReader and TeamMessageReader.CheckHistoricalObjectGUID then
-        if TeamMessageReader:CheckHistoricalObjectGUID(targetMapData.id, objectGUID) then
-            Logger:Debug("Timer", "检测", string.format("重载后比对：相同 objectGUID，是同一事件，跳过：地图=%s，objectGUID=%s", 
-                Data:GetMapDisplayName(targetMapData), objectGUID));
-            return true;
+    elseif targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID then
+        -- 新空投事件：清除通知记录
+        local mapDisplayName = Data:GetMapDisplayName(targetMapData);
+        if Notification then
+            if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
+                Notification.firstNotificationTime[mapDisplayName] = nil;
+            end
+            if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
+                Notification.playerSentNotification[mapDisplayName] = nil;
+            end
         end
     end
     
@@ -325,7 +320,17 @@ function TimerManager:DetectMapIcons()
     end
     
     if detectionState.detectedObjectGUID ~= objectGUID then
-        -- 新事件
+        -- 新事件：清除通知记录
+        local mapDisplayName = Data:GetMapDisplayName(targetMapData);
+        if Notification then
+            if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
+                Notification.firstNotificationTime[mapDisplayName] = nil;
+            end
+            if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
+                Notification.playerSentNotification[mapDisplayName] = nil;
+            end
+        end
+        
         Logger:Debug("Timer", "检测", string.format("检测到新事件（objectGUID不同）：地图=%s，旧objectGUID=%s，新objectGUID=%s", 
             Data:GetMapDisplayName(targetMapData), detectionState.detectedObjectGUID, objectGUID));
         self.detectionState[targetMapData.id] = {
@@ -334,8 +339,6 @@ function TimerManager:DetectMapIcons()
         };
         return true;
     end
-    
-    -- 检查2秒确认
     local timeSinceFirstDetection = currentTime - detectionState.firstDetectedTime;
     if timeSinceFirstDetection >= self.CONFIRM_TIME then
         -- 2秒确认后重新检测
@@ -351,35 +354,24 @@ function TimerManager:DetectMapIcons()
             return false;
         end
         
-        -- 确认空投事件
         Logger:Debug("Timer", "处理", string.format("确认空投事件：地图=%s，首次检测时间=%s，objectGUID=%s", 
             Data:GetMapDisplayName(targetMapData),
             Data:FormatDateTime(detectionState.firstDetectedTime),
             objectGUID));
         
         -- 检查是否已通过团队时间共享更新过时间
-        -- 判断逻辑：
-        -- 1. 如果团队时间共享功能关闭，直接返回 false（不判断）
-        -- 2. 如果 currentAirdropTimestamp 和 lastRefresh 相同，且距离当前时间超过30秒，说明可能是通过团队时间共享更新的旧空投
-        -- 3. 如果 objectGUID 不同，说明是新空投，应该正常处理
         local hasTeamSharedTime = false;
-        -- 首先检查团队时间共享功能是否启用（如果关闭，不判断）
         local teamTimeShareEnabled = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.teamTimeShareEnabled;
         if teamTimeShareEnabled and targetMapData.currentAirdropTimestamp and targetMapData.lastRefresh then
-            -- 检查时间戳是否相同（团队时间共享更新时，currentAirdropTimestamp 和 lastRefresh 会被设置为相同的时间）
             local timeDiff = math.abs(targetMapData.currentAirdropTimestamp - targetMapData.lastRefresh);
-            if timeDiff <= 1 then  -- 允许1秒误差
-                -- 检查是否是旧空投（距离当前时间超过30秒）
+            if timeDiff <= 1 then
                 local timeSinceLastRefresh = currentTime - targetMapData.lastRefresh;
                 if timeSinceLastRefresh > 30 then
-                    -- 检查 objectGUID 是否不同（如果不同，说明是新空投，应该正常处理）
                     if targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID then
-                        -- objectGUID 不同，说明是新空投，不应该走"已通过团队时间共享更新"的逻辑
                         hasTeamSharedTime = false;
                         Logger:Debug("Timer", "判断", string.format("检测到新空投事件（objectGUID不同），正常处理：地图=%s，旧objectGUID=%s，新objectGUID=%s", 
                             Data:GetMapDisplayName(targetMapData), targetMapData.currentAirdropObjectGUID, objectGUID));
                     else
-                        -- objectGUID 相同或不存在，可能是通过团队时间共享更新的旧空投
                         hasTeamSharedTime = true;
                         Logger:Debug("Timer", "判断", string.format("判断为已通过团队时间共享更新过时间：地图=%s，lastRefresh=%s，currentAirdropTimestamp=%s，时间差=%d秒", 
                             Data:GetMapDisplayName(targetMapData),
@@ -389,39 +381,21 @@ function TimerManager:DetectMapIcons()
                     end
                 end
             end
-        elseif not teamTimeShareEnabled then
-            -- 团队时间共享功能关闭，不判断
-            Logger:Debug("Timer", "判断", string.format("团队时间共享功能已关闭，不判断是否通过团队时间共享更新：地图=%s", 
-                Data:GetMapDisplayName(targetMapData)));
         end
         
-        -- 已通过团队时间共享更新，只补齐空投信息
+        -- 已通过团队时间共享更新：只补齐空投信息，不更新时间
         if hasTeamSharedTime then
-            -- 检查30秒通知限制（基于共享的时间）
             local shouldSendNotification = ShouldSendNotification(targetMapData, currentTime);
-            if not shouldSendNotification then
-                Logger:Debug("Timer", "通知", string.format("超过30秒限制，不发送通知：地图=%s，距离空投=%d秒", 
-                    Data:GetMapDisplayName(targetMapData),
-                    currentTime - (targetMapData.currentAirdropTimestamp or currentTime)));
-            end
-            
-            -- 发送通知（如果需要）
             if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
                 Notification:NotifyAirdropDetected(
                     Data:GetMapDisplayName(targetMapData), 
                     self.detectionSources.MAP_ICON
                 );
             end
-            Logger:Debug("Timer", "处理", string.format("已通过团队时间共享更新过时间，不再更新时间，只补齐空投信息：地图=%s，共享时间=%s，当前检测时间=%s，距离空投=%d秒", 
-                Data:GetMapDisplayName(targetMapData),
-                Data:FormatDateTime(targetMapData.currentAirdropTimestamp),
-                Data:FormatDateTime(detectionState.firstDetectedTime),
-                currentTime - (targetMapData.currentAirdropTimestamp or currentTime)));
             
-            -- 更新空投事件信息（objectGUID 和 timestamp）
-            -- 注意：虽然不更新 lastRefresh，但需要更新 currentAirdropTimestamp 以匹配新的空投事件
             targetMapData.currentAirdropObjectGUID = objectGUID;
             targetMapData.currentAirdropTimestamp = detectionState.firstDetectedTime;
+            targetMapData.airdropActiveTimestamp = currentTime;
             
             -- 从空投的 objectGUID 提取位面ID并存储
             if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
@@ -449,8 +423,7 @@ function TimerManager:DetectMapIcons()
             
             self:UpdateUI();
         else
-            -- 首次检测（玩家插件自己检测到的空投）
-            -- 首次检测时无条件发送通知，不需要30秒限制（因为这是实时检测，timeSinceDetection ≈ 2秒）
+            -- 首次检测：无条件发送通知
             if Notification and Notification.NotifyAirdropDetected then
                 Notification:NotifyAirdropDetected(
                     Data:GetMapDisplayName(targetMapData), 
@@ -462,6 +435,8 @@ function TimerManager:DetectMapIcons()
             if success then
                 targetMapData.currentAirdropObjectGUID = objectGUID;
                 targetMapData.currentAirdropTimestamp = detectionState.firstDetectedTime;
+                -- 设置空投活跃状态时间戳（内存变量，用于通知按钮判断）
+                targetMapData.airdropActiveTimestamp = currentTime;
                 
                 -- 从空投的 objectGUID 提取位面ID并存储
                 if IconDetector and IconDetector.ExtractPhaseID and objectGUID then

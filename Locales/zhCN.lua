@@ -101,11 +101,12 @@ localeData["Return"] = "返回";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[可用命令：
 
-/ctk help        显示可用命令
-/ctk team on/off 开启/关闭团队通知
-/ctk clear       清除本地数据并重新初始化
-/ctk timeshare on/off 开启/关闭团队时间共享（测试功能，默认关闭）
+/ctk help               显示可用命令
+/ctk team on/off        开启/关闭团队通知
+/ctk clear              清除本地数据并重新初始化
+/ctk timeshare on/off   开启/关闭团队时间共享（测试功能，默认关闭）
 
+团队时间共享需要团队成员开启团队通知功能和团队时间共享功能才能生效。
 
 要获取当前位面ID，您只需将鼠标指向任意NPC。位面ID将自动检测并显示在主面板中。
 如果插件升级后出现任何问题，请彻底删除此插件目录并重新安装。]];

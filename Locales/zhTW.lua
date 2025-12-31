@@ -101,17 +101,14 @@ localeData["Return"] = "返回";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[可用命令：
 
-/ctk help        顯示可用命令
-/ctk team on/off 開啟/關閉團隊通知
-/ctk clear       清除本地資料並重新初始化
-/ctk timeshare on/off 開啟/關閉團隊時間共享（測試功能，預設關閉）
+/ctk help               顯示可用命令
+/ctk team on/off        開啟/關閉團隊通知
+/ctk clear              清除本地資料並重新初始化
+/ctk timeshare on/off   開啟/關閉團隊時間共享（測試功能，預設關閉）
 
-如何獲取位面ID：
+團隊時間共享需要團隊成員開啟團隊通知功能和團隊時間共享功能才能生效。
 
 要獲取當前位面ID，您只需將滑鼠指向任意NPC。位面ID將自動檢測並顯示在主面板中。
-
-重要提示：
-
 如果插件升級後出現任何問題，請徹底刪除此插件目錄並重新安裝。]];
 
 -- 選單項

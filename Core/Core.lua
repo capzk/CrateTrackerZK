@@ -67,8 +67,15 @@ local function OnLogin()
         for _, mapData in ipairs(Data.maps) do
             if mapData then
                 mapData.currentPhaseID = nil;
+                mapData.airdropActiveTimestamp = nil;  -- 清除空投活跃状态时间戳（内存变量）
             end
         end
+    end
+    
+    -- 清除通知模块的通知时间记录
+    if Notification then
+        Notification.firstNotificationTime = {};
+        Notification.playerSentNotification = {};
     end
     
     -- 重置定时器状态

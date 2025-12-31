@@ -206,7 +206,7 @@ TimerManager:DetectMapIcons()
 - **缓存清除**：
   - 退出游戏（PLAYER_LOGOUT）：自动清除所有缓存
   - 切换角色（PLAYER_LOGIN）：自动清除所有缓存
-  - 重载插件（/reload）：缓存会保留（全局变量不会自动清除）
+  - 重载插件（/reload）：缓存会被清除（Lua 代码重新执行，这是 WoW 插件的正常行为）
 
 **触发时机**：
 - 玩家登录（PLAYER_LOGIN）：如果区域有效，立即启动位面检测定时器（取消延迟）

@@ -7,6 +7,10 @@ local Notification = BuildEnv('Notification');
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
+-- 首次通知时间记录（用于30秒限制）
+Notification.firstNotificationTime = {};
+-- 玩家发送通知记录（防止重复发送）
+Notification.playerSentNotification = {};
 
 local function DebugPrint(msg, ...)
     Logger:Debug("Notification", "调试", msg, ...);
@@ -43,6 +47,57 @@ function Notification:SetTeamNotificationEnabled(enabled)
     Logger:Info("Notification", "状态", string.format(L["TeamNotificationStatus"], statusText));
 end
 
+-- 更新首次通知时间（团队消息同步）
+function Notification:UpdateFirstNotificationTime(mapName, notificationTime)
+    if not mapName or not notificationTime then
+        return;
+    end
+    
+    if not self.firstNotificationTime[mapName] or notificationTime < self.firstNotificationTime[mapName] then
+        self.firstNotificationTime[mapName] = notificationTime;
+        Logger:Debug("Notification", "更新", string.format("更新首次通知时间：地图=%s，时间=%s", 
+            mapName, Data:FormatDateTime(notificationTime)));
+    end
+end
+
+-- 检查30秒限制
+function Notification:CanSendNotification(mapName)
+    if not mapName then
+        return false;
+    end
+    
+    local currentTime = time();
+    local firstNotificationTime = self.firstNotificationTime[mapName];
+    
+    if not firstNotificationTime then
+        return true;
+    end
+    
+    local timeSinceFirstNotification = currentTime - firstNotificationTime;
+    if timeSinceFirstNotification > 30 then
+        Logger:Debug("Notification", "限制", string.format("距离首次通知已超过30秒（%d秒），不允许发送：地图=%s", 
+            timeSinceFirstNotification, mapName));
+        return false;
+    end
+    
+    return true;
+end
+
+function Notification:MarkPlayerSentNotification(mapName)
+    if not mapName then
+        return;
+    end
+    
+    if not self.playerSentNotification[mapName] then
+        self.playerSentNotification[mapName] = true;
+        Logger:Debug("Notification", "标记", string.format("标记玩家已发送通知：地图=%s", mapName));
+    end
+end
+
+function Notification:HasPlayerSentNotification(mapName)
+    return self.playerSentNotification[mapName] == true;
+end
+
 function Notification:NotifyAirdropDetected(mapName, detectionSource)
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
@@ -50,11 +105,41 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         return 
     end
     
+    local chatType = self:GetTeamChatType();
+    local currentTime = time();
+    
+    if chatType and self.teamNotificationEnabled then
+        -- 个人发送限制检查
+        if self:HasPlayerSentNotification(mapName) then
+            Logger:Debug("Notification", "通知", string.format("玩家已发送过通知，跳过发送：地图=%s，来源=%s", 
+                mapName, detectionSource or "未知"));
+            local message = string.format(L["AirdropDetected"], mapName);
+            Logger:Info("Notification", "通知", message);
+            return;
+        end
+        
+        -- 30秒限制检查
+        if not self:CanSendNotification(mapName) then
+            Logger:Debug("Notification", "通知", string.format("超过30秒限制，不允许发送：地图=%s，来源=%s", 
+                mapName, detectionSource or "未知"));
+            local message = string.format(L["AirdropDetected"], mapName);
+            Logger:Info("Notification", "通知", message);
+            return;
+        end
+        
+        -- 记录首次通知时间
+        if not self.firstNotificationTime[mapName] then
+            self.firstNotificationTime[mapName] = currentTime;
+            Logger:Debug("Notification", "通知", string.format("记录首次通知时间：地图=%s，时间=%s", 
+                mapName, Data:FormatDateTime(currentTime)));
+        end
+        
+        self:MarkPlayerSentNotification(mapName);
+    end
+    
     local message = string.format(L["AirdropDetected"], mapName);
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
-    
-    local chatType = self:GetTeamChatType();
     
     Logger:Debug("Notification", "调试", string.format("团队通知检查：chatType=%s, teamNotificationEnabled=%s, IsInRaid=%s, IsInGroup=%s", 
         tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
@@ -100,24 +185,21 @@ function Notification:NotifyInvalidAirdrop(mapName)
     Logger:Info("Notification", "通知", message);
 end
 
-function Notification:NotifyMapRefresh(mapData)
+function Notification:NotifyMapRefresh(mapData, isAirdropActive)
     if not self.isInitialized then self:Initialize() end
     if not mapData then 
         Logger:Debug("Notification", "通知", "通知地图刷新失败：地图数据为空");
         return 
     end
     
-    Logger:Debug("Notification", "通知", string.format("用户请求通知地图刷新：地图=%s", 
-        Data:GetMapDisplayName(mapData)));
-    
-    -- 检查空投状态
-    local isAirdropActive = false;
-    if mapData.currentAirdropTimestamp then
-        local currentTime = time();
-        local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
-        -- 30秒内认为是空投活跃状态
-        isAirdropActive = timeSinceAirdrop <= 30;
+    if isAirdropActive == nil then
+        isAirdropActive = false;
+        Logger:Debug("Notification", "通知", string.format("未传递空投状态参数，默认发送剩余时间：地图=%s", 
+            Data:GetMapDisplayName(mapData)));
     end
+    
+    Logger:Debug("Notification", "通知", string.format("用户请求通知地图刷新：地图=%s，空投进行中=%s", 
+        Data:GetMapDisplayName(mapData), isAirdropActive and "是" or "否"));
     
     local message;
     local systemMessage;

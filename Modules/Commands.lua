@@ -101,6 +101,8 @@ function Commands:HandleClearCommand(arg)
     end
     if Notification then
         Notification.isInitialized = false;
+        Notification.firstNotificationTime = {};  -- 清除首次通知时间记录
+        Notification.playerSentNotification = {};  -- 清除玩家发送通知记录
     end
     if TeamMessageReader then
         TeamMessageReader.isInitialized = false;
@@ -131,6 +133,7 @@ function Commands:HandleClearCommand(arg)
         for _, mapData in ipairs(Data.maps) do
             if mapData then
                 mapData.currentPhaseID = nil;
+                mapData.airdropActiveTimestamp = nil;  -- 清除空投活跃状态时间戳（内存变量）
             end
         end
     end
