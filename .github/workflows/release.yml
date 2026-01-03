@@ -29,7 +29,7 @@ jobs:
       run: |
         mkdir -p release_temp/CrateTrackerZK
         rsync -av --exclude='.git' --exclude='.github' --exclude='.gitignore' --exclude='.gitattributes' \
-          --exclude='docs' --exclude='PERFORMANCE_ANALYSIS.md' --exclude='CHANGELOG.md' \
+          --exclude='PERFORMANCE_ANALYSIS.md' --exclude='CHANGELOG.md' \
           --exclude='release_temp' --exclude='CrateTrackerZK.zip' \
           ./ release_temp/CrateTrackerZK/
         cd release_temp && zip -r ../CrateTrackerZK.zip CrateTrackerZK/
