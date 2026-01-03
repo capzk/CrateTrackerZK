@@ -406,7 +406,25 @@ function TableWidget:SortItems(items)
     local col = self.sortState.column
     local order = self.sortState.order
     if col and order then
-        table.sort(active, function(a, b)
+        -- 拆分有数据行与无数据行（无数据行排在有数据行之后，不参与排序）
+        local dataRows, emptyRows = {}, {}
+        local function hasData(item)
+            if col == "last" then
+                return item.lastRefresh ~= nil
+            elseif col == "next" then
+                return item.remainingTime ~= nil
+            end
+            return true
+        end
+        for _, v in ipairs(active) do
+            if hasData(v) then
+                table.insert(dataRows, v)
+            else
+                table.insert(emptyRows, v)
+            end
+        end
+
+        table.sort(dataRows, function(a, b)
             if not a and not b then return false end
             if a and not b then return true end
             if b and not a then return false end
@@ -431,6 +449,14 @@ function TableWidget:SortItems(items)
                 return va > vb
             end
         end)
+
+        table.sort(emptyRows, function(a, b)
+            return (a.originalIndex or 0) < (b.originalIndex or 0)
+        end)
+
+        active = {}
+        for _, v in ipairs(dataRows) do table.insert(active, v) end
+        for _, v in ipairs(emptyRows) do table.insert(active, v) end
     end
 
     table.sort(hidden, function(a, b)
@@ -936,9 +962,11 @@ function MainPanel:NotifyMapRefresh(mapData)
     local isAirdropActive = false
     if currentMapID and MapTracker and MapTracker.GetTargetMapData then
         local target = MapTracker:GetTargetMapData(currentMapID)
-        if target and target.id == mapData.id and IconDetector and IconDetector.DetectIcon then
-            local res = IconDetector:DetectIcon(currentMapID)
-            if res and res.detected then isAirdropActive = true end
+        if target and target.id == mapData.id then
+            if IconDetector and IconDetector.DetectIcon then
+                local res = IconDetector:DetectIcon(currentMapID)
+                if res and res.detected then isAirdropActive = true end
+            end
         end
     end
     Notification:NotifyMapRefresh(mapData, isAirdropActive)
