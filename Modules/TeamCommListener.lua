@@ -299,10 +299,9 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
             return false;
         end
         
-        -- 更新空投事件时间戳
+        -- 更新空投事件时间戳（保持现有 GUID，不在这里清空，等待本地检测覆盖）
         if mapData then
             mapData.currentAirdropTimestamp = currentTime;
-            mapData.currentAirdropObjectGUID = nil;
             Data:SaveMapData(mapId);
         end
         
