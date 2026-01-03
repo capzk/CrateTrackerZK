@@ -1,0 +1,18 @@
+## Interface: 110200, 110205, 110207
+## Version: v1.1.5-beta.1
+## Title: CrateTrackerZK
+## Author: capzk
+## IconTexture: Interface\Icons\Achievement_pvp_h_14
+## Title-zhCN: |cff00ff88[CrateTrackerZK]|r
+## Notes-zhCN: 帮助您追踪游戏中的战争物资空投宝箱刷新情况
+## Title-zhTW: |cff00ff88[CrateTrackerZK]|r
+## Notes-zhTW: 幫助您追蹤遊戲中的戰爭補給空投寶箱刷新情況
+## Title-enUS: |cff00ff88[CrateTrackerZK]|r
+## Notes-enUS: Track War Supply Crate airdrop refresh times in the game
+## Notes-ruRU: Отслеживайте время появления ящиков с военными припасами в игре
+## SavedVariables: CRATETRACKERZK_UI_DB, CRATETRACKERZK_DB
+## LoadManagers: AddonLoader
+## X-LoadOn-Always: delayed
+
+
+Load.xml

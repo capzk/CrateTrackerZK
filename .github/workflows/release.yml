@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Extract version
+      id: get_version
+      run: |
+        VERSION=$(grep -E "^## Version:" CrateTrackerZK.toc | sed 's/## Version: //' | tr -d ' ')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Build package
+      run: |
+        mkdir -p release_temp/CrateTrackerZK
+        rsync -av --exclude='.git' --exclude='.github' --exclude='.gitignore' --exclude='.gitattributes' \
+          --exclude='docs' --exclude='PERFORMANCE_ANALYSIS.md' --exclude='CHANGELOG.md' \
+          --exclude='release_temp' --exclude='CrateTrackerZK.zip' \
+          ./ release_temp/CrateTrackerZK/
+        cd release_temp && zip -r ../CrateTrackerZK.zip CrateTrackerZK/
+    
+    - name: Create tag
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        TAG_NAME="v${VERSION}"
+        # 获取远程tags
+        git fetch --tags
+        # 检查远程是否已存在tag
+        if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+          echo "Tag ${TAG_NAME} already exists, skipping creation"
+        else
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: CrateTrackerZK.zip
+        tag_name: v${{ steps.get_version.outputs.version }}
+        name: Release v${{ steps.get_version.outputs.version }}
+        body: |
+          ## CrateTrackerZK v${{ steps.get_version.outputs.version }}
+          
+          ### Installation
+          1. Download `CrateTrackerZK.zip`
+          2. Extract the zip file
+          3. Copy the `CrateTrackerZK` folder to your `World of Warcraft/_retail_/Interface/AddOns/` directory
+          4. Restart the game or use `/reload` command
+        draft: false
+        prerelease: false
+        overwrite: true
+        make_latest: true
