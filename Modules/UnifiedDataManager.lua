@@ -40,6 +40,9 @@ UnifiedDataManager.TEMPORARY_TIME_EXPIRE = 3600  -- 1小时
 -- 临时位面过期时间（秒）
 UnifiedDataManager.TEMPORARY_PHASE_EXPIRE = 1800  -- 30分钟
 
+-- 采用临时时间用于持久化的最大时间偏移（秒）
+UnifiedDataManager.TEMPORARY_TIME_ADOPTION_WINDOW = 120  -- 2分钟
+
 -- 初始化
 function UnifiedDataManager:Initialize()
     Logger:Debug("UnifiedDataManager", "初始化", "开始初始化UnifiedDataManager")
@@ -206,6 +209,53 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
         mapId, timestamp, source));
     
     return true;
+end
+
+-- 获取未过期的临时时间（不清除）
+function UnifiedDataManager:GetValidTemporaryTime(mapId)
+    local timeData = self.temporaryTimes[mapId];
+    if not timeData or not timeData.temporaryTime then
+        return nil;
+    end
+    
+    local now = time();
+    local record = timeData.temporaryTime;
+    if now - record.setTime <= self.TEMPORARY_TIME_EXPIRE then
+        return record;
+    end
+    
+    -- 已过期则清除
+    timeData.temporaryTime = nil;
+    return nil;
+end
+
+-- 清除指定地图的临时时间
+function UnifiedDataManager:ClearTemporaryTime(mapId)
+    if self.temporaryTimes[mapId] then
+        self.temporaryTimes[mapId].temporaryTime = nil;
+    end
+end
+
+-- 选择事件时间戳：优先采用未过期且与检测时间相近的临时时间
+function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp)
+    local fallback = detectionTimestamp or time();
+    local record = self:GetValidTemporaryTime(mapId);
+    if not record then
+        return fallback, false;
+    end
+    
+    local delta = math.abs(fallback - record.timestamp);
+    if delta <= self.TEMPORARY_TIME_ADOPTION_WINDOW then
+        Logger:Debug("UnifiedDataManager", "优先级", string.format(
+            "采用临时时间作为事件时间：地图ID=%d，临时=%s，检测=%s，差值=%d秒",
+            mapId,
+            self:FormatDateTime(record.timestamp),
+            self:FormatDateTime(fallback),
+            delta));
+        return record.timestamp, true;
+    end
+    
+    return fallback, false;
 end
 
 -- 设置持久化时间

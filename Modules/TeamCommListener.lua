@@ -254,27 +254,23 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
         return false;
     end
     
-    -- 更新首次通知时间（用于30秒限制）
-    if Notification and Notification.UpdateFirstNotificationTime then
-        Notification:UpdateFirstNotificationTime(mapName, currentTime);
-    end
-    
-    -- 如果不在空投地图，处理团队消息
+    -- 如果不在空投地图，处理团队消息（同地图时完全忽略队友消息，不占用通知窗口）
     if not isOnMap then
-        -- 检查30秒时间窗口
-        local mapData = Data:GetMap(mapId);
-        if mapData and mapData.currentAirdropTimestamp then
-            local timeSinceLastUpdate = currentTime - mapData.currentAirdropTimestamp;
-            -- 如果新时间在30秒内，且新时间更晚，说明是同一空投的多次消息，跳过更新
-            if timeSinceLastUpdate <= 30 and currentTime > mapData.currentAirdropTimestamp then
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内，新时间更晚）：地图=%s，上次更新时间=%s，新消息时间=%s，时间差=%d秒", 
-                        mapName, 
-                        UnifiedDataManager:FormatDateTime(mapData.currentAirdropTimestamp),
-                        UnifiedDataManager:FormatDateTime(currentTime),
-                        timeSinceLastUpdate));
+        -- 检查30秒内的重复团队消息，使用临时时间缓存判定
+        if UnifiedDataManager and UnifiedDataManager.GetValidTemporaryTime then
+            local tempRecord = UnifiedDataManager:GetValidTemporaryTime(mapId);
+            if tempRecord then
+                local timeSinceLast = currentTime - tempRecord.timestamp;
+                if timeSinceLast >= 0 and timeSinceLast <= 30 and currentTime > tempRecord.timestamp then
+                    if Logger and Logger.Debug then
+                        Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒", 
+                            mapName,
+                            UnifiedDataManager:FormatDateTime(tempRecord.timestamp),
+                            UnifiedDataManager:FormatDateTime(currentTime),
+                            timeSinceLast));
+                    end
+                    return true;
                 end
-                return true;
             end
         end
 
@@ -298,13 +294,6 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
             end
             return false;
         end
-        
-        -- 更新空投事件时间戳（保持现有 GUID，不在这里清空，等待本地检测覆盖）
-        if mapData then
-            mapData.currentAirdropTimestamp = currentTime;
-            Data:SaveMapData(mapId);
-        end
-        
         
         if TimerManager and TimerManager.UpdateUI then
             TimerManager:UpdateUI();

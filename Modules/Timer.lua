@@ -36,7 +36,8 @@ function TimerManager:Initialize()
     self.lastStatusReportTime = self.lastStatusReportTime or 0;
     self.STATUS_REPORT_INTERVAL = 10;
     self.detectionState = self.detectionState or {};
-    self.CONFIRM_TIME = 2;
+    self.CONFIRM_TIME = 2;          -- 初筛防抖
+    self.MIN_STABLE_TIME = 5;       -- 最短稳定存活时间（秒），达标后才广播/持久化
     
     -- 初始化UnifiedDataManager
     if UnifiedDataManager and UnifiedDataManager.Initialize then
@@ -210,11 +211,11 @@ function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTi
 end
 
 -- 检查是否应该发送通知（30秒限制）
-local function ShouldSendNotification(mapData, currentTime)
-    if not mapData.currentAirdropTimestamp then
+local function ShouldSendNotification(eventTimestamp, currentTime)
+    if not eventTimestamp then
         return true;
     end
-    local timeSinceAirdrop = currentTime - mapData.currentAirdropTimestamp;
+    local timeSinceAirdrop = currentTime - eventTimestamp;
     return timeSinceAirdrop <= 30;
 end
 
@@ -367,128 +368,86 @@ function TimerManager:DetectMapIcons()
             self.detectionState[targetMapData.id] = nil;
             return false;
         end
+
+        -- 等待达到最短稳定时间后再广播/持久化，减少误报
+        if timeSinceFirstDetection < self.MIN_STABLE_TIME then
+            Logger:DebugLimited("detection:stabilizing_" .. targetMapData.id, "Timer", "检测", 
+                string.format("空投检测等待稳定：地图=%s，已持续%d秒，目标GUID=%s", 
+                    Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection, objectGUID));
+            return true;
+        end
         
         Logger:Debug("Timer", "处理", string.format("确认空投事件：地图=%s，首次检测时间=%s，objectGUID=%s", 
             Data:GetMapDisplayName(targetMapData),
             UnifiedDataManager:FormatDateTime(detectionState.firstDetectedTime),
             objectGUID));
         
-        -- 检查是否已通过团队时间共享更新过时间
-        local hasTeamSharedTime = false;
-        if targetMapData.currentAirdropTimestamp and targetMapData.lastRefresh then
-            local timeDiff = math.abs(targetMapData.currentAirdropTimestamp - targetMapData.lastRefresh);
-            if timeDiff <= 1 then
-                local timeSinceLastRefresh = currentTime - targetMapData.lastRefresh;
-                if timeSinceLastRefresh > 30 then
-                    if targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID then
-                        hasTeamSharedTime = false;
-                        Logger:Debug("Timer", "判断", string.format("检测到新空投事件（objectGUID不同），正常处理：地图=%s，旧objectGUID=%s，新objectGUID=%s", 
-                            Data:GetMapDisplayName(targetMapData), targetMapData.currentAirdropObjectGUID, objectGUID));
-                    else
-                        hasTeamSharedTime = true;
-                        Logger:Debug("Timer", "判断", string.format("判断为已通过团队时间共享更新过时间：地图=%s，lastRefresh=%s，currentAirdropTimestamp=%s，时间差=%d秒", 
-                            Data:GetMapDisplayName(targetMapData),
-                            UnifiedDataManager:FormatDateTime(targetMapData.lastRefresh),
-                            UnifiedDataManager:FormatDateTime(targetMapData.currentAirdropTimestamp),
-                            timeSinceLastRefresh));
-                    end
-                end
-            end
+        -- 选择事件时间：若存在未过期的团队消息临时时间且与检测时间接近，则优先采用该时间
+        local eventTimestamp, usedTemporary = UnifiedDataManager:SelectEventTimestamp(targetMapData.id, detectionState.firstDetectedTime);
+        local shouldSendNotification = ShouldSendNotification(eventTimestamp, currentTime);
+        
+        -- 首次检测：根据事件时间决定是否发送团队消息
+        if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
+            Notification:NotifyAirdropDetected(
+                Data:GetMapDisplayName(targetMapData), 
+                self.detectionSources.MAP_ICON
+            );
+        else
+            Logger:Debug("Timer", "通知", string.format("超过团队消息窗口或未配置通知：地图=%s，事件时间=%s，当前时间=%s", 
+                Data:GetMapDisplayName(targetMapData),
+                UnifiedDataManager:FormatDateTime(eventTimestamp),
+                UnifiedDataManager:FormatDateTime(currentTime)));
         end
         
-        -- 已通过团队时间共享更新：只补齐空投信息，不更新时间
-        if hasTeamSharedTime then
-            local shouldSendNotification = ShouldSendNotification(targetMapData, currentTime);
-            if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
-                Notification:NotifyAirdropDetected(
-                    Data:GetMapDisplayName(targetMapData), 
-                    self.detectionSources.MAP_ICON
-                );
-            end
-            
+        -- 使用UnifiedDataManager设置持久化时间和位面数据
+        local phaseId = nil;
+        if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
+            phaseId = IconDetector.ExtractPhaseID(objectGUID);
+        end
+        
+        local success = UnifiedDataManager:SetTime(targetMapData.id, eventTimestamp, UnifiedDataManager.TimeSource.ICON_DETECTION);
+        
+        -- 如果有位面ID，同时设置持久化位面数据
+        if success and phaseId and UnifiedDataManager.SetPhase then
+            UnifiedDataManager:SetPhase(targetMapData.id, phaseId, UnifiedDataManager.PhaseSource.ICON_DETECTION, true);
+        end
+        
+        if success then
             targetMapData.currentAirdropObjectGUID = objectGUID;
-            targetMapData.currentAirdropTimestamp = detectionState.firstDetectedTime;
+            targetMapData.currentAirdropTimestamp = eventTimestamp;
             
-            -- 从空投的 objectGUID 提取位面ID并存储
-            if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
-                local phaseID = IconDetector.ExtractPhaseID(objectGUID);
-                if phaseID then
-                    targetMapData.lastRefreshPhase = phaseID;
-                    Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s", 
-                        Data:GetMapDisplayName(targetMapData), phaseID));
-                else
-                    Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s", 
-                        Data:GetMapDisplayName(targetMapData), objectGUID));
-                end
+            -- 从空投的 objectGUID 提取位面ID并存储（保持向后兼容）
+            if phaseId then
+                targetMapData.lastRefreshPhase = phaseId;
+                Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s", 
+                    Data:GetMapDisplayName(targetMapData), phaseId));
+            else
+                Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s", 
+                    Data:GetMapDisplayName(targetMapData), objectGUID));
             end
             
-            Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s", 
+            Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s（%s）", 
                 Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
-                UnifiedDataManager:FormatDateTime(detectionState.firstDetectedTime)));
+                UnifiedDataManager:FormatDateTime(eventTimestamp),
+                usedTemporary and "来自团队消息" or "本地检测"));
             Data:SaveMapData(targetMapData.id);
+            
+            -- 清除临时时间，避免影响后续事件
+            UnifiedDataManager:ClearTemporaryTime(targetMapData.id);
             
             -- 清除检测状态
             self.detectionState[targetMapData.id] = nil;
             
-            Logger:Debug("Timer", "状态", string.format("空投信息已补齐：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s", 
-                Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID));
+            local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
+            Logger:Debug("Timer", "更新", string.format("空投事件已处理：地图=%s，来源=%s", 
+                Data:GetMapDisplayName(targetMapData), sourceText));
+            
+            Logger:Debug("Timer", "状态", string.format("空投事件已处理：地图=%s，objectGUID=%s", 
+                Data:GetMapDisplayName(targetMapData), objectGUID));
             
             self:UpdateUI();
         else
-            -- 首次检测：无条件发送通知
-            if Notification and Notification.NotifyAirdropDetected then
-                Notification:NotifyAirdropDetected(
-                    Data:GetMapDisplayName(targetMapData), 
-                    self.detectionSources.MAP_ICON
-                );
-            end
-            
-            -- 使用UnifiedDataManager设置持久化时间和位面数据
-            local phaseId = nil;
-            if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
-                phaseId = IconDetector.ExtractPhaseID(objectGUID);
-            end
-            
-            -- 设置持久化时间
-            local success = UnifiedDataManager:SetTime(targetMapData.id, detectionState.firstDetectedTime, UnifiedDataManager.TimeSource.ICON_DETECTION);
-            
-            -- 如果有位面ID，同时设置持久化位面数据
-            if success and phaseId and UnifiedDataManager.SetPhase then
-                UnifiedDataManager:SetPhase(targetMapData.id, phaseId, UnifiedDataManager.PhaseSource.ICON_DETECTION, true);
-            end
-            
-            if success then
-                targetMapData.currentAirdropObjectGUID = objectGUID;
-                targetMapData.currentAirdropTimestamp = detectionState.firstDetectedTime;
-                
-                -- 从空投的 objectGUID 提取位面ID并存储（保持向后兼容）
-                if phaseId then
-                    targetMapData.lastRefreshPhase = phaseId;
-                    Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s", 
-                        Data:GetMapDisplayName(targetMapData), phaseId));
-                else
-                    Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s", 
-                        Data:GetMapDisplayName(targetMapData), objectGUID));
-                end
-                
-                Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s", 
-                    Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID));
-                Data:SaveMapData(targetMapData.id);
-                
-                -- 清除检测状态
-                self.detectionState[targetMapData.id] = nil;
-                
-                local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
-                Logger:Debug("Timer", "更新", string.format("空投事件已处理：地图=%s，来源=%s", 
-                    Data:GetMapDisplayName(targetMapData), sourceText));
-                
-                Logger:Debug("Timer", "状态", string.format("空投事件已处理：地图=%s，objectGUID=%s", 
-                    Data:GetMapDisplayName(targetMapData), objectGUID));
-                
-                self:UpdateUI();
-            else
-                Logger:Error("Timer", "错误", string.format("设置持久化时间失败：地图ID=%d", targetMapData.id));
-            end
+            Logger:Error("Timer", "错误", string.format("设置持久化时间失败：地图ID=%d", targetMapData.id));
         end
     else
         -- 2秒确认期内
