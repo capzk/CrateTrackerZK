@@ -73,14 +73,20 @@ local function OnShoutDetected(message)
 end
 
 local function normalizeQuote(str)
-    return (str or ""):gsub("’", "'"):gsub("‘", "'")
+    return (str or ""):gsub("’", "'"):gsub("‘", "'"):gsub("＇", "'")
+end
+
+local function normalizePunct(str)
+    -- 统一中英文常见标点为空格，便于模糊匹配
+    return (str or "")
+        :gsub("[%.,!%?:]", " ")
+        :gsub("[，。？！：；]", " ")
 end
 
 local function normalizeForMatch(str)
     str = normalizeQuote(str or "")
+    str = normalizePunct(str)
     str = str:lower()
-    -- 去掉常见标点与多余空格，提升匹配宽容度
-    str = str:gsub("[%.,!%?]", " ")
     str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
     return str
 end
@@ -99,13 +105,10 @@ local function MessageMatchesShout(message)
     local msg = normalizeForMatch(message);
     for _, shout in ipairs(shouts) do
         if type(shout) == "string" then
+            -- 先保留原文做前缀切分，再归一化
+            local rawSuffix = shout:match("^[^:：]*[:：]%s*(.*)$");
             local targetFull = normalizeForMatch(shout);
-            local targetSuffix = targetFull;
-            -- 去掉“X says/yells:”等前缀，兼容事件消息无说话人前缀的情况
-            local colonPos = targetSuffix:find(":", 1, true);
-            if colonPos then
-                targetSuffix = targetSuffix:sub(colonPos + 1):gsub("^%s+", "");
-            end
+            local targetSuffix = rawSuffix and normalizeForMatch(rawSuffix) or targetFull;
             if targetFull ~= "" and msg:find(targetFull, 1, true) then
                 Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", message, shout));
                 return true;
