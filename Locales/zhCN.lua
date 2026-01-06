@@ -133,5 +133,13 @@ localeData.AirdropCrateNames = {
     ["WarSupplyCrate"] = "战争物资箱",
 };
 
+-- 空投 NPC 喊话（用于喊话检测，缺失将自动跳过该语言的喊话检测）
+localeData.AirdropShouts = {
+    "路费欧斯说： 附近好像有宝藏，自然也会有宝藏猎手了。小心背后。",
+    "路费欧斯说： 附近有满满一箱资源，赶紧找，不然难免大打出手哦！",
+    "路费欧斯说： 机会送上门来了！只要你够有勇气，那些宝贝在等着你呢。",
+    "路费欧斯说： 区域里出现了珍贵资源！快去抢吧！",
+};
+
 -- Register this locale
 LocaleManager.RegisterLocale("zhCN", localeData);

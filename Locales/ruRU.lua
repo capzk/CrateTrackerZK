@@ -134,6 +134,13 @@ localeData.AirdropCrateNames = {
     ["WarSupplyCrate"] = "Ящик с военными припасами",
 };
 
+-- Airdrop NPC shouts (placeholder uses enUS lines)
+localeData.AirdropShouts = {
+    "Ruffious says: I see some valuable resources in the area! Get ready to grab them!",
+    "Ruffious says: Looks like there's treasure nearby. And that means treasure hunters. Watch your back.",
+    "Ruffious says: There's a cache of resources nearby. Find it before you have to fight over it!",
+    "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",
+};
+
 -- Register this locale
 LocaleManager.RegisterLocale("ruRU", localeData);
-
