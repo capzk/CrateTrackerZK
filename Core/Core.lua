@@ -87,6 +87,7 @@ local function OnLogin()
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
     if TeamCommListener then TeamCommListener:Initialize() end
+    if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     
     if TimerManager then
         TimerManager:Initialize();

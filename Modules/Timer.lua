@@ -70,6 +70,13 @@ local function getCurrentTimestamp()
     return time();
 end
 
+local function HasRecentShout(mapDisplayName, currentTime)
+    if Notification and Notification.IsRecentShout then
+        return Notification:IsRecentShout(mapDisplayName, Notification.SHOUT_DEDUP_WINDOW, currentTime);
+    end
+    return false, nil;
+end
+
 function TimerManager:StartTimer(mapId, source, timestamp)
     Logger:Debug("Timer", "调试", string.format("StartTimer被调用：mapId=%s，source=%s", 
         tostring(mapId), tostring(source)))
@@ -310,15 +317,19 @@ function TimerManager:DetectMapIcons()
                 targetMapData.currentAirdropTimestamp and UnifiedDataManager:FormatDateTime(targetMapData.currentAirdropTimestamp) or "无"));
         return true;
     elseif targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID then
-        -- 新空投事件：清除通知记录
+        -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
         local mapDisplayName = Data:GetMapDisplayName(targetMapData);
-        if Notification then
+        local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
+        if Notification and not isRecentShout then
             if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
                 Notification.firstNotificationTime[mapDisplayName] = nil;
             end
             if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
                 Notification.playerSentNotification[mapDisplayName] = nil;
             end
+        elseif isRecentShout then
+            Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
+                mapDisplayName, currentTime - (lastShoutTime or currentTime)));
         end
     end
     
@@ -337,13 +348,17 @@ function TimerManager:DetectMapIcons()
     if detectionState.detectedObjectGUID ~= objectGUID then
         -- 新事件：清除通知记录
         local mapDisplayName = Data:GetMapDisplayName(targetMapData);
-        if Notification then
+        local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
+        if Notification and not isRecentShout then
             if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
                 Notification.firstNotificationTime[mapDisplayName] = nil;
             end
             if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
                 Notification.playerSentNotification[mapDisplayName] = nil;
             end
+        elseif isRecentShout then
+            Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
+                mapDisplayName, currentTime - (lastShoutTime or currentTime)));
         end
         
         Logger:Debug("Timer", "检测", string.format("检测到新事件（objectGUID不同）：地图=%s，旧objectGUID=%s，新objectGUID=%s", 

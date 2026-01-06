@@ -133,5 +133,13 @@ localeData.AirdropCrateNames = {
     ["WarSupplyCrate"] = "戰爭補給箱",
 };
 
+-- 空投NPC喊話（暫用簡中內容，待後續完善）
+localeData.AirdropShouts = {
+    "路費歐斯說： 附近好像有寶藏，自然也會有寶藏獵手了。小心背後。",
+    "路費歐斯說： 附近有滿滿一箱資源，趕緊找，不然難免大打出手哦！",
+    "路費歐斯說： 機會送上門來了！只要你夠有勇氣，那些寶貝在等著你呢。",
+    "路費歐斯說： 區域裡出現了珍貴資源！快去搶吧！",
+};
+
 -- Register this locale
 LocaleManager.RegisterLocale("zhTW", localeData);

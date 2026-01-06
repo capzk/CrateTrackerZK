@@ -270,6 +270,18 @@ function Localization:GetAirdropCrateName()
     return "War Supply Crate";
 end
 
+function Localization:GetAirdropShouts()
+    local L = GetL();
+    if L and L.AirdropShouts and type(L.AirdropShouts) == "table" and #L.AirdropShouts > 0 then
+        return L.AirdropShouts;
+    end
+    local enL = self:GetEnglishLocale();
+    if enL and enL.AirdropShouts and type(enL.AirdropShouts) == "table" and #enL.AirdropShouts > 0 then
+        return enL.AirdropShouts;
+    end
+    return nil;
+end
+
 function Localization:FormatMapID(mapID)
     if not mapID or type(mapID) ~= "number" then return "" end;
     return "Map " .. tostring(mapID);

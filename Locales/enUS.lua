@@ -119,18 +119,26 @@ localeData["MenuAbout"] = "About";
 
 -- Map names (using map ID as key)
 localeData.MapNames = {
-    [2248] = "Isle of Dorn",      -- 多恩岛
-    [2369] = "Siren Isle",        -- 海妖岛
+    [2248] = "Isle of Dorn",      -- 多恩�?
+    [2369] = "Siren Isle",        -- 海妖�?
     [2371] = "K'aresh",            -- 卡雷什
-    [2346] = "Undermine",         -- 安德麦
-    [2215] = "Hallowfall",        -- 陨圣峪
+    [2346] = "Undermine",         -- 安德�?
+    [2215] = "Hallowfall",        -- 陨圣�?
     [2214] = "The Ringing Deeps", -- 喧鸣深窟
-    [2255] = "Azj-Kahet",         -- 艾基-卡赫特
+    [2255] = "Azj-Kahet",         -- 艾基-卡赫�?
 };
 
 -- Airdrop crate names
 localeData.AirdropCrateNames = {
     ["WarSupplyCrate"] = "War Supply Crate",
+};
+
+-- Airdrop NPC shouts (strict match per locale)
+localeData.AirdropShouts = {
+    "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",
+    "Ruffious says: I see some valuable resources in the area! Get ready to grab them!",
+    "Ruffious says: There's a cache of resources nearby. Find it before you have to fight over it!",
+    "Ruffious says: Looks like there's treasure nearby. And that means treasure hunters. Watch your back.",
 };
 
 -- Register this locale

@@ -76,6 +76,43 @@ local function Utf8Truncate(str, maxChars)
     return str, false
 end
 
+local function Utf8Len(str)
+    if not str then return 0 end
+    local len, pos = 0, 1
+    local bytes = #str
+    while pos <= bytes do
+        len = len + 1
+        local b = str:byte(pos)
+        if b >= 240 then
+            pos = pos + 4
+        elseif b >= 224 then
+            pos = pos + 3
+        elseif b >= 192 then
+            pos = pos + 2
+        else
+            pos = pos + 1
+        end
+    end
+    return len
+end
+
+local function EllipsizeToWidth(fs, text, maxWidth)
+    fs:SetText(text or "")
+    if not maxWidth or fs:GetStringWidth() <= maxWidth then
+        return
+    end
+    local fullText = text or ""
+    local len = Utf8Len(fullText)
+    for i = len - 1, 1, -1 do
+        local candidate = Utf8Truncate(fullText, i)
+        candidate = candidate .. "..."
+        fs:SetText(candidate)
+        if fs:GetStringWidth() <= maxWidth then
+            return
+        end
+    end
+end
+
 -- Dialog（帮助/关于）
 local Dialog = {}
 Dialog.__index = Dialog
@@ -515,11 +552,9 @@ function TableWidget:CreateRow(item, index)
     end
 
     local mapColor = item.isHidden and {GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b} or {1,1,1}
-    local mapText, truncated = Utf8Truncate(item.mapName or "", 4)
-    if truncated then
-        mapText = mapText .. "..."
-    end
-    local mapFS = addText(Columns[1], mapText, mapColor, false)  -- 地图名称居中显示
+    local mapCol = Columns[1]
+    local mapFS = addText(mapCol, "", mapColor, false)  -- 地图名称居中显示
+    EllipsizeToWidth(mapFS, item.mapName or "", (mapCol.width or 0) - 10)
 
     local phaseText, phaseColor = FormatPhase(item)
     if item.isHidden then phaseColor = {GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b} end

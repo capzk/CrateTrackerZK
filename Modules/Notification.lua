@@ -11,6 +11,9 @@ Notification.teamNotificationEnabled = true;
 Notification.firstNotificationTime = {};
 -- 玩家发送通知记录（防止重复发送）
 Notification.playerSentNotification = {};
+-- 最近喊话时间记录（用于图标检测去重）
+Notification.lastShoutTime = Notification.lastShoutTime or {};
+Notification.SHOUT_DEDUP_WINDOW = 20;
 
 local function DebugPrint(msg, ...)
     Logger:Debug("Notification", "调试", msg, ...);
@@ -98,6 +101,24 @@ function Notification:HasPlayerSentNotification(mapName)
     return self.playerSentNotification[mapName] == true;
 end
 
+function Notification:RecordShout(mapName, timestamp)
+    if not mapName then return end
+    self.lastShoutTime = self.lastShoutTime or {};
+    self.lastShoutTime[mapName] = timestamp or time();
+    Logger:Debug("Notification", "记录", string.format("记录喊话时间：地图=%s，时间=%s",
+        mapName, UnifiedDataManager:FormatDateTime(self.lastShoutTime[mapName])));
+end
+
+function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
+    if not mapName then return false, nil end
+    self.lastShoutTime = self.lastShoutTime or {};
+    local lastTime = self.lastShoutTime[mapName];
+    if not lastTime then return false, nil end
+    windowSeconds = windowSeconds or self.SHOUT_DEDUP_WINDOW or 20;
+    currentTime = currentTime or time();
+    return (currentTime - lastTime) <= windowSeconds, lastTime;
+end
+
 function Notification:NotifyAirdropDetected(mapName, detectionSource)
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
@@ -107,6 +128,18 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local chatType = self:GetTeamChatType();
     local currentTime = time();
+    -- 记录喊话时间，用于后续图标检测的去重
+    if detectionSource == "npc_shout" then
+        self:RecordShout(mapName, currentTime);
+    end
+    local isRecentShout, lastShoutTime = self:IsRecentShout(mapName, self.SHOUT_DEDUP_WINDOW, currentTime);
+    if detectionSource == "map_icon" and isRecentShout then
+        self:UpdateFirstNotificationTime(mapName, lastShoutTime or currentTime);
+        self:MarkPlayerSentNotification(mapName);
+        Logger:Debug("Notification", "去重", string.format("最近%ds内已由喊话触发，跳过图标二次通知：地图=%s，间隔=%ds",
+            self.SHOUT_DEDUP_WINDOW, mapName, currentTime - (lastShoutTime or currentTime)));
+        return;
+    end
     
     if chatType and self.teamNotificationEnabled then
         -- 个人发送限制检查
