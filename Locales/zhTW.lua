@@ -1,5 +1,4 @@
 -- CrateTrackerZK - 繁体中文本地化
--- This file contains only translation data, no logic
 local LocaleManager = BuildEnv("LocaleManager");
 if not LocaleManager or not LocaleManager.RegisterLocale then
     if LocaleManager then

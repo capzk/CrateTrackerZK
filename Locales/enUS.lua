@@ -1,5 +1,4 @@
 -- CrateTrackerZK - English Localization
--- This file contains only translation data, no logic
 local LocaleManager = BuildEnv("LocaleManager");
 if not LocaleManager or not LocaleManager.RegisterLocale then
     if LocaleManager then
@@ -119,13 +118,13 @@ localeData["MenuAbout"] = "About";
 
 -- Map names (using map ID as key)
 localeData.MapNames = {
-    [2248] = "Isle of Dorn",      -- 多恩�?
-    [2369] = "Siren Isle",        -- 海妖�?
+    [2248] = "Isle of Dorn",      -- 多恩�?
+    [2369] = "Siren Isle",        -- 海妖�?
     [2371] = "K'aresh",            -- 卡雷什
-    [2346] = "Undermine",         -- 安德�?
-    [2215] = "Hallowfall",        -- 陨圣�?
+    [2346] = "Undermine",         -- 安德�?
+    [2215] = "Hallowfall",        -- 陨圣�?
     [2214] = "The Ringing Deeps", -- 喧鸣深窟
-    [2255] = "Azj-Kahet",         -- 艾基-卡赫�?
+    [2255] = "Azj-Kahet",         -- 艾基-卡赫�?
 };
 
 -- Airdrop crate names
