@@ -1,6 +1,6 @@
 # Translation Guide
 
-**Addon Version**: 1.1.5
+**Addon Version**: 1.1.6
 
 ## Quick Start
 
@@ -25,46 +25,15 @@ locale = "your_language_code",  -- e.g., "frFR"
 LocaleManager.RegisterLocale("your_language_code", localeData);
 ```
 
-### 2. MapNames Table (REQUIRED)
-
-**Lines 113-121** - All 7 map entries must be translated:
-
-```lua
-localeData.MapNames = {
-    [2248] = "Translation for Isle of Dorn",
-    [2369] = "Translation for Siren Isle",
-    [2371] = "Translation for K'aresh",
-    [2346] = "Translation for Undermine",
-    [2215] = "Translation for Hallowfall",
-    [2214] = "Translation for The Ringing Deeps",
-    [2255] = "Translation for Azj-Kahet",
-};
-```
-
-**Important Notes:**
-- Keep the numbers `[2248]`, `[2369]`, etc. unchanged
-- Map names are only for display - you can use abbreviations or any format you prefer
-- Missing entries will show as "Map [ID]"
-
-### 3. AirdropCrateNames Table (REQUIRED)
-
-**Lines 124-126** - Must translate:
-
-```lua
-localeData.AirdropCrateNames = {
-    ["WarSupplyCrate"] = "Translation for War Supply Crate",
-};
-```
-
-**Important:** Keep `"WarSupplyCrate"` unchanged, only translate the value.
+### 2. What Needs Translation
 
 ## What Can Be Translated (Optional)
 
-**Lines 17-110** - All UI text strings can be translated:
+All UI text strings can be translated:
 
 ```lua
-localeData["AddonLoaded"] = "Translation here";
-localeData["HelpCommandHint"] = "Translation here";
+localeData["AirdropDetected"] = "Translation here";
+localeData["TimeRemaining"] = "Translation here";
 // ... etc
 ```
 
@@ -117,7 +86,7 @@ Use these commands in-game to get map IDs for reference:
 
 # 翻译指南
 
-**插件版本**: 1.1.5
+**插件版本**: 1.1.6
 
 ## 快速开始
 
@@ -142,46 +111,15 @@ locale = "你的语言代码",  -- 例如: "frFR"
 LocaleManager.RegisterLocale("你的语言代码", localeData);
 ```
 
-### 2. MapNames 表（必需）
-
-**第113-121行** - 必须翻译所有7个地图条目：
-
-```lua
-localeData.MapNames = {
-    [2248] = "多恩岛的翻译",
-    [2369] = "海妖岛的翻译",
-    [2371] = "卡雷什的翻译",
-    [2346] = "安德麦的翻译",
-    [2215] = "陨圣峪的翻译",
-    [2214] = "喧鸣深窟的翻译",
-    [2255] = "艾基-卡赫特的翻译",
-};
-```
-
-**重要提示：**
-- 保持数字 `[2248]`、`[2369]` 等不变
-- 地图名称仅用于显示，可以使用简写或任何你喜欢的格式
-- 缺失条目会显示为 "Map [ID]"
-
-### 3. AirdropCrateNames 表（必需）
-
-**第124-126行** - 必须翻译：
-
-```lua
-localeData.AirdropCrateNames = {
-    ["WarSupplyCrate"] = "战争物资箱的翻译",
-};
-```
-
-**重要：** 保持 `"WarSupplyCrate"` 不变，只翻译值。
+### 2. 需要翻译的内容
 
 ## 可选翻译内容
 
-**第17-110行** - 所有UI文本字符串可以翻译：
+所有UI文本字符串可以翻译：
 
 ```lua
-localeData["AddonLoaded"] = "翻译文本";
-localeData["HelpCommandHint"] = "翻译文本";
+localeData["AirdropDetected"] = "翻译文本";
+localeData["TimeRemaining"] = "翻译文本";
 // ... 等等
 ```
 

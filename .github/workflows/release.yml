@@ -34,6 +34,11 @@ jobs:
           ./ release_temp/CrateTrackerZK/
         cd release_temp && zip -r ../CrateTrackerZK.zip CrateTrackerZK/
     
+    - name: Rename package
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        mv CrateTrackerZK.zip "CrateTrackerZK-${VERSION}.zip"
+    
     - name: Create tag
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
@@ -53,14 +58,14 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: CrateTrackerZK.zip
+        files: CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip
         tag_name: ${{ steps.get_version.outputs.version }}
         name: Release ${{ steps.get_version.outputs.version }}
         body: |
           ## CrateTrackerZK ${{ steps.get_version.outputs.version }}
           
           ### Installation
-          1. Download `CrateTrackerZK.zip`
+          1. Download `CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip`
           2. Extract the zip file
           3. Copy the `CrateTrackerZK` folder to your `World of Warcraft/_retail_/Interface/AddOns/` directory
           4. Restart the game or use `/reload` command
