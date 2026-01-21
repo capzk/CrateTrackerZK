@@ -10,33 +10,12 @@ end
 local IconDetector = BuildEnv('IconDetector');
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
-local L = CrateTrackerZK.L;
 
 if not Utils then
     Utils = BuildEnv('Utils')
 end
 
-local function GetCrateName()
-    local crateName = "";
-    if Localization then
-        crateName = Localization:GetAirdropCrateName();
-    else
-        local L = CrateTrackerZK.L;
-        local crateCode = "WarSupplyCrate";
-        if L and L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
-            crateName = L.AirdropCrateNames[crateCode];
-        else
-            local LocaleManager = BuildEnv("LocaleManager");
-            if LocaleManager and LocaleManager.GetEnglishLocale then
-                local enL = LocaleManager.GetEnglishLocale();
-                if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
-                    crateName = enL.AirdropCrateNames[crateCode];
-                end
-            end
-        end
-    end
-    return crateName;
-end
+IconDetector.VIGNETTE_ID_AIRDROP = 3689;
 
 -- 提取 SpawnUID（GUID 第7部分）
 local function ExtractSpawnUID(objectGUID)
@@ -76,48 +55,36 @@ function IconDetector:DetectIcon(currentMapID)
         return { detected = false };
     end
     
-    local crateName = GetCrateName();
-    if not crateName or crateName == "" then
-        Logger:DebugLimited("icon_detection:name_not_configured", "IconDetector", "检测", "空投箱名称未配置，跳过图标检测");
-        return { detected = false };
-    end
-    
     local vignettes = C_VignetteInfo.GetVignettes();
     if not vignettes then
         return { detected = false };
     end
     
-    -- 仅检测飞机图标（vignetteID = 3689）
+    -- 仅检测空投飞机图标
     for _, vignetteGUID in ipairs(vignettes) do
         local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID);
         if vignetteInfo then
-            if vignetteInfo.vignetteID == 3689 then
-                local vignetteName = vignetteInfo.name or "";
-                if vignetteName ~= "" then
-                    local trimmedName = vignetteName:match("^%s*(.-)%s*$");
-                    if crateName and crateName ~= "" and trimmedName == crateName then
-                        local objectGUID = vignetteInfo.objectGUID;
-                        local spawnUID = nil;
-                        
-                        if objectGUID then
-                            spawnUID = ExtractSpawnUID(objectGUID);
-                        end
-                        
-                        local phaseID = ExtractPhaseID(objectGUID);
-                        
-                        Logger:DebugLimited("icon_detection:detected_" .. tostring(currentMapID), "IconDetector", "检测", 
-                            string.format("检测到空投飞机：地图ID=%d，objectGUID=%s", currentMapID, objectGUID or "无"));
-                        
-                        return {
-                            detected = true,
-                            objectGUID = objectGUID,
-                            spawnUID = spawnUID,
-                            phaseID = phaseID,
-                            vignetteGUID = vignetteGUID,
-                            vignetteID = vignetteInfo.vignetteID
-                        };
-                    end
+            if vignetteInfo.vignetteID == IconDetector.VIGNETTE_ID_AIRDROP then
+                local objectGUID = vignetteInfo.objectGUID;
+                local spawnUID = nil;
+                
+                if objectGUID then
+                    spawnUID = ExtractSpawnUID(objectGUID);
                 end
+                
+                local phaseID = ExtractPhaseID(objectGUID);
+                
+                Logger:DebugLimited("icon_detection:detected_" .. tostring(currentMapID), "IconDetector", "检测", 
+                    string.format("检测到空投飞机：地图ID=%d，objectGUID=%s", currentMapID, objectGUID or "无"));
+                
+                return {
+                    detected = true,
+                    objectGUID = objectGUID,
+                    spawnUID = spawnUID,
+                    phaseID = phaseID,
+                    vignetteGUID = vignetteGUID,
+                    vignetteID = vignetteInfo.vignetteID
+                };
             end
         end
     end

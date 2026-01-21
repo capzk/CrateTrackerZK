@@ -34,7 +34,6 @@
     <!-- UI 信息与显示 -->
     <Script file="UI/About.lua"/>
     <Script file="UI/Help.lua"/>
-    <Script file="UI/Info.lua"/>
     
     <!-- 核心逻辑 -->
     <Script file="Core/Core.lua"/>

@@ -123,9 +123,6 @@ function Data:Initialize()
         end
     end
     
-    if newInstallCount > 0 then
-        Logger:Info("Data", "初始化", string.format("检测到 %d 个地图为全新安装（无历史数据）", newInstallCount));
-    end
     
     Logger:DebugLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
 end

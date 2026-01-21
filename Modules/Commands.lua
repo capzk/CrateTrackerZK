@@ -69,7 +69,7 @@ function Commands:HandleDebugCommand(arg)
 end
 
 function Commands:HandleClearCommand(arg)
-    Logger:Info("Commands", "命令", L["ClearingData"]);
+    Logger:Debug("Commands", "命令", "正在清除所有时间和位面数据...");
     
     if TimerManager then TimerManager:StopMapIconDetection() end
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then

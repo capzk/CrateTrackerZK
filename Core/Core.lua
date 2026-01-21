@@ -34,8 +34,6 @@ local function OnLogin()
         CRATETRACKERZK_DB.mapData = {};
     end
     
-    Logger:Success("Core", "启动", L["AddonInitializedSuccess"]);
-    Logger:Success("Core", "启动", L["HelpCommandHint"]);
 
     if Localization and not Localization.isInitialized then
         Localization:Initialize();

@@ -850,7 +850,7 @@ function MainPanel:CreateMainFrame()
     else
         frame:SetPoint("CENTER")
     end
-    frame.TitleText:SetText(L["MainPanelTitle"] or "CrateTrackerZK")
+    frame.TitleText:SetText("|cff00ff88[CrateTrackerZK]|r")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -1119,8 +1119,7 @@ function MainPanel:ShowHelpDialog()
         self.helpDialog = Dialog:new(L["MenuHelp"] or "Help", 600, 500)
     end
     
-    -- 使用已引用的Help模块
-    local helpText = Help and Help.GetHelpText and Help:GetHelpText() or (L["HelpText"] or "Help text not available")
+    local helpText = Help:GetHelpText()
     
     self.helpDialog:SetTitle(L["MenuHelp"] or "Help")
     self.helpDialog:SetContent(helpText)

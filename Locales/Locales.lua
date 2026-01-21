@@ -33,15 +33,12 @@ local function LoadLocaleData(localeData)
     if not localeData then return end;
     
     for k, v in pairs(localeData) do
-        if k ~= "MapNames" and k ~= "AirdropCrateNames" then
+        if k ~= "MapNames" then
             L[k] = v;
         end
     end
     if localeData.MapNames then
         L.MapNames = localeData.MapNames;
-    end
-    if localeData.AirdropCrateNames then
-        L.AirdropCrateNames = localeData.AirdropCrateNames;
     end
 end
 

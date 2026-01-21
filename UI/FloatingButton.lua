@@ -202,7 +202,7 @@ function CrateTrackerZK:CreateFloatingButton()
     
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-        GameTooltip:SetText(L["FloatingButtonTooltipTitle"]);
+        GameTooltip:SetText("CrateTrackerZK");
         GameTooltip:AddLine(L["FloatingButtonTooltipLine1"]);
         GameTooltip:AddLine(L["FloatingButtonTooltipLine2"]);
         GameTooltip:Show();

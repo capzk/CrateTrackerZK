@@ -10,6 +10,8 @@ Localization.isInitialized = false;
 Localization.currentLocale = GetLocale();
 Localization.missingTranslations = {};
 Localization.missingLogEnabled = false;
+Localization.mapNameCache = {};
+Localization.suppressWarnings = false;
 
 function Localization:Initialize()
     if self.isInitialized then
@@ -17,6 +19,8 @@ function Localization:Initialize()
     end
     
     self.currentLocale = GetLocale();
+    self.mapNameCache = {};
+    self.missingLogEnabled = false;
     self.isInitialized = true;
     
     if Logger and Logger:IsDebugEnabled() then
@@ -30,62 +34,21 @@ function Localization:Initialize()
 end
 
 function Localization:ValidateCompleteness()
+    if self.suppressWarnings then
+        return {
+            mapNames = {}
+        };
+    end
     local missing = {
-        mapNames = {},
-        airdropCrateNames = {}
+        mapNames = {}
     };
-    
-    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
-        local L = GetL();
-        local enL = self:GetEnglishLocale();
-        
-        for _, mapData in ipairs(Data.MAP_CONFIG.current_maps) do
-            local mapID = mapData.mapID;
-            if mapID then
-                local hasTranslation = false;
-                
-                if L and L.MapNames and L.MapNames[mapID] then
-                    hasTranslation = true;
-                elseif enL and enL.MapNames and enL.MapNames[mapID] then
-                    hasTranslation = true;
-                end
-                
-                if not hasTranslation then
-                    table.insert(missing.mapNames, tostring(mapID));
-                    self:LogMissingTranslation(tostring(mapID), "MapNames", true);
-                end
-            end
-        end
-    end
-    
-    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.airdrop_crates then
-        local L = GetL();
-        local enL = self:GetEnglishLocale();
-        
-        for _, crateConfig in ipairs(Data.MAP_CONFIG.airdrop_crates) do
-            local crateCode = crateConfig.code;
-            if crateCode then
-                local hasTranslation = false;
-                
-                if L and L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
-                    hasTranslation = true;
-                elseif enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
-                    hasTranslation = true;
-                end
-                
-                if not hasTranslation then
-                    table.insert(missing.airdropCrateNames, crateCode);
-                    self:LogMissingTranslation(crateCode, "AirdropCrateNames", true);
-                end
-            end
-        end
-    end
     
     return missing;
 end
 
 function Localization:LogMissingTranslation(key, category, critical)
     if not key or not category then return end;
+    if self.suppressWarnings then return end;
     
     local entry = {
         key = key,
@@ -123,6 +86,12 @@ function Localization:ClearMissingLog()
 end
 
 function Localization:ReportInitializationStatus()
+    if self.suppressWarnings then
+        return;
+    end
+    if not (Logger and Logger:IsDebugEnabled()) then
+        return;
+    end
     local LocaleManager = BuildEnv("LocaleManager");
     if not LocaleManager or not LocaleManager.GetLoadStatus then
         return;
@@ -147,17 +116,13 @@ function Localization:ReportInitializationStatus()
     end
     
     local missing = self:ValidateCompleteness();
-    local missingCount = #missing.mapNames + #missing.airdropCrateNames;
+    local missingCount = #missing.mapNames;
     
     if missingCount > 0 then
         local missingList = {};
         local mapNamesFormat = (L and L["MapNamesCount"]) or "Map names: %d";
-        local crateNamesFormat = (L and L["AirdropCratesCount"]) or "Airdrop crates: %d";
         if #missing.mapNames > 0 then
             table.insert(missingList, string.format(mapNamesFormat, #missing.mapNames));
-        end
-        if #missing.airdropCrateNames > 0 then
-            table.insert(missingList, string.format(crateNamesFormat, #missing.airdropCrateNames));
         end
         
         local warningFormat = (L and L["LocalizationMissingTranslationsWarning"]) or "Warning: Found %d missing critical translations (%s)";
@@ -167,43 +132,35 @@ function Localization:ReportInitializationStatus()
             table.concat(missingList, ", ")
         ));
         
-        if Logger and Logger:IsDebugEnabled() then
-            local mapNamesMsg = (L and L["LocalizationMissingMapNames"]) or "Missing map names: %s";
-            local crateNamesMsg = (L and L["LocalizationMissingCrateNames"]) or "Missing airdrop crate names: %s";
-            if #missing.mapNames > 0 then
-                Logger:Debug("Localization", "本地化", string.format(mapNamesMsg, table.concat(missing.mapNames, ", ")));
-            end
-            if #missing.airdropCrateNames > 0 then
-                Logger:Debug("Localization", "本地化", string.format(crateNamesMsg, table.concat(missing.airdropCrateNames, ", ")));
-            end
+        local mapNamesMsg = (L and L["LocalizationMissingMapNames"]) or "Missing map names: %s";
+        if #missing.mapNames > 0 then
+            Logger:Debug("Localization", "本地化", string.format(mapNamesMsg, table.concat(missing.mapNames, ", ")));
         end
     end
 end
 
 function Localization:GetMapName(mapID)
     if not mapID or type(mapID) ~= "number" then return "" end;
-    
-    local L = GetL();
-    if not L then
-        -- 如果L还没有初始化，回退到格式化ID
-        self:LogMissingTranslation(tostring(mapID), "MapNames", false);
-        return "Map " .. tostring(mapID);
+
+    if self.mapNameCache and self.mapNameCache[mapID] then
+        return self.mapNameCache[mapID];
     end
     
-    if L.MapNames and L.MapNames[mapID] then
-        return L.MapNames[mapID];
-    end
-    
-    local enL = self:GetEnglishLocale();
-    if enL and enL.MapNames and enL.MapNames[mapID] then
-        if GetLocale() ~= "enUS" then
-            self:LogMissingTranslation(tostring(mapID), "MapNames", false);
+    if C_Map and C_Map.GetMapInfo then
+        local mapInfo = C_Map.GetMapInfo(mapID);
+        if mapInfo and mapInfo.name and mapInfo.name ~= "" then
+            if self.mapNameCache then
+                self.mapNameCache[mapID] = mapInfo.name;
+            end
+            return mapInfo.name;
         end
-        return enL.MapNames[mapID];
     end
     
-    self:LogMissingTranslation(tostring(mapID), "MapNames", true);
-    return "Map " .. tostring(mapID);
+    local fallback = "Map " .. tostring(mapID);
+    if self.mapNameCache then
+        self.mapNameCache[mapID] = fallback;
+    end
+    return fallback;
 end
 
 
@@ -239,35 +196,6 @@ function Localization:GetAllMapNames()
     end
     
     return result;
-end
-
-function Localization:GetAirdropCrateName()
-    local crateCode = "WarSupplyCrate";
-    local L = GetL();
-    
-    if not L then
-        self:LogMissingTranslation(crateCode, "AirdropCrateNames", false);
-        local enL = self:GetEnglishLocale();
-        if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
-            return enL.AirdropCrateNames[crateCode];
-        end
-        return "War Supply Crate";
-    end
-    
-    if L.AirdropCrateNames and L.AirdropCrateNames[crateCode] then
-        return L.AirdropCrateNames[crateCode];
-    end
-    
-    local enL = self:GetEnglishLocale();
-    if enL and enL.AirdropCrateNames and enL.AirdropCrateNames[crateCode] then
-        if GetLocale() ~= "enUS" then
-            self:LogMissingTranslation(crateCode, "AirdropCrateNames", false);
-        end
-        return enL.AirdropCrateNames[crateCode];
-    end
-    
-    self:LogMissingTranslation(crateCode, "AirdropCrateNames", true);
-    return "War Supply Crate";
 end
 
 function Localization:GetAirdropShouts()

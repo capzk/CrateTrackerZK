@@ -14,6 +14,7 @@ Notification.playerSentNotification = {};
 -- 最近喊话时间记录（用于图标检测去重）
 Notification.lastShoutTime = Notification.lastShoutTime or {};
 Notification.SHOUT_DEDUP_WINDOW = 20;
+Notification.invalidAirdropEnabled = false;
 
 local function DebugPrint(msg, ...)
     Logger:Debug("Notification", "调试", msg, ...);
@@ -207,6 +208,9 @@ function Notification:GetTeamChatType()
 end
 
 function Notification:NotifyInvalidAirdrop(mapName)
+    if not self.invalidAirdropEnabled then
+        return;
+    end
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
         Logger:Debug("Notification", "通知", "通知无效空投失败：地图名称为空");
