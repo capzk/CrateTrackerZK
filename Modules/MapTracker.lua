@@ -93,8 +93,6 @@ function MapTracker:GetTargetMapData(currentMapID)
 end
 
 function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
-    self:Initialize();
-    
     local changeInfo = {
         gameMapChanged = false,
         configMapChanged = false,
@@ -102,6 +100,10 @@ function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
         oldMapId = self.lastDetectedMapId,
         oldGameMapID = self.lastDetectedGameMapID
     };
+    
+    if not targetMapData or not currentMapID then
+        return changeInfo;
+    end
     
     changeInfo.gameMapChanged = (self.lastDetectedGameMapID and self.lastDetectedGameMapID ~= currentMapID);
     changeInfo.configMapChanged = (self.lastDetectedMapId and self.lastDetectedMapId ~= targetMapData.id);

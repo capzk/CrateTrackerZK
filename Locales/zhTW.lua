@@ -103,9 +103,10 @@ localeData["Return"] = "返回";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[可用命令：
 
-/ctk help               顯示可用命令
-/ctk team on/off        開啟/關閉團隊通知
+/ctk on                 啟動插件
+/ctk off                徹底關閉插件（暫停檢測並隱藏介面）
 /ctk clear              清除本地資料並重新初始化
+/ctk team on/off        開啟/關閉團隊通知
 
 團隊時間共享已預設開啟，並會透過團隊通知同步時間。請確保團隊成員開啟團隊通知功能，以便共享生效。
 

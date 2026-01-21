@@ -7,6 +7,28 @@ local Commands = BuildEnv('Commands');
 
 Commands.isInitialized = false;
 
+local function EnsureUIConfig()
+    if not CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    if type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {};
+    end
+end
+
+local function IsAddonEnabled()
+    EnsureUIConfig();
+    if CRATETRACKERZK_UI_DB.addonEnabled == nil then
+        return true;
+    end
+    return CRATETRACKERZK_UI_DB.addonEnabled == true;
+end
+
+local function SetAddonEnabled(enabled)
+    EnsureUIConfig();
+    CRATETRACKERZK_UI_DB.addonEnabled = enabled == true;
+end
+
 function Commands:Initialize()
     if self.isInitialized then return end
     self.isInitialized = true;
@@ -24,6 +46,10 @@ function Commands:HandleCommand(msg)
         self:HandleClearCommand(arg);
     elseif command == "team" or command == "teamnotify" then
         self:HandleTeamNotificationCommand(arg);
+    elseif command == "on" then
+        self:HandleAddonToggle(true);
+    elseif command == "off" then
+        self:HandleAddonToggle(false);
     elseif command == "help" or command == "" or command == nil then
         self:ShowHelp();
     else
@@ -163,13 +189,86 @@ function Commands:HandleTeamNotificationCommand(arg)
     end
 end
 
-function Commands:ShowHelp()
-    Logger:Info("Commands", "帮助", L["HelpTitle"]);
-    Logger:Info("Commands", "帮助", L["HelpClear"]);
-    Logger:Info("Commands", "帮助", L["HelpTeam"]);
-    Logger:Info("Commands", "帮助", L["HelpHelp"]);
-    Logger:Info("Commands", "帮助", "更多帮助信息请查看UI帮助菜单（点击主面板的'帮助'按钮）");
-    if L["HelpUpdateWarning"] then
-        Logger:Warn("Commands", "警告", L["HelpUpdateWarning"]);
+function Commands:HandleAddonToggle(enable)
+    local currentlyEnabled = IsAddonEnabled();
+    if enable and currentlyEnabled then
+        Logger:Info("Commands", "命令", "插件已处于开启状态");
+        return;
     end
+    if not enable and not currentlyEnabled then
+        Logger:Info("Commands", "命令", "插件已处于关闭状态");
+        return;
+    end
+
+    SetAddonEnabled(enable);
+
+    if enable then
+        if Area then
+            Area.detectionPaused = false;
+        end
+        if TimerManager and TimerManager.Initialize and not TimerManager.isInitialized then
+            TimerManager:Initialize();
+        end
+        if CrateTrackerZK and CrateTrackerZK.ResumeAllDetections then
+            CrateTrackerZK:ResumeAllDetections();
+        end
+        if TeamCommListener then
+            TeamCommListener.isInitialized = false;
+            TeamCommListener:Initialize();
+        end
+        if ShoutDetector and ShoutDetector.Initialize then
+            ShoutDetector.isInitialized = false;
+            ShoutDetector:Initialize();
+        end
+        if CrateTrackerZKFloatingButton then
+            CrateTrackerZKFloatingButton:Show();
+        elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
+            CrateTrackerZK:CreateFloatingButton();
+        end
+        if MainPanel and MainPanel.StartUpdateTimer then
+            MainPanel:StartUpdateTimer();
+        end
+        Logger:Success("Commands", "命令", "插件已开启");
+    else
+        if Area then
+            Area.detectionPaused = true;
+        end
+        if CrateTrackerZK and CrateTrackerZK.PauseAllDetections then
+            CrateTrackerZK:PauseAllDetections();
+        end
+        if CrateTrackerZKFrame then
+            CrateTrackerZKFrame:Hide();
+        end
+        if CrateTrackerZKFloatingButton then
+            CrateTrackerZKFloatingButton:Hide();
+        end
+        if MainPanel and MainPanel.StopUpdateTimer then
+            MainPanel:StopUpdateTimer();
+        end
+        if TeamCommListener then
+            TeamCommListener.isInitialized = false;
+            TeamCommListener.messagePatterns = {};
+            if TeamCommListener.chatFrame then
+                TeamCommListener.chatFrame:UnregisterAllEvents();
+                TeamCommListener.chatFrame:SetScript("OnEvent", nil);
+                TeamCommListener.chatFrame = nil;
+            end
+        end
+        if ShoutDetector and ShoutDetector.eventFrame then
+            ShoutDetector.eventFrame:UnregisterAllEvents();
+            ShoutDetector.eventFrame:SetScript("OnEvent", nil);
+            ShoutDetector.eventFrame = nil;
+            ShoutDetector.isInitialized = false;
+        end
+        Logger:Success("Commands", "命令", "插件已关闭（功能暂停）");
+    end
+end
+
+function Commands:ShowHelp()
+    Logger:Info("Commands", "帮助", "可用命令：");
+    Logger:Info("Commands", "帮助", "/ctk on - 启动插件");
+    Logger:Info("Commands", "帮助", "/ctk off - 彻底关闭插件（暂停检测并隐藏界面）");
+    Logger:Info("Commands", "帮助", "/ctk clear 或 /ctk reset - 清除所有数据并重新初始化插件");
+    Logger:Info("Commands", "帮助", "/ctk team on|off - 开启/关闭团队通知");
+    Logger:Info("Commands", "帮助", "更多帮助信息请查看UI帮助菜单（点击主面板的'帮助'按钮）");
 end

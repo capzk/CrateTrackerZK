@@ -8,6 +8,13 @@ local function DebugPrint(msg, ...)
     Logger:Debug("Core", "调试", msg, ...);
 end
 
+local function IsAddonEnabled()
+    if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
+        return true;
+    end
+    return CRATETRACKERZK_UI_DB.addonEnabled == true;
+end
+
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
@@ -86,6 +93,24 @@ local function OnLogin()
     
     if Notification then Notification:Initialize() end
     if Commands then Commands:Initialize() end
+
+    if not IsAddonEnabled() then
+        if Area then
+            Area.detectionPaused = true;
+        end
+        if CrateTrackerZK and CrateTrackerZK.PauseAllDetections then
+            CrateTrackerZK:PauseAllDetections();
+        end
+        if CrateTrackerZKFrame then
+            CrateTrackerZKFrame:Hide();
+        end
+        if CrateTrackerZKFloatingButton then
+            CrateTrackerZKFloatingButton:Hide();
+        end
+        Logger:Warn("Core", "状态", "插件处于关闭状态，已跳过初始化");
+        return;
+    end
+
     if TeamCommListener then TeamCommListener:Initialize() end
     if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     

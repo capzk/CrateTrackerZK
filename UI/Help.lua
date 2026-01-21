@@ -13,7 +13,8 @@ local Help = BuildEnv("Help");
 function Help:GetHelpText()
     return [[CrateTrackerZK 使用帮助
 
-==更新后如果遇到异常，请把此插件目录完全删除后全新安装==
+插件更新地址：https://www.curseforge.com/wow/addons/cratetrackerzk
+
 ==团队通知默认做了限制，空投开始后的短时间内才会自动发送空投通知，超过时间不会再发送团队消息==
 == 基本功能 ==
 
@@ -25,10 +26,11 @@ function Help:GetHelpText()
 
 == 可用命令 ==
 
-/ctk help                显示帮助信息
-/ctk clear               清除所有数据并重新初始化插件
-/ctk team on | off         开启/关闭团队通知
-
+/ctk off                关闭插件（暂停所有功能并隐藏界面）
+/ctk on                 启动插件
+/ctk clear              清除所有数据并重新初始化插件
+/ctk team off           关闭团队通知
+/ctk team on            开启团队通知
 
 == 界面操作 ==
 
@@ -46,7 +48,7 @@ function Help:GetHelpText()
 == 数据管理 ==
 
 - 所有数据自动保存到角色配置文件
-- 支持多角色独立数据存储
+- 数据在账号内共享（不同角色共享）
 - 可通过重置命令清空所有数据
 
 == 团队功能 ==
@@ -75,9 +77,10 @@ CrateTrackerZK Help
 
 == Commands ==
 
-/ctk help                Show help
+/ctk on                  Enable addon
+/ctk off                 Disable addon (pause detection and hide UI)
 /ctk clear               Clear all data and reinitialize the addon
-/ctk team on | off         Enable/disable team notification
+/ctk team on | off        Enable/disable team notification
 
 
 == UI Operations ==

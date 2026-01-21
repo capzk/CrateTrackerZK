@@ -12,8 +12,6 @@
 # 发布目录
 Release/
 prod/
-.dev/
-.codex/
 
 # IDE 文件
 .vscode/

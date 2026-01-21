@@ -19,7 +19,7 @@ local About = BuildEnv("About")
 local function SafeExecute(func, ...)
     local ok, res = pcall(func, ...)
     if not ok and Logger then
-        Logger:Error("MainPanel", "閿欒", tostring(res))
+        Logger:Error("MainPanel", "错误", tostring(res))
     end
     return ok and res or nil
 end
@@ -784,9 +784,9 @@ local function BuildMenu(parent)
     menuButton:SetPoint("RIGHT", parent.CloseButton, "LEFT", -16, 2)
     menuButton:SetHitRectInsets(-4, -4, -4, -4)
 
-    local menuText = menuButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    local menuText = menuButton:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     menuText:SetPoint("CENTER")
-    menuText:SetText("●●●") -- 使用更粗的圆点样式
+    menuText:SetText("...") -- 使用普通省略号，避免粗体超出
     menuText:SetTextColor(0.85, 0.85, 0.85, 1)
 
     menuButton:SetScript("OnEnter", function() menuText:SetTextColor(1,1,1,1) end)
@@ -909,16 +909,29 @@ function MainPanel:CreateMainFrame()
     self:UpdateTable(true)
 
     -- 每秒仅更新倒计时文本
+    self:StartUpdateTimer()
+
+    self.mainFrame = frame
+    self.helpDialog = Dialog:new(L["MenuHelp"] or "Help", 600, 500)
+    self.aboutDialog = Dialog:new(L["MenuAbout"] or "About", 520, 420)
+    frame:Hide()
+    return frame
+end
+
+function MainPanel:StartUpdateTimer()
+    if self.updateTimer then return end
     self.updateTimer = C_Timer.NewTicker(1, function()
         if CrateTrackerZKFrame and CrateTrackerZKFrame:IsShown() and self.tableWidget then
             self.tableWidget:UpdateCountdowns()
         end
     end)
+end
 
-    self.mainFrame = frame
-    self.helpDialog = Dialog:new(L["MenuHelp"] or "Help", 600, 500)
-    self.aboutDialog = Dialog:new(L["MenuAbout"] or "About", 520, 420)
-    return frame
+function MainPanel:StopUpdateTimer()
+    if self.updateTimer then
+        self.updateTimer:Cancel()
+        self.updateTimer = nil
+    end
 end
 function MainPanel:Toggle()
     if not CrateTrackerZKFrame then self:CreateMainFrame() end

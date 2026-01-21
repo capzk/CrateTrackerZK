@@ -103,9 +103,10 @@ localeData["Return"] = "Return";
 localeData["UIFontSize"] = 15;
 localeData["HelpText"] = [[Available Commands:
 
-/ctk help                Show available commands
-/ctk team on/off         Enable or disable team notifications
+/ctk on                  Enable addon
+/ctk off                 Disable addon (pause detection and hide UI)
 /ctk clear               Clear local data and reinitialize
+/ctk team on/off         Enable or disable team notifications
 
 Team time sharing is always enabled and uses team notifications to sync times. Ensure your teammates have team notifications enabled for sharing to work.
 
@@ -118,13 +119,13 @@ localeData["MenuAbout"] = "About";
 
 -- Map names (using map ID as key)
 localeData.MapNames = {
-    [2248] = "Isle of Dorn",      -- 多恩�?
-    [2369] = "Siren Isle",        -- 海妖�?
+    [2248] = "Isle of Dorn",      -- 多恩岛
+    [2369] = "Siren Isle",        -- 海妖岛
     [2371] = "K'aresh",            -- 卡雷什
-    [2346] = "Undermine",         -- 安德�?
-    [2215] = "Hallowfall",        -- 陨圣�?
+    [2346] = "Undermine",         -- 安德麦
+    [2215] = "Hallowfall",        -- 陨圣峪
     [2214] = "The Ringing Deeps", -- 喧鸣深窟
-    [2255] = "Azj-Kahet",         -- 艾基-卡赫�?
+    [2255] = "Azj-Kahet",         -- 艾基-卡赫特
 };
 
 -- Airdrop crate names
