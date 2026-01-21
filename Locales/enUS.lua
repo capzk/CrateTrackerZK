@@ -20,7 +20,6 @@ localeData["FloatingButtonTooltipLine1"] = "Click to open/close tracking panel";
 localeData["FloatingButtonTooltipLine2"] = "Drag to move button position";
 
 -- Notifications (Airdrop)
-localeData["TeamNotificationStatus"] = "%s";
 localeData["Enabled"] = "Team notifications enabled";
 localeData["Disabled"] = "Team notifications disabled";
 localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Auto detection message (with "Detected" keyword)
@@ -51,12 +50,12 @@ localeData["Delete"] = "Delete";
 localeData["Restore"] = "Restore";
 localeData["NotAcquired"] = "N/A";
 localeData["NoRecord"] = "--:--";
-localeData["MinuteSecond"] = "%dm%02ds";
+localeData["MinuteSecond"] = "%d min %02d sec";
 -- Menu Items
 localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
 
--- Airdrop NPC shouts (strict match per locale)
+-- Airdrop NPC shouts (optional for shout detection and efficiency; can be omitted or left as default)
 localeData.AirdropShouts = {
     "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",
     "Ruffious says: I see some valuable resources in the area! Get ready to grab them!",

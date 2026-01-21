@@ -114,11 +114,12 @@ C_Timer.After(0.2, function()
     
     if #LocaleLoadStatus.failedLocales > 0 and Logger and Logger:IsDebugEnabled() then
         local L = LocaleManager.GetL and LocaleManager.GetL() or L;
-        local warningFormat = (L and L["LocalizationFailedLocalesWarning"]) or "Warning: %d locale files failed to load";
-        Logger:Warn("Localization", "本地化", string.format(
-            warningFormat,
-            #LocaleLoadStatus.failedLocales
-        ));
+        if L and L["LocalizationFailedLocalesWarning"] then
+            Logger:Warn("Localization", "本地化", string.format(
+                L["LocalizationFailedLocalesWarning"],
+                #LocaleLoadStatus.failedLocales
+            ));
+        end
         for _, failed in ipairs(LocaleLoadStatus.failedLocales) do
             Logger:Debug("Localization", "本地化", string.format(
                 "  - %s: %s",

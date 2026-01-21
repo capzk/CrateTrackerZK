@@ -15,7 +15,7 @@ CrateTrackerZK is a World of Warcraft addon that tracks War Supply Crate airdrop
 - **Phasing Tracking** - Tracks phasing (instance) IDs with color indicators (Green = same phase, Red = phase changed)
 - **Party/Raid Notifications** - Optional notifications to alert your group when a crate is detected (enabled by default)
 - **Team Time Sharing** - Automatically synchronizes airdrop times through team chat messages (enabled by default)
-- **Manual Time Adjustment** - Manually start or edit timers by clicking the Refresh button, or by entering a time in the Last Refresh field (HH:MM:SS or HHMMSS)
+- **Manual Refresh** - Manually start timers by clicking the Refresh button
 - **Floating Button** - Provides a floating button to reopen the addon UI after closing it
 - **Automatic Data Saving** - All data is saved automatically and persists between sessions
 - **Multi-Language Support** - Supports English, Simplified Chinese, Traditional Chinese, and Russian
@@ -29,8 +29,10 @@ CrateTrackerZK is a World of Warcraft addon that tracks War Supply Crate airdrop
 
 ### Slash Commands
 
-- `/ctk` - Open the main interface
+- `/ctk` - Show help information
 - `/ctk help` - Show help information
+- `/ctk on` - Enable addon
+- `/ctk off` - Disable addon (pause detection and hide UI)
 - `/ctk team on` - Enable party/raid notifications
 - `/ctk team off` - Disable party/raid notifications
 - `/ctk clear` - Clear all saved data
@@ -66,7 +68,7 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 - **位面追踪** - 追踪位面（实例）ID，用颜色指示器显示（绿色=相同位面，红色=位面已变更）
 - **小队/团队通知** - 可选通知功能，在检测到空投箱时提醒您的队伍（默认开启）
 - **团队时间共享** - 通过团队聊天消息自动同步空投时间（默认开启）
-- **手动时间调整** - 通过点击刷新按钮或在"上次刷新"字段输入时间（HH:MM:SS 或 HHMMSS）手动启动或编辑计时器
+- **手动刷新** - 通过点击刷新按钮手动启动计时器
 - **浮动按钮** - 提供浮动按钮以在关闭后重新打开插件界面
 - **自动数据保存** - 所有数据自动保存并在会话间保持
 - **多语言支持** - 支持英语、简体中文、繁体中文和俄语
@@ -80,8 +82,10 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 
 ### 斜杠命令
 
-- `/ctk` - 打开主界面
+- `/ctk` - 显示帮助信息
 - `/ctk help` - 显示帮助信息
+- `/ctk on` - 启动插件
+- `/ctk off` - 关闭插件（暂停检测并隐藏界面）
 - `/ctk team on` - 开启小队/团队通知
 - `/ctk team off` - 关闭小队/团队通知
 - `/ctk clear` - 清除所有保存的数据

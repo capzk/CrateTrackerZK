@@ -19,7 +19,6 @@ localeData["FloatingButtonTooltipLine1"] = "点击打开/关闭追踪面板";
 localeData["FloatingButtonTooltipLine2"] = "拖动可以移动按钮位置";
 
 -- 通知（空投）
-localeData["TeamNotificationStatus"] = "%s";
 localeData["Enabled"] = "团队通知已开启";
 localeData["Disabled"] = "团队通知已关闭";
 localeData["AirdropDetected"] = "【%s】 检测到战争物资正在空投！！！";  -- 自动检测消息（带"检测到"关键字）
@@ -55,7 +54,7 @@ localeData["MinuteSecond"] = "%d分%02d秒";
 localeData["MenuHelp"] = "帮助";
 localeData["MenuAbout"] = "关于";
 
--- 空投 NPC 喊话（用于喊话检测，缺失将自动跳过该语言的喊话检测）
+-- 空投 NPC 喊话（用于喊话检测，提升监测效率。是可选项，可以缺失，或者保持默认）
 localeData.AirdropShouts = {
     "路费欧斯说： 附近好像有宝藏，自然也会有宝藏猎手了。小心背后。",
     "路费欧斯说： 附近有满满一箱资源，赶紧找，不然难免大打出手哦！",

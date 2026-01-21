@@ -79,7 +79,7 @@ function CrateTrackerZK:CreateFloatingButton()
     button:SetMovable(true);
     button:EnableMouse(true);
     button:RegisterForDrag("LeftButton");
-    button:SetText(L["CrateTrackerZK"] or "CrateTrackerZK");
+    button:SetText("CrateTrackerZK");
     
     button:SetNormalFontObject(GameFontNormal);
     button:SetHighlightFontObject(GameFontHighlight);

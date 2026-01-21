@@ -14,7 +14,6 @@ Notification.playerSentNotification = {};
 -- 最近喊话时间记录（用于图标检测去重）
 Notification.lastShoutTime = Notification.lastShoutTime or {};
 Notification.SHOUT_DEDUP_WINDOW = 20;
-Notification.invalidAirdropEnabled = false;
 
 local function DebugPrint(msg, ...)
     Logger:Debug("Notification", "调试", msg, ...);
@@ -48,7 +47,7 @@ function Notification:SetTeamNotificationEnabled(enabled)
     end
     
     local statusText = enabled and L["Enabled"] or L["Disabled"];
-    Logger:Info("Notification", "状态", string.format(L["TeamNotificationStatus"], statusText));
+    Logger:Info("Notification", "状态", statusText);
 end
 
 -- 更新首次通知时间（团队消息同步）
@@ -205,21 +204,6 @@ function Notification:GetTeamChatType()
     if IsInRaid() then return "RAID" end
     if IsInGroup() then return "PARTY" end
     return nil;
-end
-
-function Notification:NotifyInvalidAirdrop(mapName)
-    if not self.invalidAirdropEnabled then
-        return;
-    end
-    if not self.isInitialized then self:Initialize() end
-    if not mapName then 
-        Logger:Debug("Notification", "通知", "通知无效空投失败：地图名称为空");
-        return 
-    end
-    
-    local message = string.format(L["InvalidAirdropNotification"], mapName);
-    
-    Logger:Info("Notification", "通知", message);
 end
 
 function Notification:NotifyMapRefresh(mapData, isAirdropActive)

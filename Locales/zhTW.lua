@@ -20,7 +20,6 @@ localeData["FloatingButtonTooltipLine1"] = "點擊開啟/關閉追蹤面板";
 localeData["FloatingButtonTooltipLine2"] = "拖動可以移動按鈕位置";
 
 -- 通知（空投）
-localeData["TeamNotificationStatus"] = "%s";
 localeData["Enabled"] = "團隊通知已開啟";
 localeData["Disabled"] = "團隊通知已關閉";
 localeData["AirdropDetected"] = "【%s】 檢測到戰爭補給正在空投！！！";  -- 自動檢測消息（帶"檢測到"關鍵字）
@@ -56,12 +55,12 @@ localeData["MinuteSecond"] = "%d分%02d秒";
 localeData["MenuHelp"] = "幫助";
 localeData["MenuAbout"] = "關於";
 
--- 空投NPC喊話（暫用簡中內容，待後續完善）
+-- 空投 NPC 喊話（用於喊話偵測，提升監測效率。是可選項，可以缺失，或者保持預設）
 localeData.AirdropShouts = {
-    "路費歐斯說： 附近好像有寶藏，自然也會有寶藏獵手了。小心背後。",
-    "路費歐斯說： 附近有滿滿一箱資源，趕緊找，不然難免大打出手哦！",
-    "路費歐斯說： 機會送上門來了！只要你夠有勇氣，那些寶貝在等著你呢。",
-    "路費歐斯說： 區域裡出現了珍貴資源！快去搶吧！",
+    "路费欧斯说： 附近好像有宝藏，自然也会有宝藏猎手了。小心背后。",
+    "路费欧斯说： 附近有满满一箱资源，赶紧找，不然难免大打出手哦！",
+    "路费欧斯说： 机会送上门来了！只要你够有勇气，那些宝贝在等着你呢。",
+    "路费欧斯说： 区域里出现了珍贵资源！快去抢吧！",
 };
 
 -- Register this locale

@@ -20,7 +20,6 @@ localeData["FloatingButtonTooltipLine1"] = "Клик — открыть/закр
 localeData["FloatingButtonTooltipLine2"] = "Перетащите, чтобы переместить кнопку";
 
 -- Notifications (Airdrop)
-localeData["TeamNotificationStatus"] = "Уведомления в группу %s";
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
 localeData["AirdropDetected"] = "";
@@ -51,14 +50,14 @@ localeData["Delete"] = "Удалить";
 localeData["Restore"] = "Восстановить";
 localeData["NotAcquired"] = "N/A";
 localeData["NoRecord"] = "--:--";
-localeData["MinuteSecond"] = "%dм%02dс";
+localeData["MinuteSecond"] = "%d мин %02d сек";
 
 -- Menu Items
 localeData["MenuHelp"] = "Справка";
 localeData["MenuAbout"] = "О аддоне";
 
 
--- Airdrop NPC shouts (placeholder uses enUS lines)
+-- Airdrop NPC shouts (optional for shout detection and efficiency; can be omitted or left as default)
 localeData.AirdropShouts = {
     "Ruffious says: I see some valuable resources in the area! Get ready to grab them!",
     "Ruffious says: Looks like there's treasure nearby. And that means treasure hunters. Watch your back.",
