@@ -144,20 +144,15 @@ function ShoutDetector:Initialize()
         return;
     end
 
-    self.eventFrame = CreateFrame("Frame");
-    self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
-    self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_YELL");
-    self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_EMOTE");
-    self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_PARTY");
-    self.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER");
-    self.eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_EMOTE");
-    self.eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_WHISPER");
-    self.eventFrame:SetScript("OnEvent", function(_, event, message)
-        OnChatEvent(_, event, message);
-    end);
-
     self.isInitialized = true;
-    Logger:Debug("ShoutDetector", "初始化", "NPC喊話檢測已啟用");
+    Logger:Debug("ShoutDetector", "初始化", "NPC喊話檢測已啟用（被动）");
+end
+
+function ShoutDetector:HandleChatEvent(event, message)
+    if not self.isInitialized then
+        return;
+    end
+    OnChatEvent(self, event, message);
 end
 
 return ShoutDetector;

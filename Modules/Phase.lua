@@ -36,10 +36,6 @@ function Phase:GetLayerFromNPC()
 end
 
 function Phase:UpdatePhaseInfo()
-    if Area and Area.detectionPaused then
-        return;
-    end
-    
     if not Data then return end
     
     local currentMapID = Area:GetCurrentMapId();

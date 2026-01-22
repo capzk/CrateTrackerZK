@@ -327,42 +327,23 @@ end
 
 function TeamCommListener:Initialize()
     InitializeMessagePatterns();
-    
-    if not self.chatFrame then
-        self.chatFrame = CreateFrame("Frame");
-        if not self.chatFrame then
-            if Logger and Logger.Error then
-                Logger:Error("TeamCommListener", "错误", "无法创建聊天消息监听框架");
-            end
-            return;
-        end
-        
-        self.chatFrame:RegisterEvent("CHAT_MSG_RAID");
-        self.chatFrame:RegisterEvent("CHAT_MSG_RAID_WARNING");
-        self.chatFrame:RegisterEvent("CHAT_MSG_PARTY");
-        self.chatFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT");
-        
-        self.chatFrame:SetScript("OnEvent", function(self, event, ...)
-            if TeamCommListener and TeamCommListener.ProcessTeamMessage then
-                local message = select(1, ...);
-                local sender = select(2, ...);
-                if message and type(message) == "string" then
-                    local chatType = event:gsub("CHAT_MSG_", "");
-                    TeamCommListener:ProcessTeamMessage(message, chatType, sender);
-                end
-            end
-        end);
-        
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "初始化", "已注册聊天消息监听");
-        end
-    end
-    
+
     self.isInitialized = true;
     
     if Logger and Logger.Debug then
-        Logger:Debug("TeamCommListener", "初始化", "团队消息读取器已初始化");
+        Logger:Debug("TeamCommListener", "初始化", "团队消息读取器已初始化（被动）");
     end
+end
+
+function TeamCommListener:HandleChatEvent(event, message, sender)
+    if not self.isInitialized then
+        self:Initialize();
+    end
+    if not event or not message or type(message) ~= "string" then
+        return;
+    end
+    local chatType = event:gsub("CHAT_MSG_", "");
+    self:ProcessTeamMessage(message, chatType, sender);
 end
 
 return TeamCommListener;

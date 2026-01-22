@@ -44,15 +44,6 @@ function TimerManager:Initialize()
         UnifiedDataManager:Initialize();
         -- 迁移现有数据
         UnifiedDataManager:MigrateExistingData();
-        
-        -- 启动定期清理过期临时数据的定时器（每5分钟清理一次）
-        if not self.cleanupTimer then
-            self.cleanupTimer = C_Timer.NewTicker(300, function()
-                if UnifiedDataManager and UnifiedDataManager.ClearExpiredTemporaryData then
-                    UnifiedDataManager:ClearExpiredTemporaryData();
-                end
-            end);
-        end
     end
     
     Logger:DebugLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
@@ -208,7 +199,7 @@ function TimerManager:ReportCurrentStatus(currentMapID, targetMapData, currentTi
             stateText, iconResult.detected and "是" or "否", guidSuffix));
     end
     
-    local detectionRunning = self.mapIconDetectionTimer and true or false;
+    local detectionRunning = CrateTrackerZK and CrateTrackerZK.mapIconDetectionTicker and true or false;
     table.insert(statusParts, string.format("【检测功能】地图图标检测=%s，位面检测=%s", 
         detectionRunning and "运行中" or "已停止",
         CrateTrackerZK.phaseTimerTicker and "运行中" or "已停止"));
@@ -475,30 +466,16 @@ function TimerManager:DetectMapIcons()
 end
 
 function TimerManager:StartMapIconDetection(interval)
-    if not self.isInitialized then
-        Logger:Error("Timer", "错误", "Timer manager not initialized");
-        return false;
+    if CrateTrackerZK and CrateTrackerZK.StartMapIconDetection then
+        return CrateTrackerZK:StartMapIconDetection(interval);
     end
-    
-    self:StopMapIconDetection();
-    
-    interval = interval or 1;
-    
-    self.mapIconDetectionTimer = C_Timer.NewTicker(interval, function()
-        if Area and not Area.detectionPaused and Area.lastAreaValidState == true then
-            self:DetectMapIcons();
-        end
-    end);
-    
-    Logger:Debug("Timer", "初始化", string.format("地图图标检测已启动，间隔=%d秒", interval));
-    return true;
+    Logger:Error("Timer", "错误", "Core map detection controller not available");
+    return false;
 end
 
 function TimerManager:StopMapIconDetection()
-    if self.mapIconDetectionTimer then
-        self.mapIconDetectionTimer:Cancel();
-        self.mapIconDetectionTimer = nil;
-        Logger:Debug("Timer", "状态", "地图图标检测已停止");
+    if CrateTrackerZK and CrateTrackerZK.StopMapIconDetection then
+        return CrateTrackerZK:StopMapIconDetection();
     end
     return true;
 end

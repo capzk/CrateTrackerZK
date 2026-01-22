@@ -1,6 +1,6 @@
 # Translation Guide
 
-**Addon Version**: 1.1.6
+**Addon Version**: 1.1.7
 
 ## Quick Start
 
@@ -86,7 +86,7 @@ Use these commands in-game to get map IDs for reference:
 
 # 翻译指南
 
-**插件版本**: 1.1.6
+**插件版本**: 1.1.7
 
 ## 快速开始
 

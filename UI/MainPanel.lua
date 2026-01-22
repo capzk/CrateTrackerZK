@@ -38,7 +38,7 @@ local Layout = {
 }
 
 local Columns = {
-    { key = "map",   width = 95,  title = L["MapName"] or "MapName" },
+    { key = "map",   width = 80,  title = L["MapName"] or "MapName" },
     { key = "phase", width = 130, title = L["PhaseID"] or "PhaseID" },  -- 增加位面列宽，避免位面ID被挤压
     { key = "last",  width = 110, title = L["LastRefresh"] or "Last" },
     { key = "next",  width = 95,  title = L["NextRefresh"] or "Next" }, -- 收紧下次刷新列，给操作列留空间
@@ -113,6 +113,7 @@ local function EllipsizeToWidth(fs, text, maxWidth)
     end
 end
 
+
 -- Dialog（帮助/关于）
 local Dialog = {}
 Dialog.__index = Dialog
@@ -132,7 +133,7 @@ end
 
 function Dialog:Create()
     if self.frame then return self.frame end
-    local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplate")
+    local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(self.width, self.height)
     f:SetPoint("CENTER")
     f:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -553,8 +554,9 @@ function TableWidget:CreateRow(item, index)
 
     local mapColor = item.isHidden and {GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b} or {1,1,1}
     local mapCol = Columns[1]
-    local mapFS = addText(mapCol, "", mapColor, false)  -- 地图名称居中显示
-    EllipsizeToWidth(mapFS, item.mapName or "", (mapCol.width or 0) - 10)
+    local mapText = item.mapName or ""
+    local mapFS = addText(mapCol, "", mapColor, false)
+    EllipsizeToWidth(mapFS, mapText, (mapCol.width or 0) - 10)
 
     local phaseText, phaseColor = FormatPhase(item)
     if item.isHidden then phaseColor = {GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b} end
