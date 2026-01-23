@@ -152,6 +152,9 @@ function ShoutDetector:HandleChatEvent(event, message)
     if not self.isInitialized then
         return;
     end
+    if type(message) ~= "string" then
+        return;
+    end
     OnChatEvent(self, event, message);
 end
 

@@ -13,7 +13,7 @@ local About = BuildEnv("About");
 function About:GetAboutText()
     return [[CrateTrackerZK
 
-Version: v1.1.7
+Version: v1.1.8
 Build: 2026-01-22
 
 Maintainer:
@@ -22,8 +22,7 @@ capzk
 Source Code:
 https://github.com/capzk/CrateTrackerZK
 
-License:
-MIT License]];
+]];
 end
 
 return About;

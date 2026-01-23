@@ -25,6 +25,10 @@ function Phase:GetLayerFromNPC()
         guid = UnitGUID(unit);
     end
     
+    if guid and type(guid) ~= "string" then
+        return nil;
+    end
+
     if guid then
         -- 位面ID = 分片ID-实例ID（GUID第3-4部分）
         local unitType, _, shardID, instancePart = strsplit("-", guid);

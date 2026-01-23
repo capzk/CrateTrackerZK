@@ -15,6 +15,10 @@ local function IsAddonEnabled()
     return CRATETRACKERZK_UI_DB.addonEnabled == true;
 end
 
+local function IsAreaActive()
+    return Area and Area.lastAreaValidState == true and not Area.detectionPaused;
+end
+
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
@@ -114,10 +118,6 @@ local function OnLogin()
     
     if TimerManager then
         TimerManager:Initialize();
-        TimerManager:StartMapIconDetection(1);
-    end
-    if CrateTrackerZK and CrateTrackerZK.StartCleanupTicker then
-        CrateTrackerZK:StartCleanupTicker();
     end
     
     if MainPanel then MainPanel:CreateMainFrame() end
@@ -127,22 +127,26 @@ local function OnLogin()
     
     if Area then
         Area:CheckAndUpdateAreaValid();
-        if Area.lastAreaValidState == true and not Area.detectionPaused then
-            if not CrateTrackerZK.phaseTimerTicker then
-                if CrateTrackerZK.phaseTimerTicker then
-                    CrateTrackerZK.phaseTimerTicker:Cancel();
-                end
-                CrateTrackerZK.phaseTimerTicker = C_Timer.NewTicker(10, function()
-                    if Area then Area:CheckAndUpdateAreaValid() end
-                    if Phase and Area and not Area.detectionPaused then
-                        Phase:UpdatePhaseInfo();
-                    end
-                end);
-                CrateTrackerZK.phaseTimerPaused = false;
-                Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-                if Phase then Phase:UpdatePhaseInfo() end
-            end
+    end
+    
+    if IsAreaActive() then
+        if TimerManager then
+            TimerManager:StartMapIconDetection(1);
         end
+        if CrateTrackerZK and CrateTrackerZK.StartCleanupTicker then
+            CrateTrackerZK:StartCleanupTicker();
+        end
+        if CrateTrackerZK.phaseTimerTicker then
+            CrateTrackerZK.phaseTimerTicker:Cancel();
+        end
+        CrateTrackerZK.phaseTimerTicker = C_Timer.NewTicker(10, function()
+            if IsAreaActive() and Phase then
+                Phase:UpdatePhaseInfo();
+            end
+        end);
+        CrateTrackerZK.phaseTimerPaused = false;
+        Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
+        if IsAreaActive() and Phase then Phase:UpdatePhaseInfo() end
     end
     
     DebugPrint("[核心] 初始化完成");
@@ -160,20 +164,16 @@ local function OnEvent(self, event, ...)
     end
     if event == "PLAYER_LOGIN" then
         OnLogin();
-    elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then
+    elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(0.1, function()
-            local wasInvalid = Area and Area.lastAreaValidState == false;
             if Area then Area:CheckAndUpdateAreaValid() end
-            local justValid = wasInvalid and (Area and Area.lastAreaValidState == true);
-            
-            if Area and not Area.detectionPaused then
+            if IsAreaActive() then
                 if TimerManager then TimerManager:DetectMapIcons() end
                 if Phase then Phase:UpdatePhaseInfo() end
             end
         end)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Area and not Area.detectionPaused then
+        if IsAreaActive() then
             if Phase then Phase:UpdatePhaseInfo() end
         end
     elseif event == "PLAYER_LOGOUT" then
@@ -188,8 +188,7 @@ local function OnEvent(self, event, ...)
         or event == "CHAT_MSG_MONSTER_WHISPER"
         or event == "CHAT_MSG_RAID_BOSS_EMOTE"
         or event == "CHAT_MSG_RAID_BOSS_WHISPER" then
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Area and not Area.detectionPaused then
+        if IsAreaActive() then
             if ShoutDetector and ShoutDetector.HandleChatEvent then
                 local message = select(1, ...);
                 ShoutDetector:HandleChatEvent(event, message);
@@ -199,10 +198,12 @@ local function OnEvent(self, event, ...)
         or event == "CHAT_MSG_RAID_WARNING"
         or event == "CHAT_MSG_PARTY"
         or event == "CHAT_MSG_INSTANCE_CHAT" then
-        if TeamCommListener and TeamCommListener.HandleChatEvent then
-            local message = select(1, ...);
-            local sender = select(2, ...);
-            TeamCommListener:HandleChatEvent(event, message, sender);
+        if IsAreaActive() then
+            if TeamCommListener and TeamCommListener.HandleChatEvent then
+                local message = select(1, ...);
+                local sender = select(2, ...);
+                TeamCommListener:HandleChatEvent(event, message, sender);
+            end
         end
     end
 end
@@ -244,14 +245,13 @@ function CrateTrackerZK:ResumeAllDetections()
         self.phaseTimerTicker:Cancel();
     end
     self.phaseTimerTicker = C_Timer.NewTicker(10, function()
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Phase and Area and not Area.detectionPaused then
+        if IsAreaActive() and Phase then
             Phase:UpdatePhaseInfo();
         end
     end);
     self.phaseTimerPaused = false;
     Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-    if Phase then Phase:UpdatePhaseInfo() end
+    if IsAreaActive() and Phase then Phase:UpdatePhaseInfo() end
 end
 
 function CrateTrackerZK:StartMapIconDetection(interval)
@@ -267,8 +267,7 @@ function CrateTrackerZK:StartMapIconDetection(interval)
     
     interval = interval or 1;
     self.mapIconDetectionTicker = C_Timer.NewTicker(interval, function()
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Area and not Area.detectionPaused and Area.lastAreaValidState == true then
+        if IsAreaActive() then
             TimerManager:DetectMapIcons();
         end
     end);
@@ -324,6 +323,7 @@ CrateTrackerZK.eventFrame:SetScript("OnEvent", OnEvent);
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_LOGIN");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED");
 CrateTrackerZK.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA");
+CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD");
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
 CrateTrackerZK.eventFrame:RegisterEvent("PLAYER_LOGOUT");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY");
@@ -340,16 +340,14 @@ CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT");
 
 if TooltipDataProcessor then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function()
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Area and not Area.detectionPaused then
-            if Phase then Phase:UpdatePhaseInfo() end
+        if IsAreaActive() and Phase then
+            Phase:UpdatePhaseInfo();
         end
     end)
 else
     GameTooltip:HookScript("OnTooltipSetUnit", function()
-        if Area then Area:CheckAndUpdateAreaValid() end
-        if Area and not Area.detectionPaused then
-            if Phase then Phase:UpdatePhaseInfo() end
+        if IsAreaActive() and Phase then
+            Phase:UpdatePhaseInfo();
         end
     end)
 end

@@ -38,8 +38,8 @@ function Area:ResumeAllDetections()
 end
 
 function Area:CheckAndUpdateAreaValid()
-    local instanceType = select(4, GetInstanceInfo());
-    local isInstance = (instanceType == "party" or instanceType == "raid" or instanceType == "pvp" or instanceType == "arena" or instanceType == "scenario");
+    local inInstance, instanceType = IsInInstance();
+    local isInstance = inInstance == true;
     
     if Logger and Logger.debugEnabled then
         local currentMapID = self:GetCurrentMapId();
@@ -55,8 +55,8 @@ function Area:CheckAndUpdateAreaValid()
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
             Logger:Debug("Area", "区域", DT("DebugAreaInvalidInstance"));
-            self:PauseAllDetections();
         end
+        self:PauseAllDetections();
         return false;
     end
     

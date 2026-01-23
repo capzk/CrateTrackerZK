@@ -203,14 +203,13 @@ function Commands:HandleAddonToggle(enable)
     SetAddonEnabled(enable);
 
     if enable then
-        if Area then
-            Area.detectionPaused = false;
-        end
         if TimerManager and TimerManager.Initialize and not TimerManager.isInitialized then
             TimerManager:Initialize();
         end
-        if CrateTrackerZK and CrateTrackerZK.ResumeAllDetections then
-            CrateTrackerZK:ResumeAllDetections();
+        if Area then
+            Area.detectionPaused = false;
+            Area.lastAreaValidState = nil;
+            Area:CheckAndUpdateAreaValid();
         end
         if TeamCommListener then
             TeamCommListener.isInitialized = false;

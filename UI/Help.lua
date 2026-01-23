@@ -11,21 +11,21 @@ local Help = BuildEnv("Help");
 
 -- 帮助页面内容配置
 function Help:GetHelpText()
-    return [[CrateTrackerZK 使用帮助
+    return [[
 
-插件更新地址：https://www.curseforge.com/wow/addons/cratetrackerzk
+插件更新地址：
+https://www.curseforge.com/wow/addons/cratetrackerzk
 
-==团队通知默认做了限制，空投开始后的短时间内才会自动发送空投通知，超过时间不会再发送团队消息==
+==团队通知默认做了限制，空投开始后的短时间内才会自动发送空投通知==
+
 == 基本功能 ==
-
-- 自动检测空投箱子刷新时间
-- 团队时间共享
+- 自动检测记录空投刷新时间
+- 团队成员自动共享空投刷新时间，提高蹲守效率
 - 实时显示位面ID信息
-- 支持团队通知功能
+- 团队通知
 - 数据持久化存储
 
 == 可用命令 ==
-
 /ctk off                关闭插件（暂停所有功能并隐藏界面）
 /ctk on                 启动插件
 /ctk clear              清除所有数据并重新初始化插件
@@ -33,40 +33,34 @@ function Help:GetHelpText()
 /ctk team on            开启团队通知
 
 == 界面操作 ==
-
 - 右键点击地图行可以隐藏/恢复地图
 - 点击"刷新"按钮手动设置空投刷新时间
 - 点击"通知"按钮发送团队通知
 
 == 位面检测 ==
-
 插件会自动检测当前位面ID，并与历史位面数据进行比对：
 - 绿色：位面ID匹配，时间可靠
 - 红色：位面ID不匹配，时间可能会不准
 - 白色：未获取到当前位面信息
 
 == 数据管理 ==
-
 - 所有数据自动保存到角色配置文件
 - 数据在账号内共享（不同角色共享）
 - 可通过重置命令清空所有数据
 
 == 团队功能 ==
-
 - 团队通知：向团队成员发送空投提醒
 - 团队时间共享：自动共享团队成员的刷新时间（默认开启）
 - 需要团队成员都开启团队通知能才能生效
 
 == 问题反馈 ==
-
 如遇到问题，请访问：
 https://github.com/capzk/CrateTrackerZK/issues
 
---------------------
 
-CrateTrackerZK Help
+===========================================================
 
-==If you encounter issues after updating, please delete this addon folder completely and reinstall==
+
 ==Team notifications are limited: they only auto-send for a short time after the drop starts==
 == Core Features ==
 
