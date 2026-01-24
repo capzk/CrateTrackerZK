@@ -5,8 +5,7 @@ local AboutTextProvider = BuildEnv("AboutTextProvider")
 function AboutTextProvider:GetAboutText()
     return [[CrateTrackerZK
 
-Version: v1.1.8
-Build: 2026-01-22
+Version: v1.2.0
 
 Maintainer:
 capzk
