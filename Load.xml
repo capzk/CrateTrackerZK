@@ -1,0 +1,52 @@
+<Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+    <!-- 基础工具（优先加载） -->
+    <Script file="Utils/Utils.lua"/>
+    <Script file="Utils/Logger.lua"/>
+    <!-- 本地化管理模块（在本地化文件之前加载） -->
+    <Script file="Utils/Localization.lua"/>
+    
+    <!-- 本地化文件（在本地化管理模块之后） -->
+    <!-- 注意：enUS.lua 放在最后作为默认回退，只有在其他语言文件都不匹配时才加载 -->
+    <Script file="Locales/Locales.lua"/>
+    <Script file="Locales/zhCN.lua"/>
+    <Script file="Locales/zhTW.lua"/>
+    <Script file="Locales/ruRU.lua"/>
+    <Script file="Locales/enUS.lua"/>
+    
+    <!-- 数据管理（代号系统配置优先） -->
+        <Script file="Data/MapConfig.lua"/>
+        <!-- 时间数据管理模块（在Data.lua之前加载） -->
+        <Script file="Modules/UnifiedDataManager.lua"/>
+        <Script file="Data/Data.lua"/>
+    
+    <!-- 功能模块 -->
+    <Script file="Modules/Notification.lua"/>
+    <Script file="Modules/TeamCommListener.lua"/>
+    <Script file="Modules/Commands.lua"/>
+    <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
+    <Script file="Modules/IconDetector.lua"/>
+    <Script file="Modules/ShoutDetector.lua"/>
+    <Script file="Modules/MapTracker.lua"/>
+    <Script file="Modules/Timer.lua"/>
+    <Script file="Modules/Area.lua"/>
+    <Script file="Modules/Phase.lua"/>
+    
+    <!-- 界面配置 -->
+    <Script file="UiConfig.lua"/>
+    
+    <!-- 核心逻辑 -->
+    <Script file="Core/Core.lua"/>
+    
+    <!-- 现代化界面模块 -->
+    <Script file="Interface/MainFrame/CountdownSystem.lua"/>
+    <Script file="Interface/MainFrame/SortingSystem.lua"/>
+    <Script file="Interface/MainFrame/RowStateSystem.lua"/>
+    <Script file="Interface/MainFrame/TableUI.lua"/>
+    <Script file="Interface/MainFrame/MainFrame.lua"/>
+    <Script file="Interface/Providers/HelpTextProvider.lua"/>
+    <Script file="Interface/Providers/AboutTextProvider.lua"/>
+    <Script file="Interface/Panels/SettingsPanel.lua"/>
+    <Script file="Interface/Panels/MainPanel.lua"/>
+    <Script file="Interface/Widgets/MinimapButton.lua"/>
+    <Include file="Interface/Frame.xml"/>
+</Ui>

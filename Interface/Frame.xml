@@ -1,0 +1,3 @@
+<Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\..\FrameXML\UI.xsd">
+    <!-- 界面框架占位定义，实际UI在Lua中创建 -->
+</Ui>
