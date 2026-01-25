@@ -15,6 +15,7 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 - 自动检测记录空投刷新时间
 - 团队成员自动共享空投刷新时间，提高蹲守效率
 - 实时显示位面ID信息
+- 空投时间排序功能
 - 团队通知
 - 数据持久化存储
 
@@ -62,6 +63,7 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 - Automatically detect and record airdrop refresh times
 - Automatically share airdrop refresh times within the team to improve camping efficiency
 - Show phase ID in real time
+- Sort airdrop times
 - Team notifications
 - Persistent data storage
 
@@ -72,6 +74,7 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 
 == UI Operations ==
 - Right-click a map row to hide/restore the map
+- Right-click to remove and restore maps
 - Click "Refresh" to manually set the airdrop refresh time
 - Click "Notify" to send a team notification
 
