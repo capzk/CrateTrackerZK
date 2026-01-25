@@ -58,6 +58,25 @@ localeData["MinuteSecond"] = "%d分%02d秒";
 localeData["MenuHelp"] = "帮助";
 localeData["MenuAbout"] = "关于";
 
+-- 设置面板
+localeData["SettingsPanelTitle"] = "CrateTrackerZK - 设置";
+localeData["SettingsTabSettings"] = "设置";
+localeData["SettingsSectionControl"] = "插件控制";
+localeData["SettingsSectionData"] = "数据管理";
+localeData["SettingsSectionUI"] = "界面设置";
+localeData["SettingsAddonToggle"] = "插件开关";
+localeData["SettingsTeamNotify"] = "团队通知";
+localeData["SettingsClearAllData"] = "清除所有数据";
+localeData["SettingsClearButton"] = "清除";
+localeData["SettingsClearDesc"] = "• 会清空所有空投时间与位面记录";
+localeData["SettingsUIConfigDesc"] = "• 界面风格可在 UiConfig.lua 调整";
+localeData["SettingsReloadDesc"] = "• 修改后使用 /reload 生效";
+localeData["SettingsToggleOn"] = "已开启";
+localeData["SettingsToggleOff"] = "已关闭";
+localeData["SettingsClearConfirmText"] = "确认清除所有数据并重新初始化？该操作不可撤销。";
+localeData["SettingsClearConfirmYes"] = "确认";
+localeData["SettingsClearConfirmNo"] = "取消";
+
 -- 空投 NPC 喊话（用于喊话检测，提升监测效率。是可选项，可以缺失，或者保持默认）
 localeData.AirdropShouts = {
     "路费欧斯说： 附近好像有宝藏，自然也会有宝藏猎手了。小心背后。",

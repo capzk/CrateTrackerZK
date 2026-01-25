@@ -59,6 +59,25 @@ localeData["MinuteSecond"] = "%d min %02d sec";
 localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
 
+-- Settings Panel
+localeData["SettingsPanelTitle"] = "CrateTrackerZK - Settings";
+localeData["SettingsTabSettings"] = "Settings";
+localeData["SettingsSectionControl"] = "Addon Control";
+localeData["SettingsSectionData"] = "Data Management";
+localeData["SettingsSectionUI"] = "UI Settings";
+localeData["SettingsAddonToggle"] = "Addon Toggle";
+localeData["SettingsTeamNotify"] = "Team Notifications";
+localeData["SettingsClearAllData"] = "Clear All Data";
+localeData["SettingsClearButton"] = "Clear";
+localeData["SettingsClearDesc"] = "• Clears all airdrop time and phase records";
+localeData["SettingsUIConfigDesc"] = "• UI style can be adjusted in UiConfig.lua";
+localeData["SettingsReloadDesc"] = "• Use /reload after changes";
+localeData["SettingsToggleOn"] = "Enabled";
+localeData["SettingsToggleOff"] = "Disabled";
+localeData["SettingsClearConfirmText"] = "Clear all data and reinitialize? This action cannot be undone.";
+localeData["SettingsClearConfirmYes"] = "Confirm";
+localeData["SettingsClearConfirmNo"] = "Cancel";
+
 -- Airdrop NPC shouts (optional for shout detection and efficiency; can be omitted or left as default)
 localeData.AirdropShouts = {
     "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",

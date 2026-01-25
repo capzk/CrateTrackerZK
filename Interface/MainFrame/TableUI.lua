@@ -16,6 +16,35 @@ local function GetConfig()
     return UIConfig.values
 end
 
+local function GetColumnDebugColors(isHeader)
+    local cfg = GetConfig()
+    local debug = cfg.columnDebug
+    if not debug or not debug.enabled then
+        return nil
+    end
+    if isHeader and debug.headerColors then
+        return debug.headerColors
+    end
+    return debug.colors
+end
+
+local function ApplyColumnDebug(parent, colWidths, height, colors)
+    if not parent or not colors then
+        return
+    end
+    local currentX = 0
+    for index, width in ipairs(colWidths) do
+        local color = colors[index]
+        if color then
+            local colBg = parent:CreateTexture(nil, "BORDER")
+            colBg:SetSize(width, height)
+            colBg:SetPoint("TOPLEFT", parent, "TOPLEFT", currentX, 0)
+            colBg:SetColorTexture(color[1], color[2], color[3], color[4])
+        end
+        currentX = currentX + width
+    end
+end
+
 function TableUI:RebuildUI(frame, headerLabels)
     if not frame then return end
     if not SortingSystem then return end
@@ -38,7 +67,7 @@ function TableUI:RebuildUI(frame, headerLabels)
         RowStateSystem:ClearRowRefs()
     end
 
-    local colWidths = {120, 100, 120, 100, 120}
+    local colWidths = {140, 80, 90, 90, 160}
     local rowHeight = 35
     local tableWidth = 560
     local startX = 20
@@ -67,6 +96,11 @@ function TableUI:CreateHeaderRow(frame, headerLabels, colWidths, rowHeight, tabl
     headerBg:SetAllPoints(headerRowFrame)
     local headerColor = cfg.headerRowColor or {1, 1, 1, 0.22}
     headerBg:SetColorTexture(headerColor[1], headerColor[2], headerColor[3], headerColor[4])
+
+    local headerDebugColors = GetColumnDebugColors(true)
+    if headerDebugColors then
+        ApplyColumnDebug(headerRowFrame, colWidths, rowHeight - 4, headerDebugColors)
+    end
 
     local currentX = 0
     for colIndex, label in ipairs(headerLabels) do
@@ -162,6 +196,11 @@ function TableUI:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeigh
         rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
     else
         rowBg:SetColorTexture(1, 1, 1, 0.16)
+    end
+
+    local rowDebugColors = GetColumnDebugColors(false)
+    if rowDebugColors then
+        ApplyColumnDebug(rowFrame, colWidths, rowHeight - 4, rowDebugColors)
     end
 
     if RowStateSystem then
@@ -264,8 +303,8 @@ function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
     local operationColumnStart = colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4]
     local operationColumnWidth = colWidths[5]
     local columnCenter = operationColumnStart + operationColumnWidth / 2
-    local button1X = columnCenter - 20
-    local button2X = columnCenter + 20
+    local button1X = columnCenter - 36
+    local button2X = columnCenter + 36
 
     local refreshText = L["Refresh"] or "刷新"
     local notifyText = L["Notify"] or "通知"
@@ -310,23 +349,27 @@ function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, but
     btnText:SetJustifyV("MIDDLE")
     btnText:SetShadowOffset(0, 0)
 
+    local normalTextColor = nil
     if isHidden then
-        btnText:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        normalTextColor = {0.5, 0.5, 0.5, 0.8}
     else
-        btnText:SetTextColor(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+        normalTextColor = {cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4]}
     end
+    btnText:SetTextColor(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
 
     btn:SetScript("OnClick", function()
         clickHandler()
     end)
 
     btn:SetScript("OnEnter", function()
-        local hoverColor = cfg.actionButtonColors and cfg.actionButtonColors[buttonType .. "Hover"] or {1, 1, 1, cfg.buttonHoverAlpha}
-        bg:SetColorTexture(hoverColor[1], hoverColor[2], hoverColor[3], hoverColor[4])
+        if isHidden then
+            return
+        end
+        local hoverText = cfg.actionButtonTextHoverColor or {1, 0.9, 0.2, 1}
+        btnText:SetTextColor(hoverText[1], hoverText[2], hoverText[3], hoverText[4])
     end)
     btn:SetScript("OnLeave", function()
-        local normal = cfg.actionButtonColors and cfg.actionButtonColors[buttonType] or {1, 1, 1, cfg.buttonAlpha}
-        bg:SetColorTexture(normal[1], normal[2], normal[3], normal[4])
+        btnText:SetTextColor(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
     end)
 
     return btn

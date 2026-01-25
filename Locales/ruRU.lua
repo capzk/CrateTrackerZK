@@ -60,6 +60,25 @@ localeData["MinuteSecond"] = "%d мин %02d сек";
 localeData["MenuHelp"] = "Справка";
 localeData["MenuAbout"] = "О аддоне";
 
+-- Settings Panel
+localeData["SettingsPanelTitle"] = "CrateTrackerZK - Настройки";
+localeData["SettingsTabSettings"] = "Настройки";
+localeData["SettingsSectionControl"] = "Управление аддоном";
+localeData["SettingsSectionData"] = "Управление данными";
+localeData["SettingsSectionUI"] = "Настройки интерфейса";
+localeData["SettingsAddonToggle"] = "Переключатель аддона";
+localeData["SettingsTeamNotify"] = "Уведомления группы";
+localeData["SettingsClearAllData"] = "Очистить все данные";
+localeData["SettingsClearButton"] = "Очистить";
+localeData["SettingsClearDesc"] = "• Сбросит все записи времени и фаз";
+localeData["SettingsUIConfigDesc"] = "• Стиль интерфейса настраивается в UiConfig.lua";
+localeData["SettingsReloadDesc"] = "• После изменений выполните /reload";
+localeData["SettingsToggleOn"] = "Включено";
+localeData["SettingsToggleOff"] = "Выключено";
+localeData["SettingsClearConfirmText"] = "Очистить все данные и переинициализировать аддон? Действие необратимо.";
+localeData["SettingsClearConfirmYes"] = "Подтвердить";
+localeData["SettingsClearConfirmNo"] = "Отмена";
+
 
 -- Airdrop NPC shouts (optional for shout detection and efficiency; can be omitted or left as default)
 localeData.AirdropShouts = {

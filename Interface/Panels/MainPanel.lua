@@ -305,13 +305,13 @@ end
 
 function MainPanel:ShowHelpDialog()
     if SettingsPanel and SettingsPanel.ShowTab then
-        SettingsPanel:ShowTab("帮助")
+        SettingsPanel:ShowTab("help")
     end
 end
 
 function MainPanel:ShowAboutDialog()
     if SettingsPanel and SettingsPanel.ShowTab then
-        SettingsPanel:ShowTab("关于")
+        SettingsPanel:ShowTab("about")
     end
 end
 

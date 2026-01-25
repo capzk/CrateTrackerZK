@@ -8,7 +8,8 @@ function HelpTextProvider:GetHelpText()
 插件更新地址：
 https://www.curseforge.com/wow/addons/cratetrackerzk
 
-==团队通知默认做了限制，空投开始后的短时间内才会自动发送空投通知==
+-插件UI的颜色和透明度现在可以通过编辑\CrateTrackerZK\UiConfig.lua 来设置
+-修改后需要执行 /reload 生效，后续更新会把此功能增加到设置页面，敬请期待！
 
 == 基本功能 ==
 - 自动检测记录空投刷新时间
@@ -18,8 +19,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 - 数据持久化存储
 
 == 可用命令 ==
-/ctk off                关闭插件（暂停检测功能，界面仍可打开）
-/ctk on                 启动插件
 /ctk clear              清除所有数据并重新初始化插件
 /ctk team off           关闭团队通知
 /ctk team on            开启团队通知
@@ -50,52 +49,49 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 https://github.com/capzk/CrateTrackerZK/issues
 
 
-===========================================================
+======================================================
 
 
-==Team notifications are limited: they only auto-send for a short time after the drop starts==
+Addon update URL:
+https://www.curseforge.com/wow/addons/cratetrackerzk
+
+- UI colors and opacity can now be adjusted by editing \CrateTrackerZK\UiConfig.lua
+- After changes, run /reload to apply. UI settings will be added to the Settings page in a future update.
+
 == Core Features ==
-
-- Automatically detect airdrop refresh times
+- Automatically detect and record airdrop refresh times
+- Automatically share airdrop refresh times within the team to improve camping efficiency
 - Show phase ID in real time
-- Support team notifications
-- Persist data
+- Team notifications
+- Persistent data storage
 
 == Commands ==
-
-/ctk on                  Enable addon
-/ctk off                 Disable detection (UI remains available)
 /ctk clear               Clear all data and reinitialize the addon
-/ctk team on | off        Enable/disable team notification
-
+/ctk team off            Disable team notifications
+/ctk team on             Enable team notifications
 
 == UI Operations ==
-
 - Right-click a map row to hide/restore the map
 - Click "Refresh" to manually set the airdrop refresh time
 - Click "Notify" to send a team notification
 
 == Phase Detection ==
-
 The addon automatically detects the current phase ID and compares it with historical data:
 - Green: phase ID matches, time is reliable
 - Red: phase ID mismatch, time may be inaccurate
-- White: phase info not available
+- White: current phase info not available
 
 == Data Management ==
-
-- All data is automatically saved to the character profile
-- Separate data per character
+- All data is saved automatically to the character profile
+- Data is shared across the account (shared by different characters)
 - Use the reset command to clear all data
 
 == Team Features ==
-
 - Team notification: send airdrop alerts to team members
 - Team time sharing: automatically share team members' refresh times (enabled by default)
-- Requires team members to enable team notification for sharing to work
+- Requires team members to enable team notifications for it to take effect
 
 == Feedback ==
-
 If you encounter any issue, please visit:
 https://github.com/capzk/CrateTrackerZK/issues]]
 end

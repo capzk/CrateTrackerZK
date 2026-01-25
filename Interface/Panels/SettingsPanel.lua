@@ -1,16 +1,57 @@
 -- SettingsPanel.lua - 设置面板
 
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
+local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local UIConfig = BuildEnv("UIConfig")
 local HelpTextProvider = BuildEnv("HelpTextProvider")
 local AboutTextProvider = BuildEnv("AboutTextProvider")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
+local L = CrateTrackerZK.L
 
+local TAB_SETTINGS = "settings"
+local TAB_HELP = "help"
+local TAB_ABOUT = "about"
 local settingsFrame = nil
-local currentTab = "设置"
+local currentTab = TAB_SETTINGS
 local tabButtons = {}
 local settingControls = {}
+
+local function LT(key, fallback)
+    if L and L[key] then
+        return L[key]
+    end
+    return fallback
+end
+
+local function GetTabLabel(key)
+    if key == TAB_SETTINGS then
+        return LT("SettingsTabSettings", "设置")
+    end
+    if key == TAB_HELP then
+        return LT("MenuHelp", "帮助")
+    end
+    if key == TAB_ABOUT then
+        return LT("MenuAbout", "关于")
+    end
+    return tostring(key)
+end
+
+local function ResolveTabKey(tabName)
+    if tabName == TAB_SETTINGS or tabName == TAB_HELP or tabName == TAB_ABOUT then
+        return tabName
+    end
+    if tabName == GetTabLabel(TAB_SETTINGS) then
+        return TAB_SETTINGS
+    end
+    if tabName == GetTabLabel(TAB_HELP) then
+        return TAB_HELP
+    end
+    if tabName == GetTabLabel(TAB_ABOUT) then
+        return TAB_ABOUT
+    end
+    return nil
+end
 
 local function GetConfig()
     return UIConfig.values
@@ -95,9 +136,9 @@ local function EnsureClearDialog()
     end
 
     StaticPopupDialogs["CRATETRACKERZK_CLEAR_DATA"] = {
-        text = "确认清除所有数据并重新初始化？该操作不可撤销。",
-        button1 = "确认",
-        button2 = "取消",
+        text = LT("SettingsClearConfirmText", "确认清除所有数据并重新初始化？该操作不可撤销。"),
+        button1 = LT("SettingsClearConfirmYes", "确认"),
+        button2 = LT("SettingsClearConfirmNo", "取消"),
         OnAccept = function()
             if Commands and Commands.HandleClearCommand then
                 Commands:HandleClearCommand()
@@ -162,7 +203,7 @@ function SettingsPanel:CreateFrame()
 
     local cfg = GetConfig()
     local frame = CreateFrame("Frame", "CrateTrackerZKSettingsFrame", UIParent)
-    frame:SetSize(600, 500)
+    frame:SetSize(760, 500)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("HIGH")
 
@@ -185,16 +226,16 @@ function SettingsPanel:CreateFrame()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 
     local titleBg = frame:CreateTexture(nil, "ARTWORK")
-    titleBg:SetSize(598, 22)
+    titleBg:SetSize(758, 22)
     titleBg:SetPoint("TOP", frame, "TOP", 0, -1)
     titleBg:SetColorTexture(0, 0, 0, cfg.titleBarAlpha)
 
     local titleLine = frame:CreateTexture(nil, "ARTWORK")
-    titleLine:SetSize(598, 1)
+    titleLine:SetSize(758, 1)
     titleLine:SetPoint("TOP", titleBg, "BOTTOM", 0, 0)
     titleLine:SetColorTexture(1, 1, 1, cfg.borderAlpha)
 
-    local title = CreateNoShadowText(frame, "GameFontNormal", "CrateTrackerZK - 设置")
+    local title = CreateNoShadowText(frame, "GameFontNormal", LT("SettingsPanelTitle", "CrateTrackerZK - 设置"))
     title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
 
     local closeButton = CreateFrame("Button", nil, frame)
@@ -219,18 +260,18 @@ function SettingsPanel:CreateFrame()
     end)
 
     local contentBg = frame:CreateTexture(nil, "ARTWORK")
-    contentBg:SetSize(580, 430)
+    contentBg:SetSize(740, 430)
     contentBg:SetPoint("CENTER", frame, "CENTER", 0, -20)
     contentBg:SetColorTexture(0, 0, 0, 0.02)
 
     local contentFrame = CreateFrame("Frame", nil, frame)
-    contentFrame:SetSize(580, 430)
+    contentFrame:SetSize(740, 430)
     contentFrame:SetPoint("CENTER", frame, "CENTER", 0, -20)
 
-    local tabs = {"设置", "帮助", "关于"}
+    local tabs = {TAB_SETTINGS, TAB_HELP, TAB_ABOUT}
     tabButtons = {}
-    local navWidth = 140
-    local navPadding = 10
+    local navWidth = 110
+    local navPadding = 6
     local navButtonHeight = 30
     local navSpacing = 8
 
@@ -257,7 +298,8 @@ function SettingsPanel:CreateFrame()
     panelBg:SetAllPoints(contentPanel)
     panelBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha * 0.35)
 
-    for i, tabName in ipairs(tabs) do
+    for i, tabKey in ipairs(tabs) do
+        local tabLabel = GetTabLabel(tabKey)
         local tabBtn = CreateFrame("Button", nil, navFrame)
         tabBtn:SetHeight(navButtonHeight)
         local yPos = -navPadding - (i - 1) * (navButtonHeight + navSpacing)
@@ -268,7 +310,7 @@ function SettingsPanel:CreateFrame()
         tabBg:SetAllPoints(tabBtn)
         tabBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
 
-        local tabText = CreateNoShadowText(tabBtn, "GameFontNormal", tabName)
+        local tabText = CreateNoShadowText(tabBtn, "GameFontNormal", tabLabel)
         tabText:SetPoint("LEFT", tabBtn, "LEFT", 12, 0)
 
         local tabIndicator = tabBtn:CreateTexture(nil, "ARTWORK")
@@ -283,7 +325,7 @@ function SettingsPanel:CreateFrame()
         contentArea:SetPoint("BOTTOMRIGHT", contentPanel, "BOTTOMRIGHT", -12, 12)
         contentArea:Hide()
 
-        if tabName == "设置" then
+        if tabKey == TAB_SETTINGS then
             local function AddToggleRow(label, controlKey, onClick, yOffset)
                 local rowLabel = CreateNoShadowText(contentArea, "GameFontNormal", label)
                 rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, yOffset)
@@ -298,38 +340,38 @@ function SettingsPanel:CreateFrame()
                 settingControls[controlKey] = {
                     button = button,
                     text = text,
-                    onText = "已开启",
-                    offText = "已关闭",
+                    onText = LT("SettingsToggleOn", "已开启"),
+                    offText = LT("SettingsToggleOff", "已关闭"),
                 }
             end
 
             local y = -10
-            local controlTitle = CreateNoShadowText(contentArea, "GameFontNormal", "插件控制")
+            local controlTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionControl", "插件控制"))
             controlTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             y = y - 30
-            AddToggleRow("插件开关", "addon", function()
+            AddToggleRow(LT("SettingsAddonToggle", "插件开关"), "addon", function()
                 if Commands and Commands.HandleAddonToggle then
                     Commands:HandleAddonToggle(not IsAddonEnabled())
                 end
             end, y)
 
             y = y - 28
-            AddToggleRow("团队通知", "teamNotify", function()
+            AddToggleRow(LT("SettingsTeamNotify", "团队通知"), "teamNotify", function()
                 if Notification and Notification.SetTeamNotificationEnabled then
                     Notification:SetTeamNotificationEnabled(not IsTeamNotificationEnabled())
                 end
             end, y)
 
             y = y - 40
-            local dataTitle = CreateNoShadowText(contentArea, "GameFontNormal", "数据管理")
+            local dataTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionData", "数据管理"))
             dataTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             y = y - 30
-            local clearLabel = CreateNoShadowText(contentArea, "GameFontNormal", "清除所有数据")
+            local clearLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearAllData", "清除所有数据"))
             clearLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
-            local clearBtn, clearText = CreateSettingButton(contentArea, "清除")
+            local clearBtn, clearText = CreateSettingButton(contentArea, LT("SettingsClearButton", "清除"))
             clearBtn:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
             clearBtn:SetScript("OnClick", function()
                 EnsureClearDialog()
@@ -340,26 +382,26 @@ function SettingsPanel:CreateFrame()
             clearText:SetTextColor(1, 0.6, 0.6, 1)
 
             y = y - 24
-            local clearDesc = CreateNoShadowText(contentArea, "GameFontNormal", "• 会清空所有空投时间与位面记录")
+            local clearDesc = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearDesc", "• 会清空所有空投时间与位面记录"))
             clearDesc:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             y = y - 40
-            local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", "界面设置")
+            local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionUI", "界面设置"))
             settingsTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             y = y - 24
-            local desc1 = CreateNoShadowText(contentArea, "GameFontNormal", "• 界面风格可在 UiConfig.lua 调整")
+            local desc1 = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsUIConfigDesc", "• 界面风格可在 UiConfig.lua 调整"))
             desc1:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             y = y - 20
-            local desc2 = CreateNoShadowText(contentArea, "GameFontNormal", "• 修改后使用 /reload 生效")
+            local desc2 = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsReloadDesc", "• 修改后使用 /reload 生效"))
             desc2:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
             UpdateSettingsState()
-        elseif tabName == "帮助" then
+        elseif tabKey == TAB_HELP then
             local helpText = HelpTextProvider and HelpTextProvider.GetHelpText and HelpTextProvider:GetHelpText() or ""
             CreateScrollableText(contentArea, helpText)
-        elseif tabName == "关于" then
+        elseif tabKey == TAB_ABOUT then
             local aboutText = AboutTextProvider and AboutTextProvider.GetAboutText and AboutTextProvider:GetAboutText() or ""
             CreateScrollableText(contentArea, aboutText)
         end
@@ -369,20 +411,20 @@ function SettingsPanel:CreateFrame()
                 info.contentArea:Hide()
             end
             contentArea:Show()
-            currentTab = tabName
-            UpdateTabStyles(tabName)
-            if tabName == "设置" then
+            currentTab = tabKey
+            UpdateTabStyles(tabKey)
+            if tabKey == TAB_SETTINGS then
                 UpdateSettingsState()
             end
         end)
 
         tabBtn:SetScript("OnEnter", function()
-            if currentTab ~= tabName then
+            if currentTab ~= tabKey then
                 tabBg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha * 0.7)
             end
         end)
         tabBtn:SetScript("OnLeave", function()
-            if currentTab ~= tabName then
+            if currentTab ~= tabKey then
                 tabBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
             end
         end)
@@ -392,7 +434,8 @@ function SettingsPanel:CreateFrame()
             bg = tabBg,
             indicator = tabIndicator,
             contentArea = contentArea,
-            name = tabName,
+            name = tabKey,
+            label = tabLabel,
         })
     end
 
@@ -413,7 +456,7 @@ function SettingsPanel:Show()
         self:CreateFrame()
     end
     settingsFrame:Show()
-    if currentTab == "设置" then
+    if currentTab == TAB_SETTINGS then
         UpdateSettingsState()
     end
 end
@@ -436,7 +479,7 @@ function SettingsPanel:Toggle()
         settingsFrame:Hide()
     else
         settingsFrame:Show()
-        if currentTab == "设置" then
+        if currentTab == TAB_SETTINGS then
             UpdateSettingsState()
         end
     end
@@ -448,16 +491,17 @@ function SettingsPanel:ShowTab(tabName)
     end
     self:Show()
 
+    local targetTab = ResolveTabKey(tabName) or TAB_SETTINGS
     for _, info in ipairs(tabButtons) do
-        if info.name == tabName then
+        if info.name == targetTab then
             info.contentArea:Show()
-            currentTab = tabName
+            currentTab = targetTab
         else
             info.contentArea:Hide()
         end
     end
-    UpdateTabStyles(tabName)
-    if tabName == "设置" then
+    UpdateTabStyles(targetTab)
+    if targetTab == TAB_SETTINGS then
         UpdateSettingsState()
     end
 end
