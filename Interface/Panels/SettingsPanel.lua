@@ -66,7 +66,7 @@ local function CreateNoShadowText(parent, template, text)
     return fontString
 end
 
-local function CreateScrollableText(parent, text)
+local function CreateScrollableText(parent, text, enableWrap)
     local cfg = GetConfig()
     local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
@@ -77,12 +77,27 @@ local function CreateScrollableText(parent, text)
     scroll:SetScrollChild(content)
 
     local editBox = CreateFrame("EditBox", nil, content)
-    editBox:SetPoint("TOPLEFT", content, "TOPLEFT", 4, -4)
-    editBox:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -4)
+    editBox:SetPoint("TOPLEFT", content, "TOPLEFT", 6, -6)
+    editBox:SetPoint("TOPRIGHT", content, "TOPRIGHT", -6, -6)
     editBox:SetFontObject("GameFontNormal")
     editBox:SetTextColor(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
     editBox:SetShadowOffset(0, 0)
     editBox:SetMultiLine(true)
+    if enableWrap then
+        if editBox.SetWordWrap then
+            editBox:SetWordWrap(true)
+        end
+        if editBox.SetNonSpaceWrap then
+            editBox:SetNonSpaceWrap(true)
+        end
+    else
+        if editBox.SetWordWrap then
+            editBox:SetWordWrap(false)
+        end
+        if editBox.SetNonSpaceWrap then
+            editBox:SetNonSpaceWrap(false)
+        end
+    end
     editBox:SetAutoFocus(false)
     editBox:EnableMouse(true)
     editBox:SetScript("OnEscapePressed", function() editBox:ClearFocus() end)
@@ -99,8 +114,13 @@ local function CreateScrollableText(parent, text)
     editBox:SetText(text or "")
     editBox.ignoreTextChanged = false
 
-    C_Timer.After(0.05, function()
-        local h = editBox:GetHeight() + 20
+    local function UpdateLayout()
+        local viewW = scroll:GetWidth()
+        if viewW and viewW > 0 then
+            content:SetWidth(viewW)
+            editBox:SetWidth(viewW - 12)
+        end
+        local h = (editBox.GetStringHeight and editBox:GetStringHeight() or editBox:GetHeight()) + 20
         local viewH = scroll:GetHeight()
         local child = scroll:GetScrollChild()
         if child then child:SetHeight(math.max(h, viewH)) end
@@ -108,7 +128,10 @@ local function CreateScrollableText(parent, text)
         if sb then
             if h > viewH + 1 then sb:Show() else sb:Hide() scroll:SetVerticalScroll(0) end
         end
-    end)
+    end
+
+    scroll:SetScript("OnSizeChanged", UpdateLayout)
+    C_Timer.After(0.05, UpdateLayout)
 
     return editBox
 end
@@ -400,10 +423,10 @@ function SettingsPanel:CreateFrame()
             UpdateSettingsState()
         elseif tabKey == TAB_HELP then
             local helpText = HelpTextProvider and HelpTextProvider.GetHelpText and HelpTextProvider:GetHelpText() or ""
-            CreateScrollableText(contentArea, helpText)
+            CreateScrollableText(contentArea, helpText, true)
         elseif tabKey == TAB_ABOUT then
             local aboutText = AboutTextProvider and AboutTextProvider.GetAboutText and AboutTextProvider:GetAboutText() or ""
-            CreateScrollableText(contentArea, aboutText)
+            CreateScrollableText(contentArea, aboutText, false)
         end
 
         tabBtn:SetScript("OnClick", function()
