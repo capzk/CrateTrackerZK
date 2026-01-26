@@ -1,4 +1,10 @@
 <Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+    <!-- 第三方库 -->
+    <Script file="Libs/LibStub/LibStub.lua"/>
+    <Script file="Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua"/>
+    <Script file="Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua"/>
+    <Script file="Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua"/>
+
     <!-- 基础工具（优先加载） -->
     <Script file="Utils/Utils.lua"/>
     <Script file="Utils/Logger.lua"/>
