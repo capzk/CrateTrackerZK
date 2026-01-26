@@ -24,7 +24,6 @@ end
 -- 时间来源枚举
 UnifiedDataManager.TimeSource = {
     TEAM_MESSAGE = "team_message",
-    REFRESH_BUTTON = "refresh_button", 
     ICON_DETECTION = "icon_detection"
 }
 
@@ -145,7 +144,7 @@ function UnifiedDataManager:SetTime(mapId, timestamp, source)
     end
     
     -- 根据来源自动决定是临时时间还是持久化时间
-    if source == self.TimeSource.TEAM_MESSAGE or source == self.TimeSource.REFRESH_BUTTON then
+    if source == self.TimeSource.TEAM_MESSAGE then
         return self:SetTemporaryTime(mapId, timestamp, source);
     elseif source == self.TimeSource.ICON_DETECTION then
         return self:SetPersistentTime(mapId, timestamp, source, nil);

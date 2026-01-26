@@ -45,7 +45,7 @@ function TableUI:RebuildUI(frame, headerLabels)
         RowStateSystem:ClearRowRefs()
     end
 
-    local colWidths = {120, 100, 120, 100, 120}
+    local colWidths = {160, 90, 110, 100, 100}
     local rowHeight = 35
     local tableWidth = 560
     local startX = 20
@@ -192,9 +192,9 @@ function TableUI:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeigh
 
     self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
 
-    local refreshBtn, notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
-    if RowStateSystem and refreshBtn and notifyBtn then
-        RowStateSystem:RegisterRowButtons(rowId, refreshBtn, notifyBtn)
+    local notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
+    if RowStateSystem and notifyBtn then
+        RowStateSystem:RegisterRowButtons(rowId, notifyBtn)
     end
 
     table.insert(tableRows, rowFrame)
@@ -231,8 +231,6 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
     if hasCurrentPhase and rowInfo.lastRefresh then
         if rowInfo.isPersistent then
             lastColor = {0, 1, 0, 1}
-        elseif UnifiedDataManager and UnifiedDataManager.TimeSource and rowInfo.timeSource == UnifiedDataManager.TimeSource.REFRESH_BUTTON then
-            lastColor = {0.7, 1, 0.7, 1}
         end
     end
     local nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
@@ -277,36 +275,23 @@ end
 function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
     local rowId = rowInfo.rowId
     local operationColumnStart = colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4]
-    local operationColumnWidth = colWidths[5]
-    local columnCenter = operationColumnStart + operationColumnWidth / 2
-    local button1X = columnCenter - 20
-    local button2X = columnCenter + 20
-
-    local refreshText = L["Refresh"] or "刷新"
+    local columnCenter = operationColumnStart + colWidths[5] / 2
     local notifyText = L["Notify"] or "通知"
-
-    local refreshBtn = self:CreateActionButton(rowFrame, rowBg, refreshText, button1X, function()
-        if rowInfo.isHidden then
-            return
-        end
-        if MainPanel and MainPanel.RefreshMap then
-            MainPanel:RefreshMap(rowId)
-        end
-    end, "refresh", rowInfo.isHidden)
-
-    local notifyBtn = self:CreateActionButton(rowFrame, rowBg, notifyText, button2X, function()
+    local notifyBtn = self:CreateActionButton(rowFrame, rowBg, notifyText, columnCenter, function()
         if rowInfo.isHidden then
             return
         end
         if MainPanel and MainPanel.NotifyMapById then
             MainPanel:NotifyMapById(rowId)
         end
-    end, "notify", rowInfo.isHidden)
+    end, rowInfo.isHidden)
+    notifyBtn:ClearAllPoints()
+    notifyBtn:SetPoint("CENTER", rowBg, "LEFT", columnCenter, 0)
 
-    return refreshBtn, notifyBtn
+    return notifyBtn
 end
 
-function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, buttonType, isHidden)
+function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, isHidden)
     local cfg = GetConfig()
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(30, 20)
@@ -322,6 +307,13 @@ function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, but
     btnText:SetJustifyH("CENTER")
     btnText:SetJustifyV("MIDDLE")
     btnText:SetShadowOffset(0, 0)
+    btn.label = btnText
+
+    local textWidth = btnText:GetStringWidth() or 0
+    local minWidth = 30
+    local padding = 10
+    local targetWidth = math.max(minWidth, textWidth + padding)
+    btn:SetSize(targetWidth, 20)
 
     local normalTextColor = nil
     if isHidden then

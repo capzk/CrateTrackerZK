@@ -221,35 +221,6 @@ function MainPanel:UpdateTable(skipVisibilityCheck)
     TableUI:RebuildUI(self.mainFrame, headers)
 end
 
-function MainPanel:RefreshMap(mapId)
-    if not mapId then
-        return false
-    end
-
-    local mapData = Data:GetMap(mapId)
-    if not mapData then
-        return false
-    end
-
-    local now = time()
-
-    if TimerManager and TimerManager.StartTimer then
-        local success = TimerManager:StartTimer(mapId, TimerManager.detectionSources.REFRESH_BUTTON, now)
-        if success then
-            self:UpdateTable(true)
-            return true
-        end
-        return false
-    end
-
-    mapData.lastRefresh = now
-    mapData.currentAirdropObjectGUID = nil
-    mapData.currentAirdropTimestamp = nil
-    Data:UpdateNextRefresh(mapId, mapData)
-    self:UpdateTable(true)
-    return true
-end
-
 function MainPanel:NotifyMapById(mapId)
     if not mapId then return end
     local now = GetTime()

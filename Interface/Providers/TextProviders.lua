@@ -27,7 +27,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 
 == 界面操作 ==
 - 右键点击地图行可以隐藏/恢复地图
-- 点击"刷新"按钮手动设置空投刷新时间
 - 点击"通知"按钮发送团队通知
 
 == 位面检测 ==
@@ -75,8 +74,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 
 == UI Operations ==
 - Right-click a map row to hide/restore the map
-- Right-click to remove and restore maps
-- Click "Refresh" to manually set the airdrop refresh time
 - Click "Notify" to send a team notification
 
 == Phase Detection ==

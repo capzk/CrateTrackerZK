@@ -48,7 +48,6 @@ localeData["PhaseID"] = "当前位面";
 localeData["LastRefresh"] = "上次刷新";
 localeData["NextRefresh"] = "下次刷新";
 localeData["Operation"] = "操作";
-localeData["Refresh"] = "刷新";
 localeData["Notify"] = "通知";
 localeData["Delete"] = "删除";
 localeData["Restore"] = "恢复";

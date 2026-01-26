@@ -312,7 +312,8 @@ function SettingsPanel:CreateFrame()
     local frame = CreateFrame("Frame", "CrateTrackerZKSettingsFrame", UIParent)
     frame:SetSize(760, 500)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    frame:SetFrameStrata("HIGH")
+    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameLevel(100)
 
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(frame)
@@ -573,6 +574,7 @@ function SettingsPanel:Show()
         self:CreateFrame()
     end
     settingsFrame:Show()
+    settingsFrame:Raise()
     if currentTab == TAB_SETTINGS then
         UpdateSettingsState()
     end

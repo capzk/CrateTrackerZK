@@ -73,8 +73,6 @@ Logger.DEBUG_TEXTS = {
     DebugNoRecord = "无记录",
     DebugTimerStarted = "计时开始：%s，来源=%s，下次=%s",
     DebugDetectionSourceManual = "手动输入",
-    DebugDetectionSourceRefresh = "刷新按钮",
-    DebugDetectionSourceAPI = "API 接口",
     DebugDetectionSourceMapIcon = "地图图标检测",
     DebugCannotGetMapName2 = "无法获取当前地图名称",
     DebugCMapAPINotAvailable = "C_Map API 不可用",

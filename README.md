@@ -15,7 +15,6 @@ CrateTrackerZK is a World of Warcraft addon that tracks War Supply Crate airdrop
 - **Phasing Tracking** - Tracks phasing (instance) IDs with color indicators (Green = same phase, Red = phase changed)
 - **Party/Raid Notifications** - Optional notifications to alert your group when a crate is detected (enabled by default)
 - **Team Time Sharing** - Automatically synchronizes airdrop times through team chat messages (enabled by default)
-- **Manual Refresh** - Manually start timers by clicking the Refresh button
 - **Minimap Button** - Provides a minimap button to reopen the addon UI after closing it
 - **Automatic Data Saving** - All data is saved automatically and persists between sessions
 - **Multi-Language Support** - Supports English, Simplified Chinese, Traditional Chinese, and Russian
@@ -68,7 +67,6 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 - **位面追踪** - 追踪位面（实例）ID，用颜色指示器显示（绿色=相同位面，红色=位面已变更）
 - **小队/团队通知** - 可选通知功能，在检测到空投箱时提醒您的队伍（默认开启）
 - **团队时间共享** - 通过团队聊天消息自动同步空投时间（默认开启）
-- **手动刷新** - 通过点击刷新按钮手动启动计时器
 - **小地图按钮** - 提供小地图按钮以在关闭后重新打开插件界面
 - **自动数据保存** - 所有数据自动保存并在会话间保持
 - **多语言支持** - 支持英语、简体中文、繁体中文和俄语

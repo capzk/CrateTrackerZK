@@ -51,9 +51,8 @@ function RowStateSystem:RegisterRowFrame(rowId, frame)
     rowFrames[rowId] = frame
 end
 
-function RowStateSystem:RegisterRowButtons(rowId, refreshBtn, notifyBtn)
+function RowStateSystem:RegisterRowButtons(rowId, notifyBtn)
     rowButtons[rowId] = {
-        refresh = refreshBtn,
         notify = notifyBtn,
     }
 end
@@ -78,7 +77,6 @@ function RowStateSystem:ShowDeleteButton(rowId)
     local buttons = self:GetRowButtons(rowId)
     if not buttons then return end
 
-    if buttons.refresh then buttons.refresh:Hide() end
     if buttons.notify then buttons.notify:Hide() end
 
     if not buttons.delete then
@@ -97,7 +95,6 @@ function RowStateSystem:ShowRestoreButton(rowId)
     local buttons = self:GetRowButtons(rowId)
     if not buttons then return end
 
-    if buttons.refresh then buttons.refresh:Hide() end
     if buttons.notify then buttons.notify:Hide() end
 
     if not buttons.restore then
@@ -119,7 +116,6 @@ function RowStateSystem:RestoreNormalButtons(rowId)
     if buttons.delete then buttons.delete:Hide() end
     if buttons.restore then buttons.restore:Hide() end
 
-    if buttons.refresh then buttons.refresh:Show() end
     if buttons.notify then buttons.notify:Show() end
 
     local state = self:GetRowState(rowId)

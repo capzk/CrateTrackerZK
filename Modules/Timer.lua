@@ -29,8 +29,6 @@ if not Area then
 end
 
 TimerManager.detectionSources = {
-    REFRESH_BUTTON = "refresh_button",
-    API_INTERFACE = "api_interface",
     MAP_ICON = "map_icon",
     TEAM_MESSAGE = "team_message"
 }
@@ -70,60 +68,8 @@ local function HasRecentShout(mapDisplayName, currentTime)
     return false, nil;
 end
 
-function TimerManager:StartTimer(mapId, source, timestamp)
-    Logger:Debug("Timer", "调试", string.format("StartTimer被调用：mapId=%s，source=%s", 
-        tostring(mapId), tostring(source)))
-    
-    if not self.isInitialized then
-        Logger:Error("Timer", "错误", "TimerManager未初始化");
-        return false;
-    end
-    
-    local mapData = Data:GetMap(mapId);
-    if not mapData then
-        Logger:Error("Timer", "错误", string.format("无效的地图ID：%s", tostring(mapId)));
-        return false;
-    end
-    
-    source = source or self.detectionSources.API_INTERFACE;
-    timestamp = timestamp or getCurrentTimestamp();
-    
-    Logger:Debug("Timer", "更新", string.format("StartTimer: MapID=%d, Map=%s, Source=%s, Time=%d", 
-        mapId, Data:GetMapDisplayName(mapData), source, timestamp));
-    
-    -- 直接使用UnifiedDataManager的统一接口
-    local success = false;
-    
-    if UnifiedDataManager and UnifiedDataManager.SetTime then
-        success = UnifiedDataManager:SetTime(mapId, timestamp, source);
-        if success then
-            Logger:Debug("Timer", "成功", string.format("设置时间成功：地图=%s，来源=%s", 
-                Data:GetMapDisplayName(mapData), self:GetSourceDisplayName(source)));
-        else
-            Logger:Error("Timer", "错误", string.format("设置时间失败：地图=%s，来源=%s", 
-                Data:GetMapDisplayName(mapData), source));
-        end
-    else
-        Logger:Error("Timer", "错误", "UnifiedDataManager模块或SetTime函数不可用");
-        return false;
-    end
-    
-    if success then
-        Logger:Debug("Timer", "成功", string.format("时间设置成功，准备更新UI：mapId=%d", mapId))
-        -- 更新UI
-        self:UpdateUI();
-    else
-        Logger:Error("Timer", "错误", string.format("设置时间失败：地图ID=%d，来源=%s", mapId, source));
-    end
-    
-    return success;
-end
-
-
 function TimerManager:GetSourceDisplayName(source)
     local displayNames = {
-        [self.detectionSources.REFRESH_BUTTON] = DT("DebugDetectionSourceRefresh"),
-        [self.detectionSources.API_INTERFACE] = DT("DebugDetectionSourceAPI"),
         [self.detectionSources.MAP_ICON] = DT("DebugDetectionSourceMapIcon")
     };
     

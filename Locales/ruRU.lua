@@ -1,6 +1,6 @@
 -- CrateTrackerZK - Russian Localization
 -- Translator: ZamestoTV
--- This file contains only translation data, no logic
+
 local LocaleManager = BuildEnv("LocaleManager");
 if not LocaleManager or not LocaleManager.RegisterLocale then
     if LocaleManager then
@@ -49,7 +49,6 @@ localeData["PhaseID"] = "Текущая фаза";
 localeData["LastRefresh"] = "Последний";
 localeData["NextRefresh"] = "Следующий";
 localeData["Operation"] = "Действия";
-localeData["Refresh"] = "Обновить";
 localeData["Notify"] = "Уведомить";
 localeData["Delete"] = "Удалить";
 localeData["Restore"] = "Восстановить";
