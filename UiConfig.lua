@@ -79,7 +79,7 @@ UIConfig.minimapButtonIcon = "Interface\\AddOns\\CrateTrackerZK\\Interface\\Asse
 
 -- 设置页配色 / Settings panel (SettingsPanel.lua)
 UIConfig.settingsTheme = {
-    background = {0, 0, 0, 0.75},          -- 背景 / Background
+    background = {0, 0, 0, 0.55},          -- 背景 / Background
     titleBar = {0, 0, 0, 0.40},            -- 顶栏 / Title bar
     panel = {235, 240, 250, 0.08},         -- 内容区 / Content
     navBg = {235, 240, 250, 0.06},         -- 导航底色 / Nav background
