@@ -16,6 +16,12 @@ local function IsAddonEnabled()
 end
 
 local function IsAreaActive()
+    if Area and Area.IsActive then
+        return Area:IsActive();
+    end
+    if IsInInstance and IsInInstance() then
+        return false;
+    end
     return Area and Area.lastAreaValidState == true and not Area.detectionPaused;
 end
 
@@ -23,7 +29,7 @@ local function ShowWelcomeMessage()
     if CrateTrackerZK.welcomeShown then
         return;
     end
-    local message = (L and L["AddonLoadedMessage"]) or "CrateTrackerZK loaded. /ctk help";
+    local message = (L and L["AddonLoadedMessage"]) or "Addon started successfully. Use /ctk to open the addon.";
     if Logger and Logger.Info then
         Logger:Info("Core", "状态", message);
     elseif DEFAULT_CHAT_FRAME then
@@ -137,16 +143,25 @@ local function OnLogin()
         CrateTrackerZK:CreateFloatingButton();
     end
     
+    local addonEnabled = IsAddonEnabled();
     if Area then
-        Area:CheckAndUpdateAreaValid();
+        if addonEnabled then
+            Area:CheckAndUpdateAreaValid();
+        else
+            Area.detectionPaused = true;
+            Area.lastAreaValidState = nil;
+        end
     end
     
-    if IsAreaActive() then
+    if addonEnabled and IsAreaActive() then
         if TimerManager then
             TimerManager:StartMapIconDetection(1);
         end
         if CrateTrackerZK and CrateTrackerZK.StartCleanupTicker then
             CrateTrackerZK:StartCleanupTicker();
+        end
+        if CrateTrackerZK and CrateTrackerZK.StartAutoTeamReportTicker then
+            CrateTrackerZK:StartAutoTeamReportTicker();
         end
         if CrateTrackerZK.phaseTimerTicker then
             CrateTrackerZK.phaseTimerTicker:Cancel();
@@ -241,6 +256,12 @@ function CrateTrackerZK:PauseAllDetections()
         self.cleanupTicker = nil;
         Logger:Debug("Core", "状态", "已停止临时数据清理定时器");
     end
+
+    if self.autoReportTicker then
+        self.autoReportTicker:Cancel();
+        self.autoReportTicker = nil;
+        Logger:Debug("Core", "状态", "已停止自动团队播报");
+    end
 end
 
 function CrateTrackerZK:ResumeAllDetections()
@@ -251,6 +272,9 @@ function CrateTrackerZK:ResumeAllDetections()
     end
     if self.StartCleanupTicker then
         self:StartCleanupTicker();
+    end
+    if self.StartAutoTeamReportTicker then
+        self:StartAutoTeamReportTicker();
     end
     
     if self.phaseTimerTicker then
@@ -308,6 +332,61 @@ function CrateTrackerZK:StartCleanupTicker()
         UnifiedDataManager:ClearExpiredTemporaryData();
     end);
     Logger:Debug("Core", "状态", "已启动临时数据清理定时器（间隔300秒）");
+end
+
+function CrateTrackerZK:StartAutoTeamReportTicker()
+    if not IsAddonEnabled() then
+        return;
+    end
+    if not Notification or not Notification.IsAutoTeamReportEnabled then
+        return;
+    end
+    if not Notification:IsAutoTeamReportEnabled() then
+        return;
+    end
+    if Notification.IsTeamNotificationEnabled and not Notification:IsTeamNotificationEnabled() then
+        return;
+    end
+    if not IsAreaActive() then
+        return;
+    end
+    if self.autoReportTicker then
+        self.autoReportTicker:Cancel();
+        self.autoReportTicker = nil;
+    end
+    local interval = Notification.GetAutoTeamReportInterval and Notification:GetAutoTeamReportInterval() or 60;
+    if not interval or interval <= 0 then
+        return;
+    end
+    self.autoReportTicker = C_Timer.NewTicker(interval, function()
+        if not IsAddonEnabled() then
+            return;
+        end
+        if not IsAreaActive() then
+            return;
+        end
+        if Notification and Notification.SendAutoTeamReport then
+            Notification:SendAutoTeamReport();
+        end
+    end);
+    Logger:Debug("Core", "状态", string.format("已启动自动团队播报（间隔%d秒）", interval));
+end
+
+function CrateTrackerZK:StopAutoTeamReportTicker()
+    if self.autoReportTicker then
+        self.autoReportTicker:Cancel();
+        self.autoReportTicker = nil;
+        Logger:Debug("Core", "状态", "已停止自动团队播报");
+    end
+end
+
+function CrateTrackerZK:RestartAutoTeamReportTicker()
+    if self.StopAutoTeamReportTicker then
+        self:StopAutoTeamReportTicker();
+    end
+    if self.StartAutoTeamReportTicker then
+        self:StartAutoTeamReportTicker();
+    end
 end
 
 function CrateTrackerZK:StopCleanupTicker()

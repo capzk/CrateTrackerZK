@@ -53,21 +53,32 @@ local function ResolveTabKey(tabName)
     return nil
 end
 
-local function GetConfig()
-    return UIConfig.values
+local function GetTheme()
+    return {
+        background = UIConfig.GetSettingsColor("background"),
+        titleBar = UIConfig.GetSettingsColor("titleBar"),
+        panel = UIConfig.GetSettingsColor("panel"),
+        navBg = UIConfig.GetSettingsColor("navBg"),
+        navItem = UIConfig.GetSettingsColor("navItem"),
+        navItemActive = UIConfig.GetSettingsColor("navItemActive"),
+        navIndicator = UIConfig.GetSettingsColor("navIndicator"),
+        button = UIConfig.GetSettingsColor("button"),
+        buttonHover = UIConfig.GetSettingsColor("buttonHover"),
+        text = UIConfig.GetSettingsColor("text"),
+    }
 end
 
 local function CreateNoShadowText(parent, template, text)
-    local cfg = GetConfig()
+    local theme = GetTheme()
     local fontString = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
     fontString:SetText(text or "")
-    fontString:SetTextColor(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    fontString:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
     fontString:SetShadowOffset(0, 0)
     return fontString
 end
 
 local function CreateScrollableText(parent, text, enableWrap)
-    local cfg = GetConfig()
+    local theme = GetTheme()
     local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -28, 0)
@@ -80,7 +91,7 @@ local function CreateScrollableText(parent, text, enableWrap)
     editBox:SetPoint("TOPLEFT", content, "TOPLEFT", 6, -6)
     editBox:SetPoint("TOPRIGHT", content, "TOPRIGHT", -6, -6)
     editBox:SetFontObject("GameFontNormal")
-    editBox:SetTextColor(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    editBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
     editBox:SetShadowOffset(0, 0)
     editBox:SetMultiLine(true)
     if enableWrap then
@@ -153,6 +164,26 @@ local function IsTeamNotificationEnabled()
     return true
 end
 
+local function IsAutoTeamReportEnabled()
+    if Notification and Notification.IsAutoTeamReportEnabled then
+        return Notification:IsAutoTeamReportEnabled()
+    end
+    return false
+end
+
+local function GetAutoTeamReportInterval()
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportInterval ~= nil then
+        local value = tonumber(CRATETRACKERZK_UI_DB.autoTeamReportInterval)
+        if value and value > 0 then
+            return math.floor(value)
+        end
+    end
+    if Notification and Notification.GetAutoTeamReportInterval then
+        return Notification:GetAutoTeamReportInterval()
+    end
+    return 60
+end
+
 local function EnsureClearDialog()
     if not StaticPopupDialogs or StaticPopupDialogs["CRATETRACKERZK_CLEAR_DATA"] then
         return
@@ -179,41 +210,94 @@ local function UpdateToggleButtonState(control, enabled)
 end
 
 local function UpdateSettingsState()
+    local teamEnabled = IsTeamNotificationEnabled()
+    local autoEnabled = teamEnabled and IsAutoTeamReportEnabled()
     UpdateToggleButtonState(settingControls.addon, IsAddonEnabled())
-    UpdateToggleButtonState(settingControls.teamNotify, IsTeamNotificationEnabled())
+    UpdateToggleButtonState(settingControls.teamNotify, teamEnabled)
+    UpdateToggleButtonState(settingControls.autoReport, autoEnabled)
+    local autoControl = settingControls.autoReport
+    if autoControl and autoControl.button and autoControl.text then
+        local theme = GetTheme()
+        if autoControl.button.SetEnabled then
+            autoControl.button:SetEnabled(teamEnabled)
+        end
+        autoControl.button:EnableMouse(teamEnabled)
+        if autoControl.button.bg then
+            local bgAlpha = teamEnabled and theme.button[4] or math.min(theme.button[4], 0.2)
+            autoControl.button.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
+        end
+        local textAlpha = teamEnabled and theme.text[4] or 0.5
+        autoControl.text:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
+    end
+    local control = settingControls.autoReportInterval
+    if control and control.editBox then
+        local theme = GetTheme()
+        local enabled = autoEnabled
+        if control.editBox.SetEnabled then
+            control.editBox:SetEnabled(enabled)
+        end
+        control.editBox:EnableMouse(enabled)
+        local textAlpha = enabled and theme.text[4] or 0.5
+        control.editBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
+        if control.bg then
+            local bgAlpha = enabled and theme.button[4] or math.min(theme.button[4], 0.3)
+            control.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
+        end
+        if not control.editBox:HasFocus() then
+            control.editBox:SetText(tostring(GetAutoTeamReportInterval()))
+        end
+    end
+end
+
+local function ApplyAutoTeamReportInterval(editBox)
+    if not editBox then
+        return
+    end
+    local value = editBox:GetText()
+    local applied = nil
+    if Notification and Notification.SetAutoTeamReportInterval then
+        applied = Notification:SetAutoTeamReportInterval(value)
+    end
+    if applied then
+        editBox:SetText(tostring(applied))
+    else
+        editBox:SetText(tostring(GetAutoTeamReportInterval()))
+    end
 end
 
 local function CreateSettingButton(parent, text)
-    local cfg = GetConfig()
+    local theme = GetTheme()
     local button = CreateFrame("Button", nil, parent)
     button:SetSize(90, 22)
 
     local bg = button:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(button)
-    bg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+    bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
+    button.bg = bg
 
     local label = CreateNoShadowText(button, "GameFontNormal", text or "")
     label:SetPoint("CENTER", button, "CENTER", 0, 0)
 
     button:SetScript("OnEnter", function()
-        bg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        bg:SetColorTexture(theme.buttonHover[1], theme.buttonHover[2], theme.buttonHover[3], theme.buttonHover[4])
     end)
     button:SetScript("OnLeave", function()
-        bg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+        bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
     end)
 
     return button, label
 end
 
 local function UpdateTabStyles(activeName)
+    local theme = GetTheme()
     for _, info in ipairs(tabButtons) do
         if info.name == activeName then
-            info.bg:SetColorTexture(1, 1, 1, UIConfig.values.buttonHoverAlpha)
+            info.bg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
             if info.indicator then
                 info.indicator:Show()
             end
         else
-            info.bg:SetColorTexture(1, 1, 1, UIConfig.values.buttonAlpha)
+            info.bg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
             if info.indicator then
                 info.indicator:Hide()
             end
@@ -224,7 +308,7 @@ end
 function SettingsPanel:CreateFrame()
     if settingsFrame then return settingsFrame end
 
-    local cfg = GetConfig()
+    local theme = GetTheme()
     local frame = CreateFrame("Frame", "CrateTrackerZKSettingsFrame", UIParent)
     frame:SetSize(760, 500)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -232,15 +316,7 @@ function SettingsPanel:CreateFrame()
 
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(frame)
-    bg:SetColorTexture(0, 0, 0, cfg.backgroundAlpha)
-
-    local border = frame:CreateTexture(nil, "BORDER")
-    border:SetAllPoints(frame)
-    border:SetColorTexture(1, 1, 1, cfg.borderAlpha)
-
-    bg:ClearAllPoints()
-    bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    bg:SetColorTexture(theme.background[1], theme.background[2], theme.background[3], theme.background[4])
 
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -251,12 +327,7 @@ function SettingsPanel:CreateFrame()
     local titleBg = frame:CreateTexture(nil, "ARTWORK")
     titleBg:SetSize(758, 22)
     titleBg:SetPoint("TOP", frame, "TOP", 0, -1)
-    titleBg:SetColorTexture(0, 0, 0, cfg.titleBarAlpha)
-
-    local titleLine = frame:CreateTexture(nil, "ARTWORK")
-    titleLine:SetSize(758, 1)
-    titleLine:SetPoint("TOP", titleBg, "BOTTOM", 0, 0)
-    titleLine:SetColorTexture(1, 1, 1, cfg.borderAlpha)
+    titleBg:SetColorTexture(theme.titleBar[1], theme.titleBar[2], theme.titleBar[3], theme.titleBar[4])
 
     local title = CreateNoShadowText(frame, "GameFontNormal", LT("SettingsPanelTitle", "CrateTrackerZK - 设置"))
     title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
@@ -267,7 +338,7 @@ function SettingsPanel:CreateFrame()
 
     local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
     closeBg:SetAllPoints(closeButton)
-    closeBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+    closeBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
 
     local closeText = CreateNoShadowText(closeButton, "GameFontNormal", "X")
     closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
@@ -276,20 +347,15 @@ function SettingsPanel:CreateFrame()
         frame:Hide()
     end)
     closeButton:SetScript("OnEnter", function()
-        closeBg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        closeBg:SetColorTexture(theme.buttonHover[1], theme.buttonHover[2], theme.buttonHover[3], theme.buttonHover[4])
     end)
     closeButton:SetScript("OnLeave", function()
-        closeBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+        closeBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
     end)
 
-    local contentBg = frame:CreateTexture(nil, "ARTWORK")
-    contentBg:SetSize(740, 430)
-    contentBg:SetPoint("CENTER", frame, "CENTER", 0, -20)
-    contentBg:SetColorTexture(0, 0, 0, 0.02)
-
     local contentFrame = CreateFrame("Frame", nil, frame)
-    contentFrame:SetSize(740, 430)
-    contentFrame:SetPoint("CENTER", frame, "CENTER", 0, -20)
+    contentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -30)
+    contentFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
 
     local tabs = {TAB_SETTINGS, TAB_HELP, TAB_ABOUT}
     tabButtons = {}
@@ -299,27 +365,13 @@ function SettingsPanel:CreateFrame()
     local navSpacing = 8
 
     local navFrame = CreateFrame("Frame", nil, contentFrame)
-    navFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 8, -8)
-    navFrame:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 8, 8)
+    navFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 6, -6)
+    navFrame:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 6, 6)
     navFrame:SetWidth(navWidth)
 
-    local navBg = navFrame:CreateTexture(nil, "BACKGROUND")
-    navBg:SetAllPoints(navFrame)
-    navBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha * 0.5)
-
-    local navLine = navFrame:CreateTexture(nil, "ARTWORK")
-    navLine:SetWidth(1)
-    navLine:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", 0, 0)
-    navLine:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", 0, 0)
-    navLine:SetColorTexture(1, 1, 1, cfg.borderAlpha)
-
     local contentPanel = CreateFrame("Frame", nil, contentFrame)
-    contentPanel:SetPoint("TOPLEFT", navFrame, "TOPRIGHT", 12, 0)
-    contentPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -8, 8)
-
-    local panelBg = contentPanel:CreateTexture(nil, "BACKGROUND")
-    panelBg:SetAllPoints(contentPanel)
-    panelBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha * 0.35)
+    contentPanel:SetPoint("TOPLEFT", navFrame, "TOPRIGHT", 10, 0)
+    contentPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -6, 6)
 
     for i, tabKey in ipairs(tabs) do
         local tabLabel = GetTabLabel(tabKey)
@@ -331,7 +383,7 @@ function SettingsPanel:CreateFrame()
 
         local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND")
         tabBg:SetAllPoints(tabBtn)
-        tabBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+        tabBg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
 
         local tabText = CreateNoShadowText(tabBtn, "GameFontNormal", tabLabel)
         tabText:SetPoint("LEFT", tabBtn, "LEFT", 12, 0)
@@ -340,12 +392,12 @@ function SettingsPanel:CreateFrame()
         tabIndicator:SetWidth(3)
         tabIndicator:SetPoint("TOPLEFT", tabBtn, "TOPLEFT", 0, 0)
         tabIndicator:SetPoint("BOTTOMLEFT", tabBtn, "BOTTOMLEFT", 0, 0)
-        tabIndicator:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        tabIndicator:SetColorTexture(theme.navIndicator[1], theme.navIndicator[2], theme.navIndicator[3], theme.navIndicator[4])
         tabIndicator:Hide()
 
         local contentArea = CreateFrame("Frame", nil, contentPanel)
-        contentArea:SetPoint("TOPLEFT", contentPanel, "TOPLEFT", 12, -12)
-        contentArea:SetPoint("BOTTOMRIGHT", contentPanel, "BOTTOMRIGHT", -12, 12)
+        contentArea:SetPoint("TOPLEFT", contentPanel, "TOPLEFT", 8, -8)
+        contentArea:SetPoint("BOTTOMRIGHT", contentPanel, "BOTTOMRIGHT", -8, 8)
         contentArea:Hide()
 
         if tabKey == TAB_SETTINGS then
@@ -385,6 +437,48 @@ function SettingsPanel:CreateFrame()
                     Notification:SetTeamNotificationEnabled(not IsTeamNotificationEnabled())
                 end
             end, y)
+
+            y = y - 28
+            AddToggleRow(LT("SettingsAutoReport", "自动通知"), "autoReport", function()
+                if Notification and Notification.SetAutoTeamReportEnabled then
+                    Notification:SetAutoTeamReportEnabled(not IsAutoTeamReportEnabled())
+                end
+            end, y)
+
+            y = y - 28
+            local intervalLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsAutoReportInterval", "通知频率（秒）"))
+            intervalLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+
+            local intervalBox = CreateFrame("EditBox", nil, contentArea)
+            intervalBox:SetSize(70, 22)
+            intervalBox:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
+            intervalBox:SetAutoFocus(false)
+            intervalBox:SetFontObject("GameFontNormal")
+            intervalBox:SetJustifyH("CENTER")
+            intervalBox:SetNumeric(true)
+            intervalBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
+            intervalBox:SetShadowOffset(0, 0)
+
+            local intervalBg = intervalBox:CreateTexture(nil, "BACKGROUND")
+            intervalBg:SetAllPoints(intervalBox)
+            intervalBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
+
+            intervalBox:SetScript("OnEscapePressed", function(self)
+                self:ClearFocus()
+                self:SetText(tostring(GetAutoTeamReportInterval()))
+            end)
+            intervalBox:SetScript("OnEnterPressed", function(self)
+                ApplyAutoTeamReportInterval(self)
+                self:ClearFocus()
+            end)
+            intervalBox:SetScript("OnEditFocusLost", function(self)
+                ApplyAutoTeamReportInterval(self)
+            end)
+
+            settingControls.autoReportInterval = {
+                editBox = intervalBox,
+                bg = intervalBg,
+            }
 
             y = y - 40
             local dataTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionData", "数据管理"))
@@ -443,12 +537,12 @@ function SettingsPanel:CreateFrame()
 
         tabBtn:SetScript("OnEnter", function()
             if currentTab ~= tabKey then
-                tabBg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha * 0.7)
+                tabBg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
             end
         end)
         tabBtn:SetScript("OnLeave", function()
             if currentTab ~= tabKey then
-                tabBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+                tabBg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
             end
         end)
 
@@ -464,7 +558,7 @@ function SettingsPanel:CreateFrame()
 
     if tabButtons[1] then
         tabButtons[1].contentArea:Show()
-        tabButtons[1].bg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        tabButtons[1].bg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
         if tabButtons[1].indicator then
             tabButtons[1].indicator:Show()
         end

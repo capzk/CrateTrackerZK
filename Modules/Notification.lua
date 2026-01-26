@@ -4,9 +4,12 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Notification = BuildEnv('Notification');
+local Area = BuildEnv("Area");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
+Notification.autoTeamReportEnabled = false;
+Notification.autoTeamReportInterval = 60;
 -- 首次通知时间记录（用于30秒限制）
 Notification.firstNotificationTime = {};
 -- 玩家发送通知记录（防止重复发送）
@@ -31,6 +34,19 @@ function Notification:Initialize()
             CRATETRACKERZK_UI_DB.teamNotificationEnabled = true;
         end
     end
+
+    self.autoTeamReportEnabled = false;
+
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportInterval ~= nil then
+        local value = tonumber(CRATETRACKERZK_UI_DB.autoTeamReportInterval);
+        if value and value > 0 then
+            self.autoTeamReportInterval = math.floor(value);
+        end
+    else
+        if CRATETRACKERZK_UI_DB then
+            CRATETRACKERZK_UI_DB.autoTeamReportInterval = self.autoTeamReportInterval;
+        end
+    end
     
     DebugPrint("[通知] 通知模块已初始化");
 end
@@ -48,6 +64,69 @@ function Notification:SetTeamNotificationEnabled(enabled)
     
     local statusText = enabled and L["Enabled"] or L["Disabled"];
     Logger:Info("Notification", "状态", statusText);
+
+    if not enabled then
+        self.autoTeamReportEnabled = false;
+    end
+    if CrateTrackerZK then
+        if not enabled and CrateTrackerZK.StopAutoTeamReportTicker then
+            CrateTrackerZK:StopAutoTeamReportTicker();
+        elseif enabled and self:IsAutoTeamReportEnabled() and CrateTrackerZK.RestartAutoTeamReportTicker then
+            CrateTrackerZK:RestartAutoTeamReportTicker();
+        end
+    end
+end
+
+function Notification:IsAutoTeamReportEnabled()
+    return self.autoTeamReportEnabled == true;
+end
+
+function Notification:GetAutoTeamReportInterval()
+    return self.autoTeamReportInterval or 60;
+end
+
+local function NormalizeInterval(value)
+    local numberValue = tonumber(value);
+    if not numberValue then
+        return nil;
+    end
+    numberValue = math.floor(numberValue);
+    if numberValue < 1 then
+        return nil;
+    end
+    return numberValue;
+end
+
+function Notification:SetAutoTeamReportEnabled(enabled)
+    if enabled and not self:IsTeamNotificationEnabled() then
+        self.autoTeamReportEnabled = false;
+        return;
+    end
+    self.autoTeamReportEnabled = enabled == true;
+    if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
+        CrateTrackerZK:RestartAutoTeamReportTicker();
+    end
+    if self.autoTeamReportEnabled and self:IsTeamNotificationEnabled() then
+        self:SendAutoTeamReport();
+    end
+end
+
+function Notification:SetAutoTeamReportInterval(seconds)
+    local value = NormalizeInterval(seconds);
+    if not value then
+        return nil;
+    end
+    self.autoTeamReportInterval = value;
+    if CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB.autoTeamReportInterval = value;
+    end
+    if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
+        CrateTrackerZK:RestartAutoTeamReportTicker();
+    end
+    if self:IsAutoTeamReportEnabled() and self:IsTeamNotificationEnabled() then
+        self:SendAutoTeamReport();
+    end
+    return value;
 end
 
 -- 更新首次通知时间（团队消息同步）
@@ -204,6 +283,89 @@ function Notification:GetTeamChatType()
     if IsInRaid() then return "RAID" end
     if IsInGroup() then return "PARTY" end
     return nil;
+end
+
+local function BuildAutoTeamReportMessage(mapName, remaining)
+    local format = (L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!";
+    local timeText = (UnifiedDataManager and UnifiedDataManager.FormatTime and UnifiedDataManager:FormatTime(remaining, true)) or "--:--";
+    return string.format(format, mapName, timeText);
+end
+
+function Notification:GetNearestAirdropInfo()
+    if not Data or not Data.GetAllMaps then
+        return nil;
+    end
+    if not UnifiedDataManager or not UnifiedDataManager.GetRemainingTime then
+        return nil;
+    end
+
+    local hiddenMaps = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps or {};
+    local bestMap = nil;
+    local bestRemaining = nil;
+
+    for _, mapData in ipairs(Data:GetAllMaps() or {}) do
+        if mapData and not (hiddenMaps and hiddenMaps[mapData.mapID]) then
+            local remaining = UnifiedDataManager:GetRemainingTime(mapData.id);
+            if remaining and remaining >= 0 then
+                if not bestRemaining or remaining < bestRemaining then
+                    bestRemaining = remaining;
+                    bestMap = mapData;
+                end
+            end
+        end
+    end
+
+    if not bestMap then
+        return nil;
+    end
+    return bestMap, bestRemaining;
+end
+
+function Notification:SendAutoTeamReport()
+    if not self.isInitialized then self:Initialize() end
+    if not self:IsAutoTeamReportEnabled() then
+        return false;
+    end
+    if not self:IsTeamNotificationEnabled() then
+        return false;
+    end
+
+    if Area and Area.IsActive and not Area:IsActive() then
+        return false;
+    end
+
+    local mapData, remaining = self:GetNearestAirdropInfo();
+    if not mapData or remaining == nil then
+        return false;
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or nil;
+    if not mapName or mapName == "" then
+        return false;
+    end
+
+    local message = BuildAutoTeamReportMessage(mapName, remaining);
+    local chatType = self:GetTeamChatType();
+    if chatType then
+        if chatType == "RAID" and IsInRaid() then
+            local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
+            local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
+            pcall(function()
+                SendChatMessage(message, raidChatType);
+            end);
+        else
+            pcall(function()
+                SendChatMessage(message, chatType);
+            end);
+        end
+    else
+        if Logger and Logger.Info then
+            Logger:Info("Notification", "通知", message);
+        elseif DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage(message);
+        end
+    end
+    return true;
 end
 
 function Notification:NotifyMapRefresh(mapData, isAirdropActive)

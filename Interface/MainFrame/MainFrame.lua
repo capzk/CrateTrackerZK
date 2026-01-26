@@ -5,14 +5,9 @@ local UIConfig = BuildEnv("UIConfig")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local RowStateSystem = BuildEnv("RowStateSystem")
 
-local function GetConfig()
-    return UIConfig.values
-end
-
 function MainFrame:Create()
-    local cfg = GetConfig()
     local frame = CreateFrame("Frame", "CrateTrackerZKFrame", UIParent)
-    frame:SetSize(cfg.frameWidth, cfg.frameHeight)
+    frame:SetSize(600, 335)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
@@ -38,19 +33,10 @@ local function SaveFramePosition(frame)
 end
 
 function MainFrame:CreateBackground(frame)
-    local cfg = GetConfig()
-
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(frame)
-    bg:SetColorTexture(0, 0, 0, cfg.backgroundAlpha)
-
-    local border = frame:CreateTexture(nil, "BORDER")
-    border:SetAllPoints(frame)
-    border:SetColorTexture(1, 1, 1, cfg.borderAlpha)
-
-    bg:ClearAllPoints()
-    bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    local bgColor = UIConfig.GetColor("mainFrameBackground")
+    bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
 
     self:CreateDragArea(frame)
 end
@@ -94,22 +80,17 @@ function MainFrame:CreateDragArea(frame)
 end
 
 function MainFrame:CreateTitleBar(frame)
-    local cfg = GetConfig()
-
     local titleBg = frame:CreateTexture(nil, "ARTWORK")
     titleBg:SetSize(598, 22)
     titleBg:SetPoint("TOP", frame, "TOP", 0, -1)
-    titleBg:SetColorTexture(0, 0, 0, cfg.titleBarAlpha)
-
-    local titleLine = frame:CreateTexture(nil, "ARTWORK")
-    titleLine:SetSize(598, 1)
-    titleLine:SetPoint("TOP", titleBg, "BOTTOM", 0, 0)
-    titleLine:SetColorTexture(1, 1, 1, cfg.borderAlpha)
+    local titleBarColor = UIConfig.GetColor("titleBarBackground")
+    titleBg:SetColorTexture(titleBarColor[1], titleBarColor[2], titleBarColor[3], titleBarColor[4])
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
     title:SetText("CrateTrackerZK")
-    title:SetTextColor(cfg.titleColor[1], cfg.titleColor[2], cfg.titleColor[3], cfg.titleColor[4])
+    local titleColor = UIConfig.GetTextColor("normal")
+    title:SetTextColor(titleColor[1], titleColor[2], titleColor[3], titleColor[4])
     title:SetJustifyH("CENTER")
     title:SetJustifyV("MIDDLE")
     title:SetShadowOffset(0, 0)
@@ -119,7 +100,6 @@ function MainFrame:CreateTitleBar(frame)
 end
 
 function MainFrame:CreateSettingsButton(frame)
-    local cfg = GetConfig()
     local settingsButton = CreateFrame("Button", nil, frame)
     settingsButton:SetSize(16, 16)
     settingsButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -35, -3)
@@ -127,22 +107,24 @@ function MainFrame:CreateSettingsButton(frame)
 
     local settingsBg = settingsButton:CreateTexture(nil, "BACKGROUND")
     settingsBg:SetAllPoints(settingsButton)
-    settingsBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+    local buttonColor = UIConfig.GetColor("titleBarButton")
+    settingsBg:SetColorTexture(buttonColor[1], buttonColor[2], buttonColor[3], buttonColor[4])
 
     local dot1 = settingsButton:CreateTexture(nil, "OVERLAY")
     dot1:SetSize(2, 2)
     dot1:SetPoint("CENTER", settingsButton, "CENTER", -3, 0)
-    dot1:SetColorTexture(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    local textColor = UIConfig.GetTextColor("normal")
+    dot1:SetColorTexture(textColor[1], textColor[2], textColor[3], textColor[4])
 
     local dot2 = settingsButton:CreateTexture(nil, "OVERLAY")
     dot2:SetSize(2, 2)
     dot2:SetPoint("CENTER", settingsButton, "CENTER", 0, 0)
-    dot2:SetColorTexture(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    dot2:SetColorTexture(textColor[1], textColor[2], textColor[3], textColor[4])
 
     local dot3 = settingsButton:CreateTexture(nil, "OVERLAY")
     dot3:SetSize(2, 2)
     dot3:SetPoint("CENTER", settingsButton, "CENTER", 3, 0)
-    dot3:SetColorTexture(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    dot3:SetColorTexture(textColor[1], textColor[2], textColor[3], textColor[4])
 
     settingsButton:SetScript("OnClick", function()
         if SettingsPanel and SettingsPanel.Show then
@@ -151,15 +133,16 @@ function MainFrame:CreateSettingsButton(frame)
     end)
 
     settingsButton:SetScript("OnEnter", function()
-        settingsBg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        local hoverColor = UIConfig.GetColor("titleBarButtonHover")
+        settingsBg:SetColorTexture(hoverColor[1], hoverColor[2], hoverColor[3], hoverColor[4])
     end)
     settingsButton:SetScript("OnLeave", function()
-        settingsBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+        local normalColor = UIConfig.GetColor("titleBarButton")
+        settingsBg:SetColorTexture(normalColor[1], normalColor[2], normalColor[3], normalColor[4])
     end)
 end
 
 function MainFrame:CreateCloseButton(frame)
-    local cfg = GetConfig()
     local closeButton = CreateFrame("Button", nil, frame)
     closeButton:SetSize(16, 16)
     closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -12, -3)
@@ -167,22 +150,26 @@ function MainFrame:CreateCloseButton(frame)
 
     local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
     closeBg:SetAllPoints(closeButton)
-    closeBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+    local buttonColor = UIConfig.GetColor("titleBarButton")
+    closeBg:SetColorTexture(buttonColor[1], buttonColor[2], buttonColor[3], buttonColor[4])
 
     local line = closeButton:CreateTexture(nil, "OVERLAY")
     line:SetSize(8, 1)
     line:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
-    line:SetColorTexture(cfg.textColor[1], cfg.textColor[2], cfg.textColor[3], cfg.textColor[4])
+    local textColor = UIConfig.GetTextColor("normal")
+    line:SetColorTexture(textColor[1], textColor[2], textColor[3], textColor[4])
 
     closeButton:SetScript("OnClick", function()
         frame:Hide()
     end)
 
     closeButton:SetScript("OnEnter", function()
-        closeBg:SetColorTexture(1, 1, 1, cfg.buttonHoverAlpha)
+        local hoverColor = UIConfig.GetColor("titleBarButtonHover")
+        closeBg:SetColorTexture(hoverColor[1], hoverColor[2], hoverColor[3], hoverColor[4])
     end)
     closeButton:SetScript("OnLeave", function()
-        closeBg:SetColorTexture(1, 1, 1, cfg.buttonAlpha)
+        local normalColor = UIConfig.GetColor("titleBarButton")
+        closeBg:SetColorTexture(normalColor[1], normalColor[2], normalColor[3], normalColor[4])
     end)
 end
 

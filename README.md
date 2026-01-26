@@ -32,7 +32,7 @@ CrateTrackerZK is a World of Warcraft addon that tracks War Supply Crate airdrop
 - `/ctk` - Show help information
 - `/ctk help` - Show help information
 - `/ctk on` - Enable addon
-- `/ctk off` - Disable addon (pause detection and hide UI)
+- `/ctk off` - Disable addon (pause detection)
 - `/ctk team on` - Enable party/raid notifications
 - `/ctk team off` - Disable party/raid notifications
 - `/ctk clear` - Clear all saved data
@@ -52,7 +52,7 @@ If you notice translation inaccuracies or want to contribute translations, pleas
 ### Notes
 
 - Automatic detection only works in valid outdoor areas
-- Detection is automatically paused in capital cities, instances, battlegrounds, and indoor areas
+- Detection is automatically paused in instances (battlegrounds/arenas/scenarios) and non-target maps
 - Team time sharing works automatically when team members have notifications enabled
 
 ---
@@ -85,7 +85,7 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 - `/ctk` - 显示帮助信息
 - `/ctk help` - 显示帮助信息
 - `/ctk on` - 启动插件
-- `/ctk off` - 关闭插件（暂停检测并隐藏界面）
+- `/ctk off` - 关闭插件（暂停检测）
 - `/ctk team on` - 开启小队/团队通知
 - `/ctk team off` - 关闭小队/团队通知
 - `/ctk clear` - 清除所有保存的数据
@@ -105,7 +105,7 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 ### 注意事项
 
 - 自动检测仅在有效的户外区域工作
-- 在主城、副本、战场和室内区域会自动暂停检测
+- 在副本/战场/竞技场/场景战役等实例内及非目标地图会自动暂停检测
 - 当团队成员开启通知功能时，团队时间共享会自动工作
 
 ---

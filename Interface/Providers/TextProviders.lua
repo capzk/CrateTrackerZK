@@ -1,6 +1,7 @@
--- HelpTextProvider.lua - 帮助文案提供者
+-- TextProviders.lua - 帮助/关于文案提供者
 
 local HelpTextProvider = BuildEnv("HelpTextProvider")
+local AboutTextProvider = BuildEnv("AboutTextProvider")
 
 function HelpTextProvider:GetHelpText()
     return [[
@@ -99,4 +100,21 @@ If you encounter any issue, please visit:
 https://github.com/capzk/CrateTrackerZK/issues]]
 end
 
-return HelpTextProvider
+function AboutTextProvider:GetAboutText()
+    return [[CrateTrackerZK
+
+Version: v1.2.1
+
+Maintainer:
+capzk
+
+Source Code:
+https://github.com/capzk/CrateTrackerZK
+
+]]
+end
+
+return {
+    HelpTextProvider = HelpTextProvider,
+    AboutTextProvider = AboutTextProvider,
+}

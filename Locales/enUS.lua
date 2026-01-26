@@ -21,7 +21,7 @@ localeData["FloatingButtonTooltipLine2"] = "Drag to move button position";
 localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
 
 -- Startup message
-localeData["AddonLoadedMessage"] = "CrateTrackerZK loaded. /ctk help for commands.";
+localeData["AddonLoadedMessage"] = "Addon started successfully. Use /ctk to open the addon.";
 
 -- Notifications (Airdrop)
 localeData["Enabled"] = "Team notifications enabled";
@@ -30,6 +30,7 @@ localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Aut
 localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
+localeData["AutoTeamReportMessage"] = "Current [%s] War Supplies in: %s!!";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Current phasing ID: |cffffff00%s|r";
@@ -44,7 +45,7 @@ localeData["TeamUsage3"] = "/ctk team off - Disable team notification";
 
 -- UI
 localeData["MapName"] = "Map Name";
-localeData["PhaseID"] = "Phase ID";
+localeData["PhaseID"] = "Current Phase";
 localeData["LastRefresh"] = "Last Refresh";
 localeData["NextRefresh"] = "Next Refresh";
 localeData["Operation"] = "Operation";
@@ -52,7 +53,7 @@ localeData["Refresh"] = "Refresh";
 localeData["Notify"] = "Notify";
 localeData["Delete"] = "Delete";
 localeData["Restore"] = "Restore";
-localeData["NotAcquired"] = "N/A";
+localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d min %02d sec";
 -- Menu Items
@@ -67,6 +68,8 @@ localeData["SettingsSectionData"] = "Data Management";
 localeData["SettingsSectionUI"] = "UI Settings";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsTeamNotify"] = "Team Notifications";
+localeData["SettingsAutoReport"] = "Auto Notify";
+localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
 localeData["SettingsClearAllData"] = "Clear All Data";
 localeData["SettingsClearButton"] = "Clear";
 localeData["SettingsClearDesc"] = "• Clears all airdrop time and phase records";

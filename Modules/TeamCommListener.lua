@@ -28,8 +28,24 @@ if not TimerManager then
     TimerManager = BuildEnv('TimerManager')
 end
 
+if not Area then
+    Area = BuildEnv('Area')
+end
+
 TeamCommListener.isInitialized = false;
 TeamCommListener.messagePatterns = {};
+TeamCommListener.autoReportPatterns = {};
+
+local function SafeMatch(text, pattern)
+    if not text or type(text) ~= "string" then
+        return nil;
+    end
+    local ok, result = pcall(string.match, text, pattern);
+    if ok then
+        return result;
+    end
+    return nil;
+end
 
 -- 初始化消息模式
 local function InitializeMessagePatterns()
@@ -107,6 +123,75 @@ local function InitializeMessagePatterns()
     end
 end
 
+-- 初始化自动播报消息模式（用于过滤）
+local function InitializeAutoReportPatterns()
+    TeamCommListener.autoReportPatterns = {};
+    local messageFormats = {};
+    
+    local LocaleManager = BuildEnv("LocaleManager");
+    if LocaleManager and LocaleManager.GetLocaleRegistry then
+        local localeRegistry = LocaleManager.GetLocaleRegistry();
+        if localeRegistry then
+            for locale, localeData in pairs(localeRegistry) do
+                if localeData and localeData.AutoTeamReportMessage and localeData.AutoTeamReportMessage ~= "" then
+                    local found = false;
+                    for _, fmt in ipairs(messageFormats) do
+                        if fmt == localeData.AutoTeamReportMessage then
+                            found = true;
+                            break;
+                        end
+                    end
+                    if not found then
+                        table.insert(messageFormats, localeData.AutoTeamReportMessage);
+                        if Logger and Logger.Debug then
+                            Logger:Debug("TeamCommListener", "初始化", string.format("已添加自动播报格式：语言=%s，格式=%s", locale, localeData.AutoTeamReportMessage));
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if #messageFormats == 0 then
+        local L = CrateTrackerZK and CrateTrackerZK.L;
+        if L and L.AutoTeamReportMessage and L.AutoTeamReportMessage ~= "" then
+            table.insert(messageFormats, L.AutoTeamReportMessage);
+            if Logger and Logger.Debug then
+                Logger:Debug("TeamCommListener", "初始化", string.format("使用当前语言自动播报格式（回退方案）：格式=%s", L.AutoTeamReportMessage));
+            end
+        end
+    end
+    
+    for _, messageFormat in ipairs(messageFormats) do
+        local msgPattern = messageFormat;
+        
+        msgPattern = msgPattern:gsub("%%", "%%%%");
+        msgPattern = msgPattern:gsub("%(", "%%(");
+        msgPattern = msgPattern:gsub("%)", "%%)");
+        msgPattern = msgPattern:gsub("%[", "%%[");
+        msgPattern = msgPattern:gsub("%]", "%%]");
+        msgPattern = msgPattern:gsub("%!", "%%!");
+        msgPattern = msgPattern:gsub("%+", "%%+");
+        msgPattern = msgPattern:gsub("%-", "%%-");
+        msgPattern = msgPattern:gsub("%*", "%%*");
+        msgPattern = msgPattern:gsub("%?", "%%?");
+        msgPattern = msgPattern:gsub("%^", "%%^");
+        msgPattern = msgPattern:gsub("%$", "%%$");
+        msgPattern = msgPattern:gsub("%.", "%%.");
+        
+        msgPattern = msgPattern:gsub("%%%%s", "(.+)");
+        
+        table.insert(TeamCommListener.autoReportPatterns, {
+            pattern = msgPattern,
+            original = messageFormat
+        });
+        
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamCommListener", "初始化", string.format("已加载自动播报模式：格式=%s，模式=%s", messageFormat, msgPattern));
+        end
+    end
+end
+
 -- 检查是否是自动消息
 local function IsAutoMessage(message)
     if not message or type(message) ~= "string" then
@@ -114,10 +199,28 @@ local function IsAutoMessage(message)
     end
     
     for _, patternData in ipairs(TeamCommListener.messagePatterns) do
-        local mapName = message:match(patternData.pattern);
+        local mapName = SafeMatch(message, patternData.pattern);
         if mapName and mapName ~= "" then
             if Logger and Logger.Debug then
                 Logger:Debug("TeamCommListener", "解析", string.format("检测到自动消息（匹配格式：%s）", patternData.original));
+            end
+            return true;
+        end
+    end
+    
+    return false;
+end
+
+local function IsAutoReportMessage(message)
+    if not message or type(message) ~= "string" then
+        return false;
+    end
+    
+    for _, patternData in ipairs(TeamCommListener.autoReportPatterns) do
+        local mapName = SafeMatch(message, patternData.pattern);
+        if mapName and mapName ~= "" then
+            if Logger and Logger.Debug then
+                Logger:Debug("TeamCommListener", "解析", string.format("检测到自动播报消息（匹配格式：%s）", patternData.original));
             end
             return true;
         end
@@ -131,6 +234,13 @@ local function ParseTeamMessage(message)
         return nil;
     end
     
+    if IsAutoReportMessage(message) then
+        if Logger and Logger.Debug then
+            Logger:Debug("TeamCommListener", "解析", "消息为自动播报格式，跳过处理");
+        end
+        return nil;
+    end
+    
     if not IsAutoMessage(message) then
         if Logger and Logger.Debug then
             Logger:Debug("TeamCommListener", "解析", "消息不匹配自动消息格式，跳过处理（可能是手动消息）");
@@ -139,7 +249,7 @@ local function ParseTeamMessage(message)
     end
     
     for _, patternData in ipairs(TeamCommListener.messagePatterns) do
-        local mapName = message:match(patternData.pattern);
+        local mapName = SafeMatch(message, patternData.pattern);
         if mapName and mapName ~= "" then
             mapName = mapName:match("^%s*(.-)%s*$");
             if mapName and mapName ~= "" then
@@ -327,6 +437,7 @@ end
 
 function TeamCommListener:Initialize()
     InitializeMessagePatterns();
+    InitializeAutoReportPatterns();
 
     self.isInitialized = true;
     
@@ -338,6 +449,12 @@ end
 function TeamCommListener:HandleChatEvent(event, message, sender)
     if not self.isInitialized then
         self:Initialize();
+    end
+    if Area and Area.IsActive and not Area:IsActive() then
+        return;
+    end
+    if IsInInstance and IsInInstance() then
+        return;
     end
     if not event or not message or type(message) ~= "string" then
         return;

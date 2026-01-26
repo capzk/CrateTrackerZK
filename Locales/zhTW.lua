@@ -21,7 +21,7 @@ localeData["FloatingButtonTooltipLine2"] = "拖動可以移動按鈕位置";
 localeData["FloatingButtonTooltipLine3"] = "右鍵開啟設定";
 
 -- 啟動提示
-localeData["AddonLoadedMessage"] = "CrateTrackerZK 已載入，歡迎使用。/ctk help 查看命令";
+localeData["AddonLoadedMessage"] = "插件已成功啟動，可使用/ctk命令打開插件。";
 
 -- 通知（空投）
 localeData["Enabled"] = "團隊通知已開啟";
@@ -30,6 +30,7 @@ localeData["AirdropDetected"] = "【%s】 檢測到戰爭補給正在空投！�
 localeData["AirdropDetectedManual"] = "【%s】 戰爭補給正在空投！！！";  -- 手動通知消息（不帶"檢測到"關鍵字）
 localeData["NoTimeRecord"] = "【%s】 暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】 距離 戰爭補給 空投還有：%s！！！";
+localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";
 
 -- 位面檢測提示
 localeData["PhaseDetectedFirstTime"] = "【%s】當前位面ID：|cffffff00%s|r";
@@ -44,7 +45,7 @@ localeData["TeamUsage3"] = "/ctk team off - 關閉團隊通知";
 
 -- UI
 localeData["MapName"] = "地圖名稱";
-localeData["PhaseID"] = "位面ID";
+localeData["PhaseID"] = "當前位面";
 localeData["LastRefresh"] = "上次刷新";
 localeData["NextRefresh"] = "下次刷新";
 localeData["Operation"] = "操作";
@@ -52,7 +53,7 @@ localeData["Refresh"] = "刷新";
 localeData["Notify"] = "通知";
 localeData["Delete"] = "刪除";
 localeData["Restore"] = "恢復";
-localeData["NotAcquired"] = "N/A";
+localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d分%02d秒";
 -- 選單項
@@ -67,6 +68,8 @@ localeData["SettingsSectionData"] = "資料管理";
 localeData["SettingsSectionUI"] = "介面設定";
 localeData["SettingsAddonToggle"] = "插件開關";
 localeData["SettingsTeamNotify"] = "團隊通知";
+localeData["SettingsAutoReport"] = "自動通知";
+localeData["SettingsAutoReportInterval"] = "通知頻率（秒）";
 localeData["SettingsClearAllData"] = "清除所有資料";
 localeData["SettingsClearButton"] = "清除";
 localeData["SettingsClearDesc"] = "• 會清空所有空投時間與位面記錄";

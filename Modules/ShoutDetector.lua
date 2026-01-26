@@ -21,6 +21,14 @@ if not Logger then Logger = BuildEnv("Logger") end
 
 ShoutDetector.isInitialized = false;
 
+local function SafeToString(value)
+    local ok, result = pcall(tostring, value);
+    if ok then
+        return result;
+    end
+    return "<secret>";
+end
+
 local function GetTrackedMap()
     if not C_Map or not C_Map.GetBestMapForUnit then
         return nil, nil;
@@ -65,7 +73,7 @@ local function OnShoutDetected(message)
         Notification.firstNotificationTime[mapName] = nil;
         Notification.playerSentNotification[mapName] = nil;
     end
-    Logger:Debug("ShoutDetector", "触发", string.format("喊话触发通知：地图=%s，消息=%s", mapName, message or ""));
+    Logger:Debug("ShoutDetector", "触发", string.format("喊话触发通知：地图=%s，消息=%s", mapName, SafeToString(message)));
     -- 立即发送通知（遵循现有开关/频道规则）
     if Notification and Notification.NotifyAirdropDetected then
         Notification:NotifyAirdropDetected(mapName, "npc_shout");
@@ -91,6 +99,14 @@ local function normalizeForMatch(str)
     return str
 end
 
+local function SafeNormalizeForMatch(value)
+    local ok, result = pcall(normalizeForMatch, value);
+    if ok then
+        return result;
+    end
+    return nil;
+end
+
 local function MessageMatchesShout(message)
     if not message or type(message) ~= "string" then
         return false;
@@ -102,18 +118,21 @@ local function MessageMatchesShout(message)
     if not shouts or #shouts == 0 then
         return false;
     end
-    local msg = normalizeForMatch(message);
+    local msg = SafeNormalizeForMatch(message);
+    if not msg then
+        return false;
+    end
     for _, shout in ipairs(shouts) do
         if type(shout) == "string" then
             -- 先保留原文做前缀切分，再归一化
             local rawSuffix = shout:match("^[^:：]*[:：]%s*(.*)$");
-            local targetFull = normalizeForMatch(shout);
-            local targetSuffix = rawSuffix and normalizeForMatch(rawSuffix) or targetFull;
-            if targetFull ~= "" and msg:find(targetFull, 1, true) then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", message, shout));
+            local targetFull = SafeNormalizeForMatch(shout);
+            local targetSuffix = rawSuffix and SafeNormalizeForMatch(rawSuffix) or targetFull;
+            if targetFull and targetFull ~= "" and msg:find(targetFull, 1, true) then
+                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", SafeToString(message), shout));
                 return true;
-            elseif targetSuffix ~= "" and msg:find(targetSuffix, 1, true) then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（去前缀）：%s -> %s", message, shout));
+            elseif targetSuffix and targetSuffix ~= "" and msg:find(targetSuffix, 1, true) then
+                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（去前缀）：%s -> %s", SafeToString(message), shout));
                 return true;
             end
         end
@@ -123,11 +142,11 @@ end
 
 local function OnChatEvent(self, event, message)
     if Logger then
-        Logger:Debug("ShoutDetector", "事件", string.format("收到聊天事件：%s，消息=%s", tostring(event), tostring(message)));
+        Logger:Debug("ShoutDetector", "事件", string.format("收到聊天事件：%s，消息=%s", SafeToString(event), SafeToString(message)));
     end
     if not MessageMatchesShout(message) then
         if Logger then
-            Logger:Debug("ShoutDetector", "未匹配", string.format("未匹配喊话：事件=%s，消息=%s", tostring(event), tostring(message)));
+            Logger:Debug("ShoutDetector", "未匹配", string.format("未匹配喊话：事件=%s，消息=%s", SafeToString(event), SafeToString(message)));
         end
         return;
     end
@@ -150,6 +169,9 @@ end
 
 function ShoutDetector:HandleChatEvent(event, message)
     if not self.isInitialized then
+        return;
+    end
+    if Area and Area.IsActive and not Area:IsActive() then
         return;
     end
     if type(message) ~= "string" then

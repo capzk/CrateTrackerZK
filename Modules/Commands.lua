@@ -253,6 +253,9 @@ function Commands:HandleAddonToggle(enable)
             ShoutDetector.eventFrame = nil;
             ShoutDetector.isInitialized = false;
         end
+        if MainPanel and MainPanel.StopUpdateTimer then
+            MainPanel:StopUpdateTimer();
+        end
         Logger:Success("Commands", "命令", "插件已关闭（功能暂停）");
     end
 end

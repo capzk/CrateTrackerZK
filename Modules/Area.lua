@@ -15,6 +15,13 @@ function Area:GetCurrentMapId()
     return C_Map.GetBestMapForUnit("player");
 end
 
+function Area:IsActive()
+    if IsInInstance and IsInInstance() then
+        return false;
+    end
+    return self.lastAreaValidState == true and not self.detectionPaused;
+end
+
 function Area:PauseAllDetections()
     if self.detectionPaused then
         return;

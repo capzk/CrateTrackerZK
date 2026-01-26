@@ -119,6 +119,7 @@ function MainPanel:BuildRowData()
                 nextRefresh = nextRefreshTime or mapData.nextRefresh,
                 remainingTime = remainingTime,
                 currentPhaseID = mapData.currentPhaseID,
+                lastRefreshPhase = mapData.lastRefreshPhase,
                 phaseDisplayInfo = phaseDisplayInfo,
                 isHidden = hiddenSet and hiddenSet[mapData.mapID] or false,
                 isFrozen = hiddenRemaining ~= nil,
@@ -135,7 +136,7 @@ end
 function MainPanel:BuildHeaderLabels()
     return {
         L["MapName"] or "Map",
-        L["PhaseID"] or "Phase",
+        L["PhaseID"] or "当前位面",
         L["LastRefresh"] or "Last",
         L["NextRefresh"] or "Next",
         L["Operation"] or "Ops",

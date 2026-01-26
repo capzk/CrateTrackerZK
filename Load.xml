@@ -38,13 +38,11 @@
     <Script file="Core/Core.lua"/>
     
     <!-- 现代化界面模块 -->
-    <Script file="Interface/MainFrame/CountdownSystem.lua"/>
-    <Script file="Interface/MainFrame/SortingSystem.lua"/>
+    <Script file="Interface/MainFrame/TableSystems.lua"/>
     <Script file="Interface/MainFrame/RowStateSystem.lua"/>
     <Script file="Interface/MainFrame/TableUI.lua"/>
     <Script file="Interface/MainFrame/MainFrame.lua"/>
-    <Script file="Interface/Providers/HelpTextProvider.lua"/>
-    <Script file="Interface/Providers/AboutTextProvider.lua"/>
+    <Script file="Interface/Providers/TextProviders.lua"/>
     <Script file="Interface/Panels/SettingsPanel.lua"/>
     <Script file="Interface/Panels/MainPanel.lua"/>
     <Script file="Interface/Widgets/MinimapButton.lua"/>

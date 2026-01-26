@@ -21,7 +21,7 @@ localeData["FloatingButtonTooltipLine2"] = "Перетащите, чтобы п�
 localeData["FloatingButtonTooltipLine3"] = "Правый клик — открыть настройки";
 
 -- Startup message
-localeData["AddonLoadedMessage"] = "CrateTrackerZK загружен. /ctk help — команды.";
+localeData["AddonLoadedMessage"] = "Аддон успешно запущен. Используйте /ctk, чтобы открыть аддон.";
 
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
@@ -30,6 +30,7 @@ localeData["AirdropDetected"] = "";
 localeData["AirdropDetectedManual"] = "";
 localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
+localeData["AutoTeamReportMessage"] = "На [%s] до сброса военных припасов осталось: %s!!";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Текущий ID фазы: |cffffff00%s|r";
@@ -44,7 +45,7 @@ localeData["TeamUsage3"] = "/ctk team off — Выключить уведомл�
 
 -- UI
 localeData["MapName"] = "Название карты";
-localeData["PhaseID"] = "ID фазы";
+localeData["PhaseID"] = "Текущая фаза";
 localeData["LastRefresh"] = "Последний";
 localeData["NextRefresh"] = "Следующий";
 localeData["Operation"] = "Действия";
@@ -52,7 +53,7 @@ localeData["Refresh"] = "Обновить";
 localeData["Notify"] = "Уведомить";
 localeData["Delete"] = "Удалить";
 localeData["Restore"] = "Восстановить";
-localeData["NotAcquired"] = "N/A";
+localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d мин %02d сек";
 
@@ -68,6 +69,8 @@ localeData["SettingsSectionData"] = "Управление данными";
 localeData["SettingsSectionUI"] = "Настройки интерфейса";
 localeData["SettingsAddonToggle"] = "Переключатель аддона";
 localeData["SettingsTeamNotify"] = "Уведомления группы";
+localeData["SettingsAutoReport"] = "Авто-уведомление";
+localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";
 localeData["SettingsClearAllData"] = "Очистить все данные";
 localeData["SettingsClearButton"] = "Очистить";
 localeData["SettingsClearDesc"] = "• Сбросит все записи времени и фаз";

@@ -4,10 +4,22 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
+local Area = BuildEnv("Area");
 
 Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 targetMapData.mapID 作为key
+
+local function SafeSplitGuid(guid)
+    if not guid or type(guid) ~= "string" then
+        return nil;
+    end
+    local ok, unitType, _, shardID, instancePart = pcall(strsplit, "-", guid);
+    if not ok then
+        return nil;
+    end
+    return unitType, shardID, instancePart;
+end
 
 function Phase:Reset()
     self.lastReportedInstanceID = nil;
@@ -25,13 +37,9 @@ function Phase:GetLayerFromNPC()
         guid = UnitGUID(unit);
     end
     
-    if guid and type(guid) ~= "string" then
-        return nil;
-    end
-
     if guid then
         -- 位面ID = 分片ID-实例ID（GUID第3-4部分）
-        local unitType, _, shardID, instancePart = strsplit("-", guid);
+        local unitType, shardID, instancePart = SafeSplitGuid(guid);
         if (unitType == "Creature" or unitType == "Vehicle") and shardID and instancePart then
             return shardID .. "-" .. instancePart;
         end
@@ -41,6 +49,9 @@ end
 
 function Phase:UpdatePhaseInfo()
     if not Data then return end
+    if Area and Area.IsActive and not Area:IsActive() then
+        return;
+    end
     
     local currentMapID = Area:GetCurrentMapId();
     if not currentMapID then

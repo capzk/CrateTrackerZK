@@ -24,6 +24,10 @@ if not UnifiedDataManager then
     UnifiedDataManager = BuildEnv('UnifiedDataManager')
 end
 
+if not Area then
+    Area = BuildEnv('Area')
+end
+
 TimerManager.detectionSources = {
     REFRESH_BUTTON = "refresh_button",
     API_INTERFACE = "api_interface",
@@ -143,6 +147,9 @@ local function ShouldSendNotification(eventTimestamp, currentTime)
 end
 
 function TimerManager:DetectMapIcons()
+    if Area and Area.IsActive and not Area:IsActive() then
+        return false;
+    end
     if not C_Map or not C_Map.GetBestMapForUnit then
         SafeDebugLimited("detection_loop:api_unavailable", DT("DebugCMapAPINotAvailable"));
         return false;

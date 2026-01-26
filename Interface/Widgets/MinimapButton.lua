@@ -21,7 +21,7 @@ end
 local function GetIconPath()
     EnsureUIState()
     return CRATETRACKERZK_UI_DB.minimapButtonIcon
-        or UIConfig.values.minimapButtonIcon
+        or UIConfig.minimapButtonIcon
         or "Interface\\Icons\\INV_Misc_Gear_01"
 end
 
@@ -82,7 +82,7 @@ function MinimapButton:CreateButton()
         isDragging = true
         self:LockHighlight()
         EnsureUIState()
-        dragStartAngle = CRATETRACKERZK_UI_DB.minimapButtonPosition or UIConfig.values.minimapButtonPosition or 45
+        dragStartAngle = CRATETRACKERZK_UI_DB.minimapButtonPosition or UIConfig.minimapButtonPosition or 45
         local px, py = GetCursorPosition()
         local scale = UIParent:GetEffectiveScale()
         dragStartX, dragStartY = px / scale, py / scale
@@ -141,7 +141,7 @@ function MinimapButton:CreateButton()
 
     local shouldHide = CRATETRACKERZK_UI_DB.minimapButtonHide
     if shouldHide == nil then
-        shouldHide = UIConfig.values.minimapButtonHide
+        shouldHide = UIConfig.minimapButtonHide
     end
     if shouldHide then
         minimapButton:Hide()
@@ -155,7 +155,7 @@ end
 function MinimapButton:UpdatePosition()
     if not minimapButton then return end
     EnsureUIState()
-    local position = CRATETRACKERZK_UI_DB.minimapButtonPosition or UIConfig.values.minimapButtonPosition or 45
+    local position = CRATETRACKERZK_UI_DB.minimapButtonPosition or UIConfig.minimapButtonPosition or 45
     local angle = math.rad(position)
     local distance = 100
     local x = distance * math.cos(angle)
