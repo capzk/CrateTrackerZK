@@ -55,6 +55,7 @@ function UnifiedDataManager:Initialize()
     self.temporaryPhases = {};
     self.persistentPhases = {};
     
+    self:RestoreTemporaryPhaseCache();
     Logger:Debug("UnifiedDataManager", "初始化", "统一数据管理器已初始化");
 end
 
@@ -362,6 +363,14 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
     phaseData.source = source;
     phaseData.detectTime = time();
     
+    if CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB.phaseCache = CRATETRACKERZK_UI_DB.phaseCache or {};
+        CRATETRACKERZK_UI_DB.phaseCache[mapId] = {
+            phaseId = phaseId,
+            detectTime = phaseData.detectTime
+        };
+    end
+
     Logger:Debug("UnifiedDataManager", "临时位面", string.format("设置临时位面成功：地图ID=%d，位面ID=%s，来源=%s", 
         mapId, phaseId, source));
     
@@ -501,7 +510,7 @@ function UnifiedDataManager:GetPhaseDisplayInfo(mapId)
         tooltip = string.format("持久化位面：%s\n当前位面：未检测到", comparison.persistent);
         displayPhase = comparison.persistent;
     elseif comparison.status == "no_persistent" then
-        color = {r = 1, g = 1, b = 1}; -- 白色
+        color = {r = 0, g = 1, b = 0}; -- 绿色
         status = "无持久化位面";
         tooltip = string.format("当前位面：%s\n持久化位面：无", comparison.current);
         displayPhase = comparison.current;
@@ -598,6 +607,9 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
                 phaseData.source = nil;
                 phaseData.detectTime = nil;
                 expiredCount = expiredCount + 1;
+                if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.phaseCache then
+                    CRATETRACKERZK_UI_DB.phaseCache[mapId] = nil;
+                end
             end
         end
         
@@ -609,6 +621,29 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
     
     if expiredCount > 0 then
         Logger:Debug("UnifiedDataManager", "清理", string.format("清理了%d个过期的临时位面数据", expiredCount));
+    end
+end
+
+function UnifiedDataManager:RestoreTemporaryPhaseCache()
+    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB.phaseCache) ~= "table" then
+        return;
+    end
+    local now = time();
+    for mapId, record in pairs(CRATETRACKERZK_UI_DB.phaseCache) do
+        if record and record.phaseId and record.detectTime then
+            if now - record.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
+                local phaseData = self:GetOrCreatePhaseData(mapId, true);
+                phaseData.phaseId = record.phaseId;
+                phaseData.source = self.PhaseSource.PHASE_DETECTION;
+                phaseData.detectTime = record.detectTime;
+                if Data and Data.GetMap then
+                    local mapData = Data:GetMap(mapId);
+                    if mapData then
+                        mapData.currentPhaseID = record.phaseId;
+                    end
+                end
+            end
+        end
     end
 end
 

@@ -11,9 +11,188 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local L = CrateTrackerZK.L
 
 local tableRows = {}
+local cachedColWidths = nil
+local measureText = nil
 
 local function GetConfig()
     return UIConfig
+end
+
+local function GetMeasureText()
+    if not measureText then
+        measureText = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        measureText:SetText("")
+    end
+    return measureText
+end
+
+local function GetTextWidth(text)
+    local fontString = GetMeasureText()
+    fontString:SetText(text or "")
+    return fontString:GetStringWidth() or 0
+end
+
+local function GetStringLength(text)
+    if type(text) ~= "string" then
+        return 0
+    end
+    if utf8 and utf8.len then
+        local ok, len = pcall(utf8.len, text)
+        if ok and len then
+            return len
+        end
+    end
+    return #text
+end
+
+local function SubString(text, startIndex, endIndex)
+    if utf8 and utf8.sub then
+        local ok, result = pcall(utf8.sub, text, startIndex, endIndex)
+        if ok and result then
+            return result
+        end
+    end
+    return string.sub(text, startIndex, endIndex)
+end
+
+local function ApplyEllipsis(fontString, text, maxWidth)
+    if not fontString then
+        return
+    end
+    if not text or text == "" then
+        fontString:SetText("")
+        return
+    end
+    fontString:SetText(text)
+    if fontString:GetStringWidth() <= maxWidth then
+        return
+    end
+    local ellipsis = "..."
+    local length = GetStringLength(text)
+    if length <= 0 then
+        fontString:SetText(ellipsis)
+        return
+    end
+    local low, high = 1, length
+    local best = ellipsis
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local candidate = SubString(text, 1, mid) .. ellipsis
+        fontString:SetText(candidate)
+        if fontString:GetStringWidth() <= maxWidth then
+            best = candidate
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+    end
+    fontString:SetText(best)
+end
+
+local function ScaleWidths(baseWidths, targetTotal)
+    local sum = 0
+    for _, width in ipairs(baseWidths) do
+        sum = sum + width
+    end
+    if sum <= 0 then
+        return baseWidths
+    end
+    local scaled = {}
+    local used = 0
+    for i, width in ipairs(baseWidths) do
+        if i == #baseWidths then
+            scaled[i] = math.max(1, targetTotal - used)
+        else
+            local value = math.floor(width * targetTotal / sum + 0.5)
+            scaled[i] = math.max(1, value)
+            used = used + scaled[i]
+        end
+    end
+    return scaled
+end
+
+local function GetMaxWidth(texts)
+    local maxWidth = 0
+    for _, text in ipairs(texts or {}) do
+        local width = GetTextWidth(text)
+        if width > maxWidth then
+            maxWidth = width
+        end
+    end
+    return maxWidth
+end
+
+local function DistributeWidths(desired, minWidths, maxWidths, total)
+    local clamped = {}
+    local minSum = 0
+    for i, width in ipairs(desired) do
+        local minW = minWidths[i] or 1
+        local maxW = maxWidths[i] or total
+        clamped[i] = math.max(minW, math.min(maxW, width))
+        minSum = minSum + minW
+    end
+    if minSum >= total then
+        return ScaleWidths(minWidths, total)
+    end
+    local weights = {}
+    local weightSum = 0
+    for i, width in ipairs(clamped) do
+        local extra = width - (minWidths[i] or 0)
+        if extra < 0 then extra = 0 end
+        weights[i] = extra
+        weightSum = weightSum + extra
+    end
+    local remaining = total - minSum
+    local result = {}
+    local used = 0
+    for i = 1, #clamped do
+        local add = 0
+        if weightSum > 0 then
+            add = math.floor(remaining * (weights[i] / weightSum) + 0.5)
+        else
+            add = math.floor(remaining / #clamped + 0.5)
+        end
+        if i == #clamped then
+            result[i] = math.max(minWidths[i], total - used)
+        else
+            result[i] = math.max(minWidths[i], (minWidths[i] or 0) + add)
+            used = used + result[i]
+        end
+    end
+    return result
+end
+
+local function CalculateColumnWidths(rows, headerLabels)
+    if cachedColWidths then
+        return cachedColWidths
+    end
+    local totalWidth = 560
+    local headers = headerLabels or {}
+    local notifyText = L["Notify"] or "通知"
+    local noRecord = L["NoRecord"] or "--:--"
+    local notAcquired = L["NotAcquired"] or "---:---"
+
+    local mapMax = GetTextWidth(headers[1] or "")
+    for _, rowInfo in ipairs(rows or {}) do
+        if rowInfo and rowInfo.mapName then
+            local width = GetTextWidth(rowInfo.mapName)
+            if width > mapMax then
+                mapMax = width
+            end
+        end
+    end
+
+    local desired = {
+        mapMax + 24,
+        GetMaxWidth({headers[2] or "", notAcquired, "0000-0000"}) + 20,
+        GetMaxWidth({headers[3] or "", noRecord, "00:00:00"}) + 18,
+        GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 18,
+        GetMaxWidth({headers[5] or "", notifyText}) + 20,
+    }
+    local minWidths = {120, 80, 100, 100, 80}
+    local maxWidths = {260, 140, 160, 160, 140}
+    cachedColWidths = DistributeWidths(desired, minWidths, maxWidths, totalWidth)
+    return cachedColWidths
 end
 
 local function IsAddonEnabled()
@@ -45,7 +224,7 @@ function TableUI:RebuildUI(frame, headerLabels)
         RowStateSystem:ClearRowRefs()
     end
 
-    local colWidths = {160, 90, 110, 100, 100}
+    local colWidths = CalculateColumnWidths(rows, headerLabels)
     local rowHeight = 35
     local tableWidth = 560
     local startX = 20
@@ -228,9 +407,20 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
 
     local lastRefreshText = rowInfo.lastRefresh and UnifiedDataManager:FormatDateTime(rowInfo.lastRefresh) or (L["NoRecord"] or "--:--")
     local lastColor = cfg.GetTextColor("normal")
-    if hasCurrentPhase and rowInfo.lastRefresh then
-        if rowInfo.isPersistent then
-            lastColor = {0, 1, 0, 1}
+    if rowInfo.lastRefresh and not rowInfo.isPersistent then
+        local base = cfg.GetTextColor("planeId")
+        lastColor = {base[1], base[2], base[3], 0.7}
+    elseif hasCurrentPhase and rowInfo.lastRefresh and rowInfo.isPersistent then
+        local compareStatus = nil
+        if UnifiedDataManager and UnifiedDataManager.ComparePhases then
+            local compare = UnifiedDataManager:ComparePhases(rowInfo.rowId)
+            compareStatus = compare and compare.status or nil
+        end
+        if compareStatus == "match" then
+            lastColor = cfg.GetTextColor("planeId")
+        elseif compareStatus == "mismatch" then
+            local base = cfg.GetTextColor("planeId")
+            lastColor = {base[1], base[2], base[3], 0.7}
         end
     end
     local nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
@@ -253,7 +443,23 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
             cellText:SetJustifyH("CENTER")
         end
 
-        cellText:SetText(colData.text or "")
+        local textValue = colData.text or ""
+        if colIndex == 1 then
+            local maxWidth = math.max(0, colWidths[1] - 24)
+            cellText:SetWidth(maxWidth)
+            if cellText.SetWordWrap then
+                cellText:SetWordWrap(false)
+            end
+            if cellText.SetNonSpaceWrap then
+                cellText:SetNonSpaceWrap(false)
+            end
+            if cellText.SetMaxLines then
+                cellText:SetMaxLines(1)
+            end
+            ApplyEllipsis(cellText, textValue, maxWidth)
+        else
+            cellText:SetText(textValue)
+        end
         cellText:SetJustifyV("MIDDLE")
         cellText:SetShadowOffset(0, 0)
 

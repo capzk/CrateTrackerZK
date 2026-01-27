@@ -18,6 +18,8 @@ if not Notification then Notification = BuildEnv("Notification") end
 if not Data then Data = BuildEnv("Data") end
 if not Area then Area = BuildEnv("Area") end
 if not Logger then Logger = BuildEnv("Logger") end
+if not UnifiedDataManager then UnifiedDataManager = BuildEnv("UnifiedDataManager") end
+if not TimerManager then TimerManager = BuildEnv("TimerManager") end
 
 ShoutDetector.isInitialized = false;
 
@@ -63,6 +65,7 @@ local function OnShoutDetected(message)
     end
 
     local mapName = Data:GetMapDisplayName(targetMapData);
+    local currentTime = time();
     if Notification and Notification.RecordShout then
         Notification:RecordShout(mapName);
     end
@@ -77,6 +80,18 @@ local function OnShoutDetected(message)
     -- 立即发送通知（遵循现有开关/频道规则）
     if Notification and Notification.NotifyAirdropDetected then
         Notification:NotifyAirdropDetected(mapName, "npc_shout");
+    end
+
+    -- 写入临时时间并刷新界面（用于即时显示）
+    if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
+        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE);
+    elseif Data and Data.SetLastRefresh then
+        Data:SetLastRefresh(targetMapData.id, currentTime);
+    end
+    if TimerManager and TimerManager.UpdateUI then
+        TimerManager:UpdateUI();
+    elseif MainPanel and MainPanel.UpdateTable then
+        MainPanel:UpdateTable();
     end
 end
 

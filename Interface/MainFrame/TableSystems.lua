@@ -240,6 +240,13 @@ local function GetCountdownColor(rowId, seconds, isHidden)
     if isHidden then
         return 0.5, 0.5, 0.5, 0.8
     end
+    if UnifiedDataManager and UnifiedDataManager.ComparePhases then
+        local compare = UnifiedDataManager:ComparePhases(rowId)
+        if compare and compare.status == "mismatch" then
+            local normal = cfg.GetTextColor("normal")
+            return normal[1], normal[2], normal[3], normal[4]
+        end
+    end
     if not HasCurrentPhase(rowId) then
         local normal = cfg.GetTextColor("normal")
         return normal[1], normal[2], normal[3], normal[4]

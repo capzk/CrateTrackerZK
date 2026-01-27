@@ -258,6 +258,10 @@ function Commands:HandleAddonToggle(enable)
         end
         Logger:Success("Commands", "命令", "插件已关闭（功能暂停）");
     end
+    
+    if SettingsPanel and SettingsPanel.RefreshState then
+        SettingsPanel:RefreshState();
+    end
 end
 
 function Commands:ShowHelp()

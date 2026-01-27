@@ -302,6 +302,7 @@ function TimerManager:DetectMapIcons()
             -- 从空投的 objectGUID 提取位面ID并存储（保持向后兼容）
             if phaseId then
                 targetMapData.lastRefreshPhase = phaseId;
+                targetMapData.currentPhaseID = phaseId;
                 Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s", 
                     Data:GetMapDisplayName(targetMapData), phaseId));
             else

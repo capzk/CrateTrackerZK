@@ -1,6 +1,6 @@
 # Translation Guide
 
-**Addon Version**: 1.2.1
+**Addon Version**: 1.2.2
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ LocaleManager.RegisterLocale("xxXX", localeData);
 
 # 翻译指南
 
-**插件版本**: 1.2.1
+**插件版本**: 1.2.2
 
 ## 快速开始
 

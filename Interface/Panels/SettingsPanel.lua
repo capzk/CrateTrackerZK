@@ -209,30 +209,59 @@ local function UpdateToggleButtonState(control, enabled)
     control.text:SetText(enabled and control.onText or control.offText)
 end
 
+local function SetControlEnabled(control, enabled)
+    if not control then return end
+    local theme = GetTheme()
+    if control.button then
+        if control.button.SetEnabled then
+            control.button:SetEnabled(enabled)
+        end
+        control.button:EnableMouse(enabled)
+        if control.button.bg then
+            local bgAlpha = enabled and theme.button[4] or math.min(theme.button[4], 0.2)
+            control.button.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
+        end
+    end
+    local textAlpha = enabled and theme.text[4] or 0.5
+    if control.text then
+        control.text:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
+    end
+    if control.label then
+        control.label:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
+    end
+    if control.desc then
+        control.desc:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
+    end
+end
+
 local function UpdateSettingsState()
-    local teamEnabled = IsTeamNotificationEnabled()
-    local autoEnabled = teamEnabled and IsAutoTeamReportEnabled()
-    UpdateToggleButtonState(settingControls.addon, IsAddonEnabled())
+    local addonEnabled = IsAddonEnabled()
+    local teamEnabled = addonEnabled and IsTeamNotificationEnabled()
+    local autoEnabled = addonEnabled and teamEnabled and IsAutoTeamReportEnabled()
+    UpdateToggleButtonState(settingControls.addon, addonEnabled)
     UpdateToggleButtonState(settingControls.teamNotify, teamEnabled)
     UpdateToggleButtonState(settingControls.autoReport, autoEnabled)
+    SetControlEnabled(settingControls.teamNotify, addonEnabled)
+    SetControlEnabled(settingControls.autoReport, addonEnabled and teamEnabled)
+    SetControlEnabled(settingControls.clearData, addonEnabled)
     local autoControl = settingControls.autoReport
     if autoControl and autoControl.button and autoControl.text then
         local theme = GetTheme()
         if autoControl.button.SetEnabled then
-            autoControl.button:SetEnabled(teamEnabled)
+            autoControl.button:SetEnabled(addonEnabled and teamEnabled)
         end
-        autoControl.button:EnableMouse(teamEnabled)
+        autoControl.button:EnableMouse(addonEnabled and teamEnabled)
         if autoControl.button.bg then
-            local bgAlpha = teamEnabled and theme.button[4] or math.min(theme.button[4], 0.2)
+            local bgAlpha = (addonEnabled and teamEnabled) and theme.button[4] or math.min(theme.button[4], 0.2)
             autoControl.button.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
         end
-        local textAlpha = teamEnabled and theme.text[4] or 0.5
+        local textAlpha = (addonEnabled and teamEnabled) and theme.text[4] or 0.5
         autoControl.text:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
     end
     local control = settingControls.autoReportInterval
     if control and control.editBox then
         local theme = GetTheme()
-        local enabled = autoEnabled
+        local enabled = addonEnabled and autoEnabled
         if control.editBox.SetEnabled then
             control.editBox:SetEnabled(enabled)
         end
@@ -242,6 +271,9 @@ local function UpdateSettingsState()
         if control.bg then
             local bgAlpha = enabled and theme.button[4] or math.min(theme.button[4], 0.3)
             control.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
+        end
+        if control.label then
+            control.label:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
         end
         if not control.editBox:HasFocus() then
             control.editBox:SetText(tostring(GetAutoTeamReportInterval()))
@@ -416,6 +448,7 @@ function SettingsPanel:CreateFrame()
                 settingControls[controlKey] = {
                     button = button,
                     text = text,
+                    label = rowLabel,
                     onText = LT("SettingsToggleOn", "已开启"),
                     offText = LT("SettingsToggleOff", "已关闭"),
                 }
@@ -479,6 +512,7 @@ function SettingsPanel:CreateFrame()
             settingControls.autoReportInterval = {
                 editBox = intervalBox,
                 bg = intervalBg,
+                label = intervalLabel,
             }
 
             y = y - 40
@@ -498,10 +532,18 @@ function SettingsPanel:CreateFrame()
                 end
             end)
             clearText:SetTextColor(1, 0.6, 0.6, 1)
+            settingControls.clearData = {
+                button = clearBtn,
+                text = clearText,
+                label = clearLabel,
+            }
 
             y = y - 24
             local clearDesc = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearDesc", "• 会清空所有空投时间与位面记录"))
             clearDesc:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            if settingControls.clearData then
+                settingControls.clearData.desc = clearDesc
+            end
 
             y = y - 40
             local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionUI", "界面设置"))
@@ -621,6 +663,12 @@ function SettingsPanel:ShowTab(tabName)
     end
     UpdateTabStyles(targetTab)
     if targetTab == TAB_SETTINGS then
+        UpdateSettingsState()
+    end
+end
+
+function SettingsPanel:RefreshState()
+    if settingsFrame and settingsFrame:IsShown() and currentTab == TAB_SETTINGS then
         UpdateSettingsState()
     end
 end

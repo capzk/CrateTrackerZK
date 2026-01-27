@@ -4,6 +4,13 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 
+if hooksecurefunc and not CrateTrackerZK.reloadHooked then
+    hooksecurefunc("ReloadUI", function()
+        CrateTrackerZK.isReloading = true;
+    end);
+    CrateTrackerZK.reloadHooked = true;
+end
+
 local function DebugPrint(msg, ...)
     Logger:Debug("Core", "调试", msg, ...);
 end
@@ -208,6 +215,12 @@ local function OnEvent(self, event, ...)
             Phase:Reset();
             Logger:Debug("Core", "状态", "退出游戏，已清除位面ID缓存");
         end
+        if not CrateTrackerZK.isReloading then
+            if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.phaseCache then
+                CRATETRACKERZK_UI_DB.phaseCache = nil;
+            end
+        end
+        CrateTrackerZK.isReloading = nil;
     elseif event == "CHAT_MSG_MONSTER_SAY"
         or event == "CHAT_MSG_MONSTER_YELL"
         or event == "CHAT_MSG_MONSTER_EMOTE"
