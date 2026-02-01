@@ -5,6 +5,7 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local UIConfig = BuildEnv("UIConfig")
 local MainPanel = BuildEnv("MainPanel")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
+local MiniModeManager = BuildEnv("MiniModeManager")
 local L = CrateTrackerZK.L
 
 local minimapButton = nil
@@ -49,7 +50,9 @@ end
 
 local function HandleClick(button)
     if button == "LeftButton" then
-        if MainPanel and MainPanel.Toggle then
+        if MiniModeManager and MiniModeManager.CycleMode then
+            MiniModeManager:CycleMode()
+        elseif MainPanel and MainPanel.Toggle then
             MainPanel:Toggle()
         end
     elseif button == "RightButton" then
@@ -66,11 +69,7 @@ local function ApplyTooltip(tooltip)
         return
     end
     tooltip:AddLine("CrateTrackerZK", 1, 1, 1)
-    local line1 = L and L["FloatingButtonTooltipLine1"] or "Click to open/close tracking panel"
-    local line2 = L and L["FloatingButtonTooltipLine2"] or "Drag to move button position"
     local line3 = L and L["FloatingButtonTooltipLine3"] or "Right-click to open settings"
-    tooltip:AddLine(line1, 0.8, 0.8, 0.8)
-    tooltip:AddLine(line2, 0.8, 0.8, 0.8)
     if line3 and line3 ~= "" then
         tooltip:AddLine(line3, 0.8, 0.8, 0.8)
     end

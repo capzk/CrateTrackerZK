@@ -51,6 +51,8 @@
     <Script file="Interface/Providers/TextProviders.lua"/>
     <Script file="Interface/Panels/SettingsPanel.lua"/>
     <Script file="Interface/Panels/MainPanel.lua"/>
+    <Script file="Interface/MiniMode/MiniFrame.lua"/>
+    <Script file="Interface/MiniMode/MiniModeManager.lua"/>
     <Script file="Interface/Widgets/MinimapButton.lua"/>
     <Include file="Interface/Frame.xml"/>
 </Ui>

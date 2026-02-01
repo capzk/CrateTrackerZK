@@ -16,9 +16,9 @@ local localeData = {};
 -- General
 
 -- Floating Button
-localeData["FloatingButtonTooltipLine1"] = "Click to open/close tracking panel";
-localeData["FloatingButtonTooltipLine2"] = "Drag to move button position";
 localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
+
+localeData["MiniModeTooltipLine1"] = "Right-click to notify";
 
 -- Startup message
 localeData["AddonLoadedMessage"] = "Addon started successfully. Use /ctk to open the addon.";
@@ -65,6 +65,7 @@ localeData["SettingsTabSettings"] = "Settings";
 localeData["SettingsSectionControl"] = "Addon Control";
 localeData["SettingsSectionData"] = "Data Management";
 localeData["SettingsSectionUI"] = "UI Settings";
+localeData["SettingsMiniModeCollapsedRows"] = "Rows kept after mini mode collapses";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsTeamNotify"] = "Team Notifications";
 localeData["SettingsAutoReport"] = "Auto Notify";

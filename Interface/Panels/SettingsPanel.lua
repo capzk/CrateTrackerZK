@@ -184,6 +184,38 @@ local function GetAutoTeamReportInterval()
     return 60
 end
 
+local function GetMiniModeCollapsedRows()
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.miniMode and CRATETRACKERZK_UI_DB.miniMode.collapsedRows ~= nil then
+        local value = tonumber(CRATETRACKERZK_UI_DB.miniMode.collapsedRows)
+        if value and value >= 1 then
+            return math.floor(value)
+        end
+    end
+    return 7
+end
+
+local function ApplyMiniModeCollapsedRows(editBox)
+    if not editBox then
+        return
+    end
+    local value = tonumber(editBox:GetText())
+    if not value then
+        value = GetMiniModeCollapsedRows()
+    end
+    value = math.floor(value)
+    if value < 1 then
+        value = 1
+    elseif value > 20 then
+        value = 20
+    end
+    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {}
+    end
+    CRATETRACKERZK_UI_DB.miniMode = CRATETRACKERZK_UI_DB.miniMode or {}
+    CRATETRACKERZK_UI_DB.miniMode.collapsedRows = value
+    editBox:SetText(tostring(value))
+end
+
 local function EnsureClearDialog()
     if not StaticPopupDialogs or StaticPopupDialogs["CRATETRACKERZK_CLEAR_DATA"] then
         return
@@ -278,6 +310,11 @@ local function UpdateSettingsState()
         if not control.editBox:HasFocus() then
             control.editBox:SetText(tostring(GetAutoTeamReportInterval()))
         end
+    end
+
+    local miniControl = settingControls.miniCollapsedRows
+    if miniControl and miniControl.editBox and not miniControl.editBox:HasFocus() then
+        miniControl.editBox:SetText(tostring(GetMiniModeCollapsedRows()))
     end
 end
 
@@ -549,7 +586,43 @@ function SettingsPanel:CreateFrame()
             local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionUI", "界面设置"))
             settingsTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 
-            y = y - 24
+            y = y - 28
+            local miniRowsLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsMiniModeCollapsedRows", "极简模式列表折叠后保留的行数"))
+            miniRowsLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+
+            local miniRowsBox = CreateFrame("EditBox", nil, contentArea)
+            miniRowsBox:SetSize(70, 22)
+            miniRowsBox:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
+            miniRowsBox:SetAutoFocus(false)
+            miniRowsBox:SetFontObject("GameFontNormal")
+            miniRowsBox:SetJustifyH("CENTER")
+            miniRowsBox:SetNumeric(true)
+            miniRowsBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
+            miniRowsBox:SetShadowOffset(0, 0)
+
+            local miniRowsBg = miniRowsBox:CreateTexture(nil, "BACKGROUND")
+            miniRowsBg:SetAllPoints(miniRowsBox)
+            miniRowsBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
+
+            miniRowsBox:SetScript("OnEscapePressed", function(self)
+                self:ClearFocus()
+                self:SetText(tostring(GetMiniModeCollapsedRows()))
+            end)
+            miniRowsBox:SetScript("OnEnterPressed", function(self)
+                ApplyMiniModeCollapsedRows(self)
+                self:ClearFocus()
+            end)
+            miniRowsBox:SetScript("OnEditFocusLost", function(self)
+                ApplyMiniModeCollapsedRows(self)
+            end)
+
+            settingControls.miniCollapsedRows = {
+                editBox = miniRowsBox,
+                bg = miniRowsBg,
+                label = miniRowsLabel,
+            }
+
+            y = y - 28
             local desc1 = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsUIConfigDesc", "• 界面风格可在 UiConfig.lua 调整"))
             desc1:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
 

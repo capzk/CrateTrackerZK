@@ -16,9 +16,9 @@ local localeData = {};
 -- 通用
 
 -- 浮動按鈕
-localeData["FloatingButtonTooltipLine1"] = "點擊開啟/關閉追蹤面板";
-localeData["FloatingButtonTooltipLine2"] = "拖動可以移動按鈕位置";
 localeData["FloatingButtonTooltipLine3"] = "右鍵開啟設定";
+
+localeData["MiniModeTooltipLine1"] = "右鍵發送通知";
 
 -- 啟動提示
 localeData["AddonLoadedMessage"] = "插件已成功啟動，可使用/ctk命令打開插件。";
@@ -65,6 +65,7 @@ localeData["SettingsTabSettings"] = "設定";
 localeData["SettingsSectionControl"] = "插件控制";
 localeData["SettingsSectionData"] = "資料管理";
 localeData["SettingsSectionUI"] = "介面設定";
+localeData["SettingsMiniModeCollapsedRows"] = "極簡模式列表折疊後保留的行數";
 localeData["SettingsAddonToggle"] = "插件開關";
 localeData["SettingsTeamNotify"] = "團隊通知";
 localeData["SettingsAutoReport"] = "自動通知";

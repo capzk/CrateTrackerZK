@@ -100,7 +100,7 @@ end
 function AboutTextProvider:GetAboutText()
     return [[CrateTrackerZK
 
-Version: v1.2.2
+Version: v1.2.3
 
 Maintainer:
 capzk

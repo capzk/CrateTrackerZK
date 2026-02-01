@@ -16,9 +16,9 @@ end
 local localeData = {};
 
 -- Floating Button
-localeData["FloatingButtonTooltipLine1"] = "Клик — открыть/закрыть панель отслеживания";
-localeData["FloatingButtonTooltipLine2"] = "Перетащите, чтобы переместить кнопку";
 localeData["FloatingButtonTooltipLine3"] = "Правый клик — открыть настройки";
+
+localeData["MiniModeTooltipLine1"] = "ПКМ — уведомить";
 
 -- Startup message
 localeData["AddonLoadedMessage"] = "Аддон успешно запущен. Используйте /ctk, чтобы открыть аддон.";
@@ -66,6 +66,7 @@ localeData["SettingsTabSettings"] = "Настройки";
 localeData["SettingsSectionControl"] = "Управление аддоном";
 localeData["SettingsSectionData"] = "Управление данными";
 localeData["SettingsSectionUI"] = "Настройки интерфейса";
+localeData["SettingsMiniModeCollapsedRows"] = "Строк после сворачивания мини-режима";
 localeData["SettingsAddonToggle"] = "Переключатель аддона";
 localeData["SettingsTeamNotify"] = "Уведомления группы";
 localeData["SettingsAutoReport"] = "Авто-уведомление";

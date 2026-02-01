@@ -15,9 +15,9 @@ local localeData = {};
 
 
 -- 浮动按钮
-localeData["FloatingButtonTooltipLine1"] = "点击打开/关闭追踪面板";
-localeData["FloatingButtonTooltipLine2"] = "拖动可以移动按钮位置";
 localeData["FloatingButtonTooltipLine3"] = "右键打开设置";
+
+localeData["MiniModeTooltipLine1"] = "右键发送通知";
 
 -- 启动提示
 localeData["AddonLoadedMessage"] = "插件已成功启动，可使用/ctk命令打开插件。";
@@ -64,6 +64,7 @@ localeData["SettingsTabSettings"] = "设置";
 localeData["SettingsSectionControl"] = "插件控制";
 localeData["SettingsSectionData"] = "数据管理";
 localeData["SettingsSectionUI"] = "界面设置";
+localeData["SettingsMiniModeCollapsedRows"] = "极简模式列表折叠后保留的行数";
 localeData["SettingsAddonToggle"] = "插件开关";
 localeData["SettingsTeamNotify"] = "团队通知";
 localeData["SettingsAutoReport"] = "自动通知";
