@@ -68,6 +68,19 @@ local function GetBackgroundColor()
     return {0, 0, 0, 0.05}
 end
 
+local function GetRowBackgroundColor(index)
+    if UIConfig and UIConfig.GetDataRowColor then
+        local color = UIConfig.GetDataRowColor(index)
+        if color then
+            return color
+        end
+    end
+    if (index or 0) % 2 == 0 then
+        return MINI_CFG.rowBgAlt
+    end
+    return MINI_CFG.rowBg
+end
+
 local function GetScaleFactor()
     if not frame then
         return 1
@@ -80,6 +93,26 @@ local function GetScaleFactor()
     if scale < 0.8 then scale = 0.8 end
     if scale > 1.4 then scale = 1.4 end
     return scale
+end
+
+local function GetFrameTopLeft()
+    if not frame then
+        return nil, nil
+    end
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if not left or not top then
+        return nil, nil
+    end
+    return left, top
+end
+
+local function RestoreFrameTopLeft(left, top)
+    if not frame or not left or not top then
+        return
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
 
 local function GetScaledFontSize(baseSize, scale)
@@ -461,7 +494,7 @@ function MiniFrame:UpdateCountdowns()
             row.nameText:SetTextColor(normal[1], normal[2], normal[3], normal[4])
             row:SetAlpha(1.0)
 
-            local bgColor = (index % 2 == 0) and MINI_CFG.rowBgAlt or MINI_CFG.rowBg
+            local bgColor = GetRowBackgroundColor(index)
             row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
         end
     end
@@ -523,7 +556,7 @@ function MiniFrame:RebuildRows()
 
         local rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
         rowBg:SetAllPoints(rowFrame)
-        local bgColor = (index % 2 == 0) and MINI_CFG.rowBgAlt or MINI_CFG.rowBg
+        local bgColor = GetRowBackgroundColor(index)
         rowBg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
         rowFrame.bg = rowBg
 
@@ -581,7 +614,9 @@ function MiniFrame:Collapse()
     local rowHeight = math.floor(MINI_CFG.rowHeight * scale + 0.5)
     local rowGap = math.max(0, math.floor((MINI_CFG.rowGap or 0) * scale + 0.5))
     local height = MINI_CFG.paddingY * 2 + showRows * rowHeight + math.max(0, showRows - 1) * rowGap + MINI_CFG.dragHeight
+    local left, top = GetFrameTopLeft()
     frame:SetHeight(height)
+    RestoreFrameTopLeft(left, top)
     HideChrome()
     HideTooltip()
     self:RebuildRows()
@@ -595,7 +630,9 @@ function MiniFrame:Expand()
     local size = db.size or {}
     local width = size.width or MINI_CFG.width
     local height = size.height or MINI_CFG.height
+    local left, top = GetFrameTopLeft()
     frame:SetSize(width, height)
+    RestoreFrameTopLeft(left, top)
     self.lastExpandedScale = GetScaleFactor()
     ShowChrome()
     self:RebuildRows()
