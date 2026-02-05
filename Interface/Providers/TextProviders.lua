@@ -10,7 +10,7 @@ function HelpTextProvider:GetHelpText()
 https://www.curseforge.com/wow/addons/cratetrackerzk
 
 -插件UI的颜色和透明度现在可以通过编辑\CrateTrackerZK\UiConfig.lua 来设置
--修改后需要执行 /reload 生效，后续更新会把此功能增加到设置页面，敬请期待！
+-修改后需要重新加载界面生效，后续更新会把此功能增加到设置页面，敬请期待！
 
 == 基本功能 ==
 - 自动检测记录空投刷新时间
@@ -19,11 +19,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 - 空投时间排序功能
 - 团队通知
 - 数据持久化存储
-
-== 可用命令 ==
-/ctk clear              清除所有数据并重新初始化插件
-/ctk team off           关闭团队通知
-/ctk team on            开启团队通知
 
 == 界面操作 ==
 - 右键点击地图行可以隐藏/恢复地图
@@ -38,7 +33,7 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 == 数据管理 ==
 - 所有数据自动保存到角色配置文件
 - 数据在账号内共享（不同角色共享）
-- 可通过重置命令清空所有数据
+- 可通过设置页面清空所有数据
 
 == 团队功能 ==
 - 团队通知：向团队成员发送空投提醒
@@ -57,7 +52,7 @@ Addon update URL:
 https://www.curseforge.com/wow/addons/cratetrackerzk
 
 - UI colors and opacity can now be adjusted by editing \CrateTrackerZK\UiConfig.lua
-- After changes, run /reload to apply. UI settings will be added to the Settings page in a future update.
+- After changes, reload the UI to apply. UI settings will be added to the Settings page in a future update.
 
 == Core Features ==
 - Automatically detect and record airdrop refresh times
@@ -66,11 +61,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk
 - Sort airdrop times
 - Team notifications
 - Persistent data storage
-
-== Commands ==
-/ctk clear               Clear all data and reinitialize the addon
-/ctk team off            Disable team notifications
-/ctk team on             Enable team notifications
 
 == UI Operations ==
 - Right-click a map row to hide/restore the map
@@ -85,7 +75,7 @@ The addon automatically detects the current phase ID and compares it with histor
 == Data Management ==
 - All data is saved automatically to the character profile
 - Data is shared across the account (shared by different characters)
-- Use the reset command to clear all data
+- Use the Settings page to clear all data
 
 == Team Features ==
 - Team notification: send airdrop alerts to team members
@@ -100,7 +90,7 @@ end
 function AboutTextProvider:GetAboutText()
     return [[CrateTrackerZK
 
-Version: v1.2.3
+Version: v1.2.4
 
 Maintainer:
 capzk

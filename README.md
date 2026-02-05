@@ -23,18 +23,8 @@ CrateTrackerZK is a World of Warcraft addon that tracks War Supply Crate airdrop
 
 1. Download the latest release from [GitHub Releases](https://github.com/capzk/CrateTrackerZK/releases)
 2. Extract the zip file to your `World of Warcraft/_retail_/Interface/AddOns/` directory
-3. Restart the game or use `/reload` command
-4. Use `/ctk` to open the interface
-
-### Slash Commands
-
-- `/ctk` - Show help information
-- `/ctk help` - Show help information
-- `/ctk on` - Enable addon
-- `/ctk off` - Disable addon (pause detection)
-- `/ctk team on` - Enable party/raid notifications
-- `/ctk team off` - Disable party/raid notifications
-- `/ctk clear` - Clear all saved data
+3. Restart the game or reload the UI
+4. Open the interface via the minimap button or Settings
 
 ### Localization & Translation
 
@@ -75,18 +65,8 @@ CrateTrackerZK 是一个魔兽世界插件，用于追踪卡兹阿加地图上�
 
 1. 从 [GitHub Releases](https://github.com/capzk/CrateTrackerZK/releases) 下载最新版本
 2. 将压缩包解压到您的 `魔兽世界/_retail_/Interface/AddOns/` 目录
-3. 重启游戏或使用 `/reload` 命令
-4. 使用 `/ctk` 打开界面
-
-### 斜杠命令
-
-- `/ctk` - 显示帮助信息
-- `/ctk help` - 显示帮助信息
-- `/ctk on` - 启动插件
-- `/ctk off` - 关闭插件（暂停检测）
-- `/ctk team on` - 开启小队/团队通知
-- `/ctk team off` - 关闭小队/团队通知
-- `/ctk clear` - 清除所有保存的数据
+3. 重启游戏或重新加载界面
+4. 通过小地图按钮或设置打开界面
 
 ### 本地化和翻译
 

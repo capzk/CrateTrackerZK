@@ -20,9 +20,6 @@ localeData["FloatingButtonTooltipLine3"] = "Правый клик — откры
 
 localeData["MiniModeTooltipLine1"] = "ПКМ — уведомить";
 
--- Startup message
-localeData["AddonLoadedMessage"] = "Аддон успешно запущен. Используйте /ctk, чтобы открыть аддон.";
-
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
@@ -35,13 +32,6 @@ localeData["AutoTeamReportMessage"] = "На [%s] до сброса военны�
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Текущий ID фазы: |cffffff00%s|r";
 localeData["InstanceChangedTo"] = "[%s] Текущий ID фазы изменён на: |cffffff00%s|r";
-
--- Commands
-localeData["UnknownCommand"] = "Неизвестная команда: %s";
-localeData["DataCleared"] = "Все данные очищены, аддон переинициализирован";
-localeData["TeamUsage1"] = "Команды уведомлений в группу:";
-localeData["TeamUsage2"] = "/ctk team on — Включить уведомления в группу";
-localeData["TeamUsage3"] = "/ctk team off — Выключить уведомления в группу";
 
 -- UI
 localeData["MapName"] = "Название карты";

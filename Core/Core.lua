@@ -32,19 +32,6 @@ local function IsAreaActive()
     return Area and Area.lastAreaValidState == true and not Area.detectionPaused;
 end
 
-local function ShowWelcomeMessage()
-    if CrateTrackerZK.welcomeShown then
-        return;
-    end
-    local message = (L and L["AddonLoadedMessage"]) or "Addon started successfully. Use /ctk to open the addon.";
-    if Logger and Logger.Info then
-        Logger:Info("Core", "状态", message);
-    elseif DEFAULT_CHAT_FRAME then
-        DEFAULT_CHAT_FRAME:AddMessage(message);
-    end
-    CrateTrackerZK.welcomeShown = true;
-end
-
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
@@ -69,8 +56,6 @@ local function OnLogin()
         Localization:Initialize();
     end
 
-    ShowWelcomeMessage();
-    
     if Data then Data:Initialize() end
     
     -- 重置内存状态（防止跨角色污染）

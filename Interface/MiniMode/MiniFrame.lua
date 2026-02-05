@@ -12,6 +12,7 @@ local frame = nil
 local rowFrames = {}
 local updateTicker = nil
 local resizeTimer = nil
+local resizeTicker = nil
 local measureText = nil
 local hoverFrame = nil
 
@@ -256,12 +257,37 @@ local function FormatRemaining(seconds)
     return string.format("%02d:%02d", minutes, secs)
 end
 
-local function GetCountdownColor(seconds, isHidden)
+local function HasCurrentPhase(mapData)
+    if not mapData then
+        return true
+    end
+    return mapData.currentPhaseID ~= nil and mapData.currentPhaseID ~= ""
+end
+
+local function GetNormalTextColor()
+    if UIConfig and UIConfig.GetTextColor then
+        return UIConfig.GetTextColor("normal")
+    end
+    return {1, 1, 1, 1}
+end
+
+local function GetCountdownColor(mapData, seconds, isHidden)
     if isHidden then
         return 0.5, 0.5, 0.5, 0.8
     end
     if not UIConfig or not UIConfig.GetTextColor then
         return 1, 1, 1, 1
+    end
+    if UnifiedDataManager and UnifiedDataManager.ComparePhases and mapData then
+        local compare = UnifiedDataManager:ComparePhases(mapData.id)
+        if compare and compare.status == "mismatch" then
+            local normal = UIConfig.GetTextColor("normal")
+            return normal[1], normal[2], normal[3], normal[4]
+        end
+    end
+    if not HasCurrentPhase(mapData) then
+        local normal = UIConfig.GetTextColor("normal")
+        return normal[1], normal[2], normal[3], normal[4]
     end
     if seconds == nil then
         local normal = UIConfig.GetTextColor("normal")
@@ -277,13 +303,6 @@ local function GetCountdownColor(seconds, isHidden)
     end
     local normal = UIConfig.GetTextColor("countdownNormal")
     return normal[1], normal[2], normal[3], normal[4]
-end
-
-local function GetNormalTextColor()
-    if UIConfig and UIConfig.GetTextColor then
-        return UIConfig.GetTextColor("normal")
-    end
-    return {1, 1, 1, 1}
 end
 
 local function GetRemainingForMap(mapData)
@@ -443,13 +462,11 @@ local function UpdateHoverState(owner)
         if not MiniFrame.isHovering then
             MiniFrame.isHovering = true
             MiniFrame:Expand()
-            ShowChrome()
             ShowUnifiedTooltip(owner or frame)
         end
     else
         if MiniFrame.isHovering then
             MiniFrame.isHovering = false
-            HideChrome()
             HideTooltip()
             MiniFrame:Collapse()
         end
@@ -487,7 +504,7 @@ function MiniFrame:UpdateCountdowns()
 
             local timeText = FormatRemaining(remaining)
             row.timeText:SetText(timeText)
-            local r, g, b, a = GetCountdownColor(remaining, false)
+            local r, g, b, a = GetCountdownColor(mapData, remaining, false)
             row.timeText:SetTextColor(r, g, b, a)
 
             local normal = GetNormalTextColor()
@@ -527,8 +544,17 @@ function MiniFrame:RebuildRows()
     local scaledMinRowHeight = math.max(12, math.floor(MINI_CFG.minRowHeight * scale + 0.5))
     local scaledRowHeight = math.floor(MINI_CFG.rowHeight * scale + 0.5)
     local rowHeight = scaledRowHeight
+    local rowGap = scaledGap
     if not self.isCollapsed then
         rowHeight = math.max(scaledMinRowHeight, math.min(scaledRowHeight, idealRowHeight))
+        self.lastExpandedLayout = {
+            rowHeight = rowHeight,
+            rowGap = rowGap,
+            scale = scale,
+        }
+    elseif self.lastExpandedLayout then
+        rowHeight = self.lastExpandedLayout.rowHeight or rowHeight
+        rowGap = self.lastExpandedLayout.rowGap or rowGap
     end
     local startY = MINI_CFG.paddingY + MINI_CFG.dragHeight
     local timeWidth = math.max(60, math.floor(MINI_CFG.timeWidth * scale + 0.5))
@@ -536,7 +562,7 @@ function MiniFrame:RebuildRows()
     self.layout = {
         startY = startY,
         rowHeight = rowHeight,
-        rowGap = scaledGap,
+        rowGap = rowGap,
         visibleCount = visibleCount,
     }
 
@@ -548,7 +574,7 @@ function MiniFrame:RebuildRows()
         end
         local rowFrame = CreateFrame("Frame", nil, frame)
         rowFrame:SetSize(contentWidth, rowHeight)
-        rowFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", MINI_CFG.paddingX, -startY - (index - 1) * (rowHeight + scaledGap))
+        rowFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", MINI_CFG.paddingX, -startY - (index - 1) * (rowHeight + rowGap))
         rowFrame:SetFrameLevel(frame:GetFrameLevel() + 2)
         rowFrame:EnableMouse(false)
         rowFrame.rowId = mapData.id
@@ -607,16 +633,6 @@ function MiniFrame:Collapse()
     self.lastExpandedScale = self.lastExpandedScale or GetScaleFactor()
     self.overrideScale = self.lastExpandedScale
     self.isCollapsed = true
-    local keepRows = GetCollapsedRowLimit()
-    local totalRows = #(self.sortedRows or {})
-    local showRows = math.max(1, math.min(keepRows, totalRows))
-    local scale = self.overrideScale or 1
-    local rowHeight = math.floor(MINI_CFG.rowHeight * scale + 0.5)
-    local rowGap = math.max(0, math.floor((MINI_CFG.rowGap or 0) * scale + 0.5))
-    local height = MINI_CFG.paddingY * 2 + showRows * rowHeight + math.max(0, showRows - 1) * rowGap + MINI_CFG.dragHeight
-    local left, top = GetFrameTopLeft()
-    frame:SetHeight(height)
-    RestoreFrameTopLeft(left, top)
     HideChrome()
     HideTooltip()
     self:RebuildRows()
@@ -626,13 +642,6 @@ function MiniFrame:Expand()
     if not frame or not self.isCollapsed then return end
     self.isCollapsed = false
     self.overrideScale = nil
-    local db = EnsureMiniDB()
-    local size = db.size or {}
-    local width = size.width or MINI_CFG.width
-    local height = size.height or MINI_CFG.height
-    local left, top = GetFrameTopLeft()
-    frame:SetSize(width, height)
-    RestoreFrameTopLeft(left, top)
     self.lastExpandedScale = GetScaleFactor()
     ShowChrome()
     self:RebuildRows()
@@ -765,9 +774,32 @@ function MiniFrame:Create()
     resizeHandle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizeHandle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizeHandle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    local function StartResizeTicker()
+        if resizeTicker then
+            return
+        end
+        resizeTicker = C_Timer.NewTicker(0.05, function()
+            if frame and frame:IsShown() then
+                self:RebuildRows()
+            end
+        end)
+    end
+
+    local function StopResizeTicker()
+        if resizeTicker then
+            resizeTicker:Cancel()
+            resizeTicker = nil
+        end
+    end
+
     resizeHandle:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then
             frame.isSizing = true
+            if resizeTimer then
+                resizeTimer:Cancel()
+                resizeTimer = nil
+            end
+            StartResizeTicker()
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
@@ -778,6 +810,7 @@ function MiniFrame:Create()
         frame.isSizing = false
         frame:StopMovingOrSizing()
         SaveFrameSize()
+        StopResizeTicker()
         self:RebuildRows()
         if not frame:IsMouseOver() then
             self:Collapse()
@@ -809,8 +842,12 @@ function MiniFrame:Create()
         self:StopTicker()
         HideTooltip()
         HideChrome()
+        StopResizeTicker()
     end)
     frame:SetScript("OnSizeChanged", function()
+        if frame.isSizing then
+            return
+        end
         if resizeTimer then
             resizeTimer:Cancel()
         end

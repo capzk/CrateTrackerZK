@@ -17,6 +17,7 @@
     <Script file="Locales/zhCN.lua"/>
     <Script file="Locales/zhTW.lua"/>
     <Script file="Locales/ruRU.lua"/>
+    <Script file="Locales/koKR.lua"/>
     <Script file="Locales/enUS.lua"/>
     
     <!-- 数据管理（代号系统配置优先） -->

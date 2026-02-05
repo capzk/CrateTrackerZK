@@ -2,7 +2,6 @@
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
-local L = CrateTrackerZK.L;
 local Commands = BuildEnv('Commands');
 
 Commands.isInitialized = false;
@@ -51,16 +50,13 @@ function Commands:HandleCommand(msg)
     elseif command == "off" then
         self:HandleAddonToggle(false);
     elseif command == "help" then
-        self:ShowHelp();
+        return;
     elseif command == "" or command == nil then
         if MainPanel and MainPanel.Toggle then
             MainPanel:Toggle();
-        else
-            self:ShowHelp();
         end
     else
-        Logger:Warn("Commands", "命令", string.format(L["UnknownCommand"], command));
-        self:ShowHelp();
+        return;
     end
 end
 
@@ -71,12 +67,9 @@ function Commands:HandleDebugCommand(arg)
     end
     local enableDebug = (arg == "on");
     Logger:SetDebugEnabled(enableDebug);
-    Logger:Info("Commands", "命令", enableDebug and "已开启调试" or "已关闭调试");
 end
 
 function Commands:HandleClearCommand(arg)
-    Logger:Debug("Commands", "命令", "正在清除所有时间和位面数据...");
-    
     if TimerManager then TimerManager:StopMapIconDetection() end
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
         CrateTrackerZK.phaseTimerTicker:Cancel();
@@ -166,7 +159,6 @@ function Commands:HandleClearCommand(arg)
 
     if CrateTrackerZK and CrateTrackerZK.Reinitialize then
         CrateTrackerZK:Reinitialize();
-        Logger:Success("Commands", "命令", L["DataCleared"]);
         if CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
             CrateTrackerZK:CreateFloatingButton();
         end
@@ -185,21 +177,15 @@ function Commands:HandleTeamNotificationCommand(arg)
         Notification:SetTeamNotificationEnabled(true);
     elseif arg == "off" or arg == "disable" then
         Notification:SetTeamNotificationEnabled(false);
-    else
-        Logger:Info("Commands", "命令", L["TeamUsage1"]);
-        Logger:Info("Commands", "命令", L["TeamUsage2"]);
-        Logger:Info("Commands", "命令", L["TeamUsage3"]);
     end
 end
 
 function Commands:HandleAddonToggle(enable)
     local currentlyEnabled = IsAddonEnabled();
     if enable and currentlyEnabled then
-        Logger:Info("Commands", "命令", "插件已处于开启状态");
         return;
     end
     if not enable and not currentlyEnabled then
-        Logger:Info("Commands", "命令", "插件已处于关闭状态");
         return;
     end
 
@@ -230,7 +216,6 @@ function Commands:HandleAddonToggle(enable)
         if MainPanel and MainPanel.StartUpdateTimer then
             MainPanel:StartUpdateTimer();
         end
-        Logger:Success("Commands", "命令", "插件已开启");
     else
         if Area then
             Area.detectionPaused = true;
@@ -256,7 +241,6 @@ function Commands:HandleAddonToggle(enable)
         if MainPanel and MainPanel.StopUpdateTimer then
             MainPanel:StopUpdateTimer();
         end
-        Logger:Success("Commands", "命令", "插件已关闭（功能暂停）");
     end
     
     if SettingsPanel and SettingsPanel.RefreshState then
@@ -265,10 +249,5 @@ function Commands:HandleAddonToggle(enable)
 end
 
 function Commands:ShowHelp()
-    Logger:Info("Commands", "帮助", "可用命令：");
-    Logger:Info("Commands", "帮助", "/ctk - 打开/关闭主界面");
-    Logger:Info("Commands", "帮助", "/ctk help - 显示帮助信息");
-    Logger:Info("Commands", "帮助", "/ctk clear 或 /ctk reset - 清除所有数据并重新初始化插件");
-    Logger:Info("Commands", "帮助", "/ctk team on|off - 开启/关闭团队通知");
-    Logger:Info("Commands", "帮助", "更多帮助信息请查看UI帮助菜单（点击主面板的'帮助'按钮）");
+    return;
 end

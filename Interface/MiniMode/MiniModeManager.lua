@@ -55,27 +55,17 @@ function MiniModeManager:HideAll()
     end
 end
 
-function MiniModeManager:UpdateButton(mode)
-    local button = BuildEnv("MiniModeButton")
-    if button and button.SetMode then
-        button:SetMode(mode or self:GetCurrentMode())
-    end
-end
-
 function MiniModeManager:CycleMode()
     if IsMiniShown() then
         self:HideAll()
-        self:UpdateButton("hidden")
         return "hidden"
     end
     if IsStandardShown() then
         self:ShowMini()
-        self:UpdateButton("mini")
         return "mini"
     end
 
     self:ShowStandard()
-    self:UpdateButton("standard")
     return "standard"
 end
 

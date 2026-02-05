@@ -20,9 +20,6 @@ localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
 
 localeData["MiniModeTooltipLine1"] = "Right-click to notify";
 
--- Startup message
-localeData["AddonLoadedMessage"] = "Addon started successfully. Use /ctk to open the addon.";
-
 -- Notifications (Airdrop)
 localeData["Enabled"] = "Team notifications enabled";
 localeData["Disabled"] = "Team notifications disabled";
@@ -35,13 +32,6 @@ localeData["AutoTeamReportMessage"] = "Current [%s] War Supplies in: %s!!";
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Current phasing ID: |cffffff00%s|r";
 localeData["InstanceChangedTo"] = "[%s] Current phasing ID changed to: |cffffff00%s|r";
-
--- Commands
-localeData["UnknownCommand"] = "Unknown command: %s";
-localeData["DataCleared"] = "All data cleared, addon reinitialized";
-localeData["TeamUsage1"] = "Team notification commands:";
-localeData["TeamUsage2"] = "/ctk team on - Enable team notification";
-localeData["TeamUsage3"] = "/ctk team off - Disable team notification";
 
 -- UI
 localeData["MapName"] = "Map Name";

@@ -20,9 +20,6 @@ localeData["FloatingButtonTooltipLine3"] = "右鍵開啟設定";
 
 localeData["MiniModeTooltipLine1"] = "右鍵發送通知";
 
--- 啟動提示
-localeData["AddonLoadedMessage"] = "插件已成功啟動，可使用/ctk命令打開插件。";
-
 -- 通知（空投）
 localeData["Enabled"] = "團隊通知已開啟";
 localeData["Disabled"] = "團隊通知已關閉";
@@ -35,13 +32,6 @@ localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還
 -- 位面檢測提示
 localeData["PhaseDetectedFirstTime"] = "【%s】當前位面ID：|cffffff00%s|r";
 localeData["InstanceChangedTo"] = "【%s】當前位面ID已變更為：|cffffff00%s|r";
-
--- 命令
-localeData["UnknownCommand"] = "未知命令：%s";
-localeData["DataCleared"] = "已清除所有資料，插件已重新初始化";
-localeData["TeamUsage1"] = "團隊通知命令：";
-localeData["TeamUsage2"] = "/ctk team on - 開啟團隊通知";
-localeData["TeamUsage3"] = "/ctk team off - 關閉團隊通知";
 
 -- UI
 localeData["MapName"] = "地圖名稱";
