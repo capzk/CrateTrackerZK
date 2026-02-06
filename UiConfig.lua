@@ -24,12 +24,12 @@ end
 
 -- 主框架配置 / Main frame (MainFrame.lua)
 UIConfig.mainFrame = {
-    background = {0, 0, 0, 0.15},               -- 主框架背景 / Background
+    background = {0, 0, 0, 0.35},               -- 主框架背景 / Background
 }
 
 -- 标题栏配置 / Title bar (MainFrame.lua)
 UIConfig.titleBar = {
-    background = {0, 0, 0, 0.10},               -- 标题栏背景 / Background
+    background = {0, 0, 0, 0.20},               -- 标题栏背景 / Background
     button = {255, 255, 255, 0.18},             -- 标题栏按钮 / Buttons
     buttonHover = {255, 255, 255, 0.28},        -- 标题栏悬停 / Button hover
 }
