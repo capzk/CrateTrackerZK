@@ -153,6 +153,10 @@ function MainPanel:CreateMainFrame()
         return nil
     end
 
+    frame.OnLayoutChanged = function()
+        self:UpdateTable(true)
+    end
+
     if CRATETRACKERZK_UI_DB.position then
         local pos = CRATETRACKERZK_UI_DB.position
         frame:ClearAllPoints()

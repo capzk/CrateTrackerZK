@@ -16,6 +16,21 @@ local ROW_STATE = {
 
 RowStateSystem.mainFrame = nil
 
+local function Clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function GetRowScale(parentFrame)
+    local scale = parentFrame and parentFrame.uiScale or 1
+    return Clamp(scale, 0.6, 1.25)
+end
+
 function RowStateSystem:InitializeRowState(rowId, isDeleted)
     rowStates[rowId] = {
         deleted = isDeleted == true,
@@ -125,10 +140,11 @@ end
 
 function RowStateSystem:CreateDeleteButton(parentFrame, rowId)
     local deleteBtn = CreateFrame("Button", nil, parentFrame)
-    deleteBtn:SetSize(80, 20)
-    local operationColumnStart = 120 + 100 + 120 + 100
-    local operationColumnWidth = 120
-    local columnCenter = operationColumnStart + operationColumnWidth / 2
+    local scale = GetRowScale(parentFrame)
+    local width = math.max(46, math.floor(80 * scale + 0.5))
+    local height = math.max(12, math.floor(20 * scale + 0.5))
+    deleteBtn:SetSize(width, height)
+    local columnCenter = parentFrame.operationColumnCenter or 500
     deleteBtn:SetPoint("CENTER", parentFrame, "LEFT", columnCenter, 0)
     deleteBtn:SetFrameLevel(parentFrame:GetFrameLevel() + 5)
 
@@ -143,6 +159,15 @@ function RowStateSystem:CreateDeleteButton(parentFrame, rowId)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
     text:SetShadowOffset(0, 0)
+    if text.GetFont and text.SetFont then
+        local font, size, flags = text:GetFont()
+        if not font then
+            local defaultFont, defaultSize, defaultFlags = GameFontNormal:GetFont()
+            font, size, flags = defaultFont, defaultSize, defaultFlags
+        end
+        local scaledSize = Clamp(math.floor((size or 12) * scale + 0.5), 8, 16)
+        text:SetFont(font, scaledSize, flags)
+    end
 
     deleteBtn:SetScript("OnClick", function()
         self:DeleteRow(rowId)
@@ -167,10 +192,11 @@ end
 
 function RowStateSystem:CreateRestoreButton(parentFrame, rowId)
     local restoreBtn = CreateFrame("Button", nil, parentFrame)
-    restoreBtn:SetSize(80, 20)
-    local operationColumnStart = 120 + 100 + 120 + 100
-    local operationColumnWidth = 120
-    local columnCenter = operationColumnStart + operationColumnWidth / 2
+    local scale = GetRowScale(parentFrame)
+    local width = math.max(46, math.floor(80 * scale + 0.5))
+    local height = math.max(12, math.floor(20 * scale + 0.5))
+    restoreBtn:SetSize(width, height)
+    local columnCenter = parentFrame.operationColumnCenter or 500
     restoreBtn:SetPoint("CENTER", parentFrame, "LEFT", columnCenter, 0)
     restoreBtn:SetFrameLevel(parentFrame:GetFrameLevel() + 5)
 
@@ -185,6 +211,15 @@ function RowStateSystem:CreateRestoreButton(parentFrame, rowId)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
     text:SetShadowOffset(0, 0)
+    if text.GetFont and text.SetFont then
+        local font, size, flags = text:GetFont()
+        if not font then
+            local defaultFont, defaultSize, defaultFlags = GameFontNormal:GetFont()
+            font, size, flags = defaultFont, defaultSize, defaultFlags
+        end
+        local scaledSize = Clamp(math.floor((size or 12) * scale + 0.5), 8, 16)
+        text:SetFont(font, scaledSize, flags)
+    end
 
     restoreBtn:SetScript("OnClick", function()
         self:RestoreRow(rowId)
@@ -242,9 +277,9 @@ function RowStateSystem:CreateCancelListener()
     if not self.mainFrame then return end
     self:RemoveCancelListener()
 
-    local tableClickListener = CreateFrame("Frame", nil, self.mainFrame)
-    tableClickListener:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 20, -23)
-    tableClickListener:SetPoint("BOTTOMRIGHT", self.mainFrame, "TOPLEFT", 580, -270)
+    local tableParent = self.mainFrame.tableContainer or self.mainFrame
+    local tableClickListener = CreateFrame("Frame", nil, tableParent)
+    tableClickListener:SetAllPoints(tableParent)
     tableClickListener:SetFrameLevel(1)
     tableClickListener:EnableMouse(true)
     tableClickListener:SetScript("OnMouseDown", function(_, button)

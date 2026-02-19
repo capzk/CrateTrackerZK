@@ -24,34 +24,34 @@ end
 
 -- 主框架配置 / Main frame (MainFrame.lua)
 UIConfig.mainFrame = {
-    background = {0, 0, 0, 0.35},               -- 主框架背景 / Background
+    background = {38, 51, 77, 0.95},               -- 主框架背景 / Background
 }
 
 -- 标题栏配置 / Title bar (MainFrame.lua)
 UIConfig.titleBar = {
     background = {0, 0, 0, 0.20},               -- 标题栏背景 / Background
-    button = {255, 255, 255, 0.18},             -- 标题栏按钮 / Buttons
+    button = {38, 51, 77, 0.95},             -- 标题栏按钮 / Buttons
     buttonHover = {255, 255, 255, 0.28},        -- 标题栏悬停 / Button hover
 }
 
 -- 表格配置 / Table (TableUI.lua)
 UIConfig.table = {
-    header = {255, 255, 255, 0.15},             -- 表头背景 / Header background
+    header = {26, 38, 51, 0.90},             -- 表头背景 / Header background
     actionButtonNormal = {0, 0, 0, 0},          -- 操作按钮常态 / Action button normal
     actionButtonHover = {255, 255, 255, 0.25},  -- 操作按钮悬停 / Action button hover
     
     -- 数据行背景 / Data row backgrounds
     rows = {
-        [1] = {255, 255, 255, 0.20},  -- 第1行 / Row 1
-        [2] = {255, 255, 255, 0.15},  -- 第2行 / Row 2
-        [3] = {255, 255, 255, 0.20},  -- 第3行 / Row 3
-        [4] = {255, 255, 255, 0.15},  -- 第4行 / Row 4
-        [5] = {255, 255, 255, 0.20},  -- 第5行 / Row 5
-        [6] = {255, 255, 255, 0.15},  -- 第6行 / Row 6
-        [7] = {255, 255, 255, 0.20},  -- 第7行 / Row 7
-        [8] = {255, 255, 255, 0.15},  -- 第8行 / Row 8
-        [9] = {255, 255, 255, 0.20},  -- 第9行 / Row 9
-        [10] = {255, 255, 255, 0.15}, -- 第10行 / Row 10
+        [1] = {26, 38, 51, 0.90},  -- 第1行 / Row 1
+        [2] = {26, 38, 51, 0.90},  -- 第2行 / Row 2
+        [3] = {26, 38, 51, 0.90},  -- 第3行 / Row 3
+        [4] = {26, 38, 51, 0.90},  -- 第4行 / Row 4
+        [5] = {26, 38, 51, 0.90},  -- 第5行 / Row 5
+        [6] = {26, 38, 51, 0.90},  -- 第6行 / Row 6
+        [7] = {26, 38, 51, 0.90},  -- 第7行 / Row 7
+        [8] = {26, 38, 51, 0.90},  -- 第8行 / Row 8
+        [9] = {26, 38, 51, 0.90},  -- 第9行 / Row 9
+        [10] = {26, 38, 51, 0.90}, -- 第10行 / Row 10
     }
 }
 
@@ -79,7 +79,7 @@ UIConfig.minimapButtonIcon = "Interface\\AddOns\\CrateTrackerZK\\Interface\\Asse
 
 -- 设置页配色 / Settings panel (SettingsPanel.lua)
 UIConfig.settingsTheme = {
-    background = {0, 0, 0, 0.55},          -- 背景 / Background
+    background = {26, 38, 51, 0.90},          -- 背景 / Background
     titleBar = {0, 0, 0, 0.40},            -- 顶栏 / Title bar
     panel = {235, 240, 250, 0.08},         -- 内容区 / Content
     navBg = {235, 240, 250, 0.06},         -- 导航底色 / Nav background

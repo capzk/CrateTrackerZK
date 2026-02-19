@@ -106,9 +106,6 @@ function Notification:SetAutoTeamReportEnabled(enabled)
     if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
         CrateTrackerZK:RestartAutoTeamReportTicker();
     end
-    if self.autoTeamReportEnabled and self:IsTeamNotificationEnabled() then
-        self:SendAutoTeamReport();
-    end
 end
 
 function Notification:SetAutoTeamReportInterval(seconds)
@@ -122,9 +119,6 @@ function Notification:SetAutoTeamReportInterval(seconds)
     end
     if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
         CrateTrackerZK:RestartAutoTeamReportTicker();
-    end
-    if self:IsAutoTeamReportEnabled() and self:IsTeamNotificationEnabled() then
-        self:SendAutoTeamReport();
     end
     return value;
 end
@@ -347,17 +341,10 @@ function Notification:SendAutoTeamReport()
     local message = BuildAutoTeamReportMessage(mapName, remaining);
     local chatType = self:GetTeamChatType();
     if chatType then
-        if chatType == "RAID" and IsInRaid() then
-            local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
-            local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
-            pcall(function()
-                SendChatMessage(message, raidChatType);
-            end);
-        else
-            pcall(function()
-                SendChatMessage(message, chatType);
-            end);
-        end
+        -- 自动通知固定使用普通团队/小队频道，避免触发团队警告音效
+        pcall(function()
+            SendChatMessage(message, chatType);
+        end);
     else
         if Logger and Logger.Info then
             Logger:Info("Notification", "通知", message);

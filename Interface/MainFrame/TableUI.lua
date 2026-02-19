@@ -11,11 +11,22 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local L = CrateTrackerZK.L
 
 local tableRows = {}
-local cachedColWidths = nil
 local measureText = nil
+local BASE_FRAME_WIDTH = 600
+local BASE_FRAME_HEIGHT = 335
+local BASE_ROW_HEIGHT = 35
+local MIN_FRAME_SCALE = 0.6
+local MAX_FRAME_SCALE = 1.25
 
 local function GetConfig()
     return UIConfig
+end
+
+local function GetTableParent(frame)
+    if frame and frame.tableContainer and frame.tableContainer.GetObjectType and frame.tableContainer:GetObjectType() == "Frame" then
+        return frame.tableContainer
+    end
+    return frame
 end
 
 local function GetMeasureText()
@@ -30,6 +41,42 @@ local function GetTextWidth(text)
     local fontString = GetMeasureText()
     fontString:SetText(text or "")
     return fontString:GetStringWidth() or 0
+end
+
+local function Clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function GetScaleFactor(frame)
+    if not frame then
+        return 1
+    end
+    local width = frame:GetWidth() or BASE_FRAME_WIDTH
+    local widthScale = width / BASE_FRAME_WIDTH
+    return Clamp(widthScale, MIN_FRAME_SCALE, MAX_FRAME_SCALE)
+end
+
+local function GetScaledFontSize(baseSize, scale)
+    local size = math.floor((baseSize or 12) * scale + 0.5)
+    return Clamp(size, 8, 18)
+end
+
+local function ApplyFontScale(fontString, scale)
+    if not fontString or not fontString.GetFont then
+        return
+    end
+    local font, size, flags = fontString:GetFont()
+    if not font then
+        local defaultFont, defaultSize, defaultFlags = GameFontNormal:GetFont()
+        font, size, flags = defaultFont, defaultSize, defaultFlags
+    end
+    fontString:SetFont(font, GetScaledFontSize(size or 12, scale or 1), flags)
 end
 
 local function GetStringLength(text)
@@ -162,15 +209,12 @@ local function DistributeWidths(desired, minWidths, maxWidths, total)
     return result
 end
 
-local function CalculateColumnWidths(rows, headerLabels)
-    if cachedColWidths then
-        return cachedColWidths
-    end
-    local totalWidth = 560
+local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale)
     local headers = headerLabels or {}
     local notifyText = L["Notify"] or "通知"
     local noRecord = L["NoRecord"] or "--:--"
     local notAcquired = L["NotAcquired"] or "---:---"
+    local widthScale = scale or 1
 
     local mapMax = GetTextWidth(headers[1] or "")
     for _, rowInfo in ipairs(rows or {}) do
@@ -183,16 +227,66 @@ local function CalculateColumnWidths(rows, headerLabels)
     end
 
     local desired = {
-        mapMax + 24,
-        GetMaxWidth({headers[2] or "", notAcquired, "0000-0000"}) + 20,
-        GetMaxWidth({headers[3] or "", noRecord, "00:00:00"}) + 18,
-        GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 18,
-        GetMaxWidth({headers[5] or "", notifyText}) + 20,
+        math.floor((mapMax + 24) * widthScale + 0.5),
+        math.floor((GetMaxWidth({headers[2] or "", notAcquired, "0000-0000"}) + 20) * widthScale + 0.5),
+        math.floor((GetMaxWidth({headers[3] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5),
+        math.floor((GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5),
+        math.floor((GetMaxWidth({headers[5] or "", notifyText}) + 20) * widthScale + 0.5),
     }
-    local minWidths = {120, 80, 100, 100, 80}
-    local maxWidths = {260, 140, 160, 160, 140}
-    cachedColWidths = DistributeWidths(desired, minWidths, maxWidths, totalWidth)
-    return cachedColWidths
+    local minWidths = {
+        math.floor(120 * widthScale + 0.5),
+        math.floor(80 * widthScale + 0.5),
+        math.floor(100 * widthScale + 0.5),
+        math.floor(100 * widthScale + 0.5),
+        math.floor(80 * widthScale + 0.5),
+    }
+    local maxWidths = {
+        math.floor(260 * widthScale + 0.5),
+        math.floor(140 * widthScale + 0.5),
+        math.floor(160 * widthScale + 0.5),
+        math.floor(160 * widthScale + 0.5),
+        math.floor(140 * widthScale + 0.5),
+    }
+    return DistributeWidths(desired, minWidths, maxWidths, totalWidth)
+end
+
+local function CalculateTableLayout(frame, rowCount)
+    local tableParent = GetTableParent(frame)
+    local contentWidth = tableParent and tableParent:GetWidth() or 0
+    local contentHeight = tableParent and tableParent:GetHeight() or 0
+
+    if contentWidth <= 1 then
+        local frameWidth = frame and frame:GetWidth() or BASE_FRAME_WIDTH
+        contentWidth = math.max(1, math.floor(frameWidth - 20))
+    end
+    if contentHeight <= 1 then
+        local frameHeight = frame and frame:GetHeight() or BASE_FRAME_HEIGHT
+        contentHeight = math.max(1, math.floor(frameHeight - 40))
+    end
+
+    local scale = GetScaleFactor(frame)
+    local baseRowHeight = math.floor(BASE_ROW_HEIGHT * scale + 0.5)
+    local rowGap = math.max(0, math.floor(2 * scale + 0.5))
+    local totalRows = math.max(1, (rowCount or 0) + 1)
+    local availableForRows = math.max(1, contentHeight - (totalRows - 1) * rowGap)
+    local fitRowHeight = math.floor(availableForRows / totalRows)
+    local rowHeight = math.min(baseRowHeight, fitRowHeight)
+    rowHeight = Clamp(rowHeight, 2, 44)
+
+    local usedHeight = totalRows * rowHeight + (totalRows - 1) * rowGap
+    if usedHeight > contentHeight then
+        rowHeight = math.max(2, math.floor((contentHeight - (totalRows - 1) * rowGap) / totalRows))
+    end
+
+    return {
+        parent = tableParent,
+        scale = scale,
+        rowHeight = rowHeight,
+        rowGap = rowGap,
+        tableWidth = math.max(1, math.floor(contentWidth + 0.5)),
+        startX = 0,
+        startY = 0,
+    }
 end
 
 local function IsAddonEnabled()
@@ -224,16 +318,13 @@ function TableUI:RebuildUI(frame, headerLabels)
         RowStateSystem:ClearRowRefs()
     end
 
-    local colWidths = CalculateColumnWidths(rows, headerLabels)
-    local rowHeight = 35
-    local tableWidth = 560
-    local startX = 20
-    local startY = 35
+    local layout = CalculateTableLayout(frame, #rows)
+    local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale)
 
-    self:CreateHeaderRow(frame, headerLabels, colWidths, rowHeight, tableWidth, startX, startY)
+    self:CreateHeaderRow(layout.parent, headerLabels, colWidths, layout)
 
     for displayIndex, rowInfo in ipairs(rows) do
-        self:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeight, startX, startY)
+        self:CreateDataRow(layout.parent, rowInfo, displayIndex, colWidths, layout)
     end
 
     if SortingSystem then
@@ -241,12 +332,12 @@ function TableUI:RebuildUI(frame, headerLabels)
     end
 end
 
-function TableUI:CreateHeaderRow(frame, headerLabels, colWidths, rowHeight, tableWidth, startX, startY)
+function TableUI:CreateHeaderRow(parent, headerLabels, colWidths, layout)
     local cfg = GetConfig()
-    local headerRowFrame = CreateFrame("Frame", nil, frame)
-    headerRowFrame:SetSize(tableWidth, rowHeight - 4)
-    headerRowFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", startX, -startY)
-    headerRowFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
+    local headerRowFrame = CreateFrame("Frame", nil, parent)
+    headerRowFrame:SetSize(layout.tableWidth, layout.rowHeight)
+    headerRowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -layout.startY)
+    headerRowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     headerRowFrame:SetAlpha(1.0)
 
     local headerBg = headerRowFrame:CreateTexture(nil, "BACKGROUND")
@@ -258,12 +349,12 @@ function TableUI:CreateHeaderRow(frame, headerLabels, colWidths, rowHeight, tabl
     for colIndex, label in ipairs(headerLabels) do
         if colIndex <= 5 then
             if colIndex == 4 then
-                local sortHeaderButton = self:CreateSortHeaderButton(headerRowFrame, label, colWidths[colIndex], rowHeight, currentX)
+                local sortHeaderButton = self:CreateSortHeaderButton(headerRowFrame, label, colWidths[colIndex], layout, currentX)
                 if SortingSystem then
                     SortingSystem:SetHeaderButton(sortHeaderButton)
                 end
             else
-                self:CreateHeaderText(headerRowFrame, label, colIndex, colWidths[colIndex], currentX, headerBg)
+                self:CreateHeaderText(headerRowFrame, label, colIndex, colWidths[colIndex], layout, currentX, headerBg)
             end
         end
         currentX = currentX + colWidths[colIndex]
@@ -272,10 +363,10 @@ function TableUI:CreateHeaderRow(frame, headerLabels, colWidths, rowHeight, tabl
     table.insert(tableRows, headerRowFrame)
 end
 
-function TableUI:CreateSortHeaderButton(parent, label, colWidth, rowHeight, currentX)
+function TableUI:CreateSortHeaderButton(parent, label, colWidth, layout, currentX)
     local cfg = GetConfig()
     local sortHeaderButton = CreateFrame("Button", nil, parent)
-    sortHeaderButton:SetSize(colWidth, rowHeight - 4)
+    sortHeaderButton:SetSize(colWidth, layout.rowHeight)
     sortHeaderButton:SetPoint("CENTER", parent, "LEFT", currentX + colWidth / 2, 0)
 
     local buttonBg = sortHeaderButton:CreateTexture(nil, "BACKGROUND")
@@ -290,6 +381,7 @@ function TableUI:CreateSortHeaderButton(parent, label, colWidth, rowHeight, curr
     buttonText:SetJustifyH("CENTER")
     buttonText:SetJustifyV("MIDDLE")
     buttonText:SetShadowOffset(0, 0)
+    ApplyFontScale(buttonText, layout.scale)
 
     sortHeaderButton:SetScript("OnClick", function()
         if SortingSystem then
@@ -308,12 +400,13 @@ function TableUI:CreateSortHeaderButton(parent, label, colWidth, rowHeight, curr
     return sortHeaderButton
 end
 
-function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, currentX, headerBg)
+function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, layout, currentX, headerBg)
     local cfg = GetConfig()
     local cellText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local leftPadding = math.floor(15 * (layout.scale or 1) + 0.5)
 
     if colIndex == 1 then
-        cellText:SetPoint("LEFT", headerBg, "LEFT", currentX + 15, 0)
+        cellText:SetPoint("LEFT", headerBg, "LEFT", currentX + leftPadding, 0)
         cellText:SetJustifyH("LEFT")
     else
         cellText:SetPoint("CENTER", headerBg, "LEFT", currentX + colWidth / 2, 0)
@@ -325,19 +418,22 @@ function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, currentX, h
     cellText:SetShadowOffset(0, 0)
     local textColor = cfg.GetTextColor("normal")
     cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
+    ApplyFontScale(cellText, layout.scale)
 end
 
-function TableUI:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeight, startX, startY)
+function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     local rowId = rowInfo.rowId
-    local actualRowIndex = displayIndex + 1
-    local tableWidth = 560
+    local actualRowIndex = displayIndex
 
-    local rowFrame = CreateFrame("Frame", nil, frame)
-    rowFrame:SetSize(tableWidth, rowHeight - 4)
-    rowFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", startX, -startY - actualRowIndex * rowHeight + rowHeight)
-    rowFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
+    local slotY = (layout.rowHeight + layout.rowGap) * actualRowIndex
+    local rowFrame = CreateFrame("Frame", nil, parent)
+    rowFrame:SetSize(layout.tableWidth, layout.rowHeight)
+    rowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
+    rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     rowFrame:SetAlpha(1.0)
     rowFrame:EnableMouse(true)
+    rowFrame.uiScale = layout.scale
+    rowFrame.uiRowHeight = layout.rowHeight
 
     local rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
     rowBg:SetAllPoints(rowFrame)
@@ -369,9 +465,9 @@ function TableUI:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeigh
         end
     end)
 
-    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
+    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale)
 
-    local notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
+    local notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, layout.scale)
     if RowStateSystem and notifyBtn then
         RowStateSystem:RegisterRowButtons(rowId, notifyBtn)
     end
@@ -379,9 +475,10 @@ function TableUI:CreateDataRow(frame, rowInfo, displayIndex, colWidths, rowHeigh
     table.insert(tableRows, rowFrame)
 end
 
-function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
+function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale)
     local cfg = GetConfig()
     local currentX = 0
+    local leftPadding = math.floor(15 * (scale or 1) + 0.5)
 
     local hasCurrentPhase = rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= ""
     local phaseText = L["NotAcquired"] or "---:---"
@@ -436,7 +533,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
         local cellText = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
         if colIndex == 1 then
-            cellText:SetPoint("LEFT", rowBg, "LEFT", currentX + 15, 0)
+            cellText:SetPoint("LEFT", rowBg, "LEFT", currentX + leftPadding, 0)
             cellText:SetJustifyH("LEFT")
         else
             cellText:SetPoint("CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
@@ -445,7 +542,8 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
 
         local textValue = colData.text or ""
         if colIndex == 1 then
-            local maxWidth = math.max(0, colWidths[1] - 24)
+            local padding = math.floor(24 * (scale or 1) + 0.5)
+            local maxWidth = math.max(0, colWidths[1] - padding)
             cellText:SetWidth(maxWidth)
             if cellText.SetWordWrap then
                 cellText:SetWordWrap(false)
@@ -462,6 +560,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
         end
         cellText:SetJustifyV("MIDDLE")
         cellText:SetShadowOffset(0, 0)
+        ApplyFontScale(cellText, scale)
 
         local textColor = colData.color or cfg.GetTextColor("normal")
         if rowInfo.isHidden then
@@ -478,10 +577,11 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg)
     end
 end
 
-function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
+function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, scale)
     local rowId = rowInfo.rowId
     local operationColumnStart = colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4]
     local columnCenter = operationColumnStart + colWidths[5] / 2
+    rowFrame.operationColumnCenter = columnCenter
     local notifyText = L["Notify"] or "通知"
     local notifyBtn = self:CreateActionButton(rowFrame, rowBg, notifyText, columnCenter, function()
         if rowInfo.isHidden then
@@ -490,17 +590,18 @@ function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg)
         if MainPanel and MainPanel.NotifyMapById then
             MainPanel:NotifyMapById(rowId)
         end
-    end, rowInfo.isHidden)
+    end, rowInfo.isHidden, scale)
     notifyBtn:ClearAllPoints()
     notifyBtn:SetPoint("CENTER", rowBg, "LEFT", columnCenter, 0)
 
     return notifyBtn
 end
 
-function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, isHidden)
+function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, isHidden, scale)
     local cfg = GetConfig()
     local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(30, 20)
+    local height = Clamp(math.floor(20 * (scale or 1) + 0.5), 18, 24)
+    btn:SetSize(30, height)
     btn:SetPoint("CENTER", parentBg, "LEFT", x, 0)
     btn:SetFrameLevel(parent:GetFrameLevel() + 1)
 
@@ -513,13 +614,14 @@ function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, isH
     btnText:SetJustifyH("CENTER")
     btnText:SetJustifyV("MIDDLE")
     btnText:SetShadowOffset(0, 0)
+    ApplyFontScale(btnText, scale)
     btn.label = btnText
 
     local textWidth = btnText:GetStringWidth() or 0
-    local minWidth = 30
-    local padding = 10
+    local minWidth = math.floor(30 * (scale or 1) + 0.5)
+    local padding = math.floor(10 * (scale or 1) + 0.5)
     local targetWidth = math.max(minWidth, textWidth + padding)
-    btn:SetSize(targetWidth, 20)
+    btn:SetSize(targetWidth, height)
 
     local normalTextColor = nil
     if isHidden then
