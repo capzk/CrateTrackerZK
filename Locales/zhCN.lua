@@ -17,8 +17,6 @@ local localeData = {};
 -- 浮动按钮
 localeData["FloatingButtonTooltipLine3"] = "右键打开设置";
 
-localeData["MiniModeTooltipLine1"] = "右键发送通知";
-
 -- 通知（空投）
 localeData["Enabled"] = "团队通知已开启";
 localeData["Disabled"] = "团队通知已关闭";
@@ -51,10 +49,12 @@ localeData["MenuAbout"] = "关于";
 -- 设置面板
 localeData["SettingsPanelTitle"] = "CrateTrackerZK - 设置";
 localeData["SettingsTabSettings"] = "设置";
+localeData["SettingsSectionExpansion"] = "版本设置";
 localeData["SettingsSectionControl"] = "插件控制";
 localeData["SettingsSectionData"] = "数据管理";
 localeData["SettingsSectionUI"] = "界面设置";
-localeData["SettingsMiniModeCollapsedRows"] = "极简模式列表折叠后保留的行数";
+localeData["SettingsExpansionVersion"] = "游戏版本";
+localeData["SettingsThemeSwitch"] = "界面主题";
 localeData["SettingsAddonToggle"] = "插件开关";
 localeData["SettingsTeamNotify"] = "团队通知";
 localeData["SettingsAutoReport"] = "自动通知";
@@ -62,8 +62,6 @@ localeData["SettingsAutoReportInterval"] = "通知频率（秒）";
 localeData["SettingsClearAllData"] = "清除所有数据";
 localeData["SettingsClearButton"] = "清除";
 localeData["SettingsClearDesc"] = "• 会清空所有空投时间与位面记录";
-localeData["SettingsUIConfigDesc"] = "• 界面风格可在 UiConfig.lua 调整";
-localeData["SettingsReloadDesc"] = "• 修改后使用 /reload 生效";
 localeData["SettingsToggleOn"] = "已开启";
 localeData["SettingsToggleOff"] = "已关闭";
 localeData["SettingsClearConfirmText"] = "确认清除所有数据并重新初始化？该操作不可撤销。";

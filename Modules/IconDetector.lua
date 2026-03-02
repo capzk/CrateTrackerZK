@@ -8,6 +8,8 @@ if not BuildEnv then
 end
 
 local IconDetector = BuildEnv('IconDetector');
+local Data = BuildEnv("Data");
+local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 
@@ -15,7 +17,21 @@ if not Utils then
     Utils = BuildEnv('Utils')
 end
 
-IconDetector.VIGNETTE_ID_AIRDROP = 3689;
+local function IsTargetAirdropVignetteID(vignetteID)
+    if type(vignetteID) ~= "number" then
+        return false;
+    end
+
+    if Data and Data.IsAirdropPlaneVignetteID and Data:IsAirdropPlaneVignetteID(vignetteID) then
+        return true;
+    end
+
+    if ExpansionConfig and ExpansionConfig.IsAirdropPlaneVignetteID and ExpansionConfig:IsAirdropPlaneVignetteID(vignetteID) then
+        return true;
+    end
+
+    return false;
+end
 
 -- 提取 SpawnUID（GUID 第7部分）
 local function ExtractSpawnUID(objectGUID)
@@ -64,7 +80,7 @@ function IconDetector:DetectIcon(currentMapID)
     for _, vignetteGUID in ipairs(vignettes) do
         local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID);
         if vignetteInfo then
-            if vignetteInfo.vignetteID == IconDetector.VIGNETTE_ID_AIRDROP then
+            if IsTargetAirdropVignetteID(vignetteInfo.vignetteID) then
                 local objectGUID = vignetteInfo.objectGUID;
                 local spawnUID = nil;
                 

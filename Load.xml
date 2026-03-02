@@ -20,6 +20,13 @@
     <Script file="Locales/koKR.lua"/>
     <Script file="Locales/enUS.lua"/>
     
+    <!-- 本地配置目录 -->
+    <Script file="Config/ExpansionConfig.lua"/>
+    <Script file="Config/ThemeConfig.lua"/>
+    <Script file="Config/Themes/Theme_001_Default.lua"/>
+    <Script file="Config/Themes/Theme_002_SeaGlass.lua"/>
+    <Script file="Config/Themes/Theme_003_LegacyGlass.lua"/>
+    
     <!-- 数据管理（代号系统配置优先） -->
         <Script file="Data/MapConfig.lua"/>
         <!-- 时间数据管理模块（在Data.lua之前加载） -->
@@ -37,9 +44,6 @@
     <Script file="Modules/Timer.lua"/>
     <Script file="Modules/Area.lua"/>
     <Script file="Modules/Phase.lua"/>
-    
-    <!-- 界面配置 -->
-    <Script file="UiConfig.lua"/>
     
     <!-- 核心逻辑 -->
     <Script file="Core/Core.lua"/>

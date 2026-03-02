@@ -8,6 +8,7 @@ if not BuildEnv then
 end
 
 local MapTracker = BuildEnv('MapTracker');
+local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 if not Data then
     Data = BuildEnv('Data')
@@ -41,6 +42,12 @@ function MapTracker:GetTargetMapData(currentMapID)
     local mapInfo = C_Map.GetMapInfo(currentMapID);
     if not mapInfo then
         Logger:DebugLimited("map_check:no_map_info", "MapTracker", "匹配", DT("DebugCannotGetMapName2"));
+        return nil;
+    end
+
+    if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(currentMapID) then
+        Logger:DebugLimited("map_check:main_city_" .. tostring(currentMapID), "MapTracker", "匹配", 
+            string.format("主城地图已排除，跳过匹配：地图ID=%d", currentMapID));
         return nil;
     end
     

@@ -1,9 +1,10 @@
 -- MainFrame.lua - 主框架
 
 local MainFrame = BuildEnv("MainFrame")
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local RowStateSystem = BuildEnv("RowStateSystem")
+local Data = BuildEnv("Data")
 
 local FRAME_CFG = {
     width = 600,
@@ -52,6 +53,54 @@ local function Clamp(value, minValue, maxValue)
         return maxValue
     end
     return value
+end
+
+local function GetConfiguredMapCount()
+    if Data and Data.GetAllMaps then
+        local maps = Data:GetAllMaps()
+        if maps and #maps > 0 then
+            return #maps
+        end
+    end
+    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
+        local count = #Data.MAP_CONFIG.current_maps
+        if count > 0 then
+            return count
+        end
+    end
+    return 7
+end
+
+local function GetAdaptiveBaseHeight()
+    local baseMapCount = 7
+    local perMapHeight = 39
+    local mapCount = GetConfiguredMapCount()
+    return FRAME_CFG.height + (mapCount - baseMapCount) * perMapHeight
+end
+
+local function GetAdaptiveHeightBounds()
+    local baseHeight = GetAdaptiveBaseHeight()
+    local minHeight = math.floor(baseHeight * FRAME_CFG.minScale + 0.5)
+    local maxHeight = math.floor(baseHeight * FRAME_CFG.maxScale + 0.5)
+    if minHeight > maxHeight then
+        minHeight, maxHeight = maxHeight, minHeight
+    end
+    return minHeight, maxHeight
+end
+
+local function GetAdaptiveDefaultHeight()
+    local baseHeight = GetAdaptiveBaseHeight()
+    local minHeight, maxHeight = GetAdaptiveHeightBounds()
+    return Clamp(math.floor(baseHeight + 0.5), minHeight, maxHeight)
+end
+
+local function GetAdaptiveHeightForWidth(width)
+    local baseHeight = GetAdaptiveBaseHeight()
+    local minHeight, maxHeight = GetAdaptiveHeightBounds()
+    local safeWidth = width or FRAME_CFG.width
+    local scale = Clamp(safeWidth / FRAME_CFG.width, FRAME_CFG.minScale, FRAME_CFG.maxScale)
+    local targetHeight = math.floor(baseHeight * scale + 0.5)
+    return Clamp(targetHeight, minHeight, maxHeight), scale
 end
 
 local function ApplyFontScale(fontString, scale, minSize, maxSize)
@@ -176,8 +225,7 @@ function MainFrame:NormalizeSize(frame)
         return
     end
     local currentWidth = frame:GetWidth() or FRAME_CFG.width
-    local scale = Clamp(currentWidth / FRAME_CFG.width, FRAME_CFG.minScale, FRAME_CFG.maxScale)
-    local targetHeight = math.floor(FRAME_CFG.height * scale + 0.5)
+    local targetHeight, scale = GetAdaptiveHeightForWidth(currentWidth)
     local currentHeight = frame:GetHeight() or targetHeight
 
     if math.abs(currentHeight - targetHeight) > 0.5 then
@@ -188,25 +236,51 @@ function MainFrame:NormalizeSize(frame)
     self:ApplyScaledChrome(frame, scale)
 end
 
+function MainFrame:ApplyAdaptiveResizeBounds(frame)
+    if not frame then
+        return
+    end
+    local minHeight, maxHeight = GetAdaptiveHeightBounds()
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(FRAME_CFG.minWidth, minHeight, FRAME_CFG.maxWidth, maxHeight)
+    else
+        if frame.SetMinResize then
+            frame:SetMinResize(FRAME_CFG.minWidth, minHeight)
+        end
+        if frame.SetMaxResize then
+            frame:SetMaxResize(FRAME_CFG.maxWidth, maxHeight)
+        end
+    end
+end
+
+function MainFrame:ApplyAdaptiveHeight(frame)
+    if not frame then
+        return
+    end
+    self:ApplyAdaptiveResizeBounds(frame)
+    local currentWidth = frame:GetWidth() or FRAME_CFG.width
+    local targetHeight, scale = GetAdaptiveHeightForWidth(currentWidth)
+    local currentHeight = frame:GetHeight() or targetHeight
+
+    if math.abs(currentHeight - targetHeight) > 0.5 then
+        frame.isNormalizingSize = true
+        frame:SetHeight(targetHeight)
+        frame.isNormalizingSize = nil
+    end
+    self:ApplyScaledChrome(frame, scale)
+    NotifyLayoutChangedIfNeeded(frame)
+end
+
 function MainFrame:Create()
     local frame = CreateFrame("Frame", "CrateTrackerZKFrame", UIParent)
-    frame:SetSize(FRAME_CFG.width, FRAME_CFG.height)
+    frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetClampedToScreen(true)
     frame:SetResizable(true)
-    if frame.SetResizeBounds then
-        frame:SetResizeBounds(FRAME_CFG.minWidth, FRAME_CFG.minHeight, FRAME_CFG.maxWidth, FRAME_CFG.maxHeight)
-    else
-        if frame.SetMinResize then
-            frame:SetMinResize(FRAME_CFG.minWidth, FRAME_CFG.minHeight)
-        end
-        if frame.SetMaxResize then
-            frame:SetMaxResize(FRAME_CFG.maxWidth, FRAME_CFG.maxHeight)
-        end
-    end
+    self:ApplyAdaptiveResizeBounds(frame)
 
     self:ApplySavedSize(frame)
 
@@ -215,6 +289,7 @@ function MainFrame:Create()
     self:CreateTableContainer(frame)
     self:CreateResizeHandle(frame)
     self:ApplyScaledChrome(frame, GetFrameScale(frame))
+    self:ApplyThemeColors(frame)
 
     frame:SetScript("OnSizeChanged", function()
         if not frame.isNormalizingSize then
@@ -249,14 +324,16 @@ end
 function MainFrame:ApplySavedSize(frame)
     EnsureUIState()
     local size = CRATETRACKERZK_UI_DB.mainFrameSize
+    local minHeight, maxHeight = GetAdaptiveHeightBounds()
     if not size then
-        self:ApplyScaledChrome(frame, 1)
+        frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
+        self:NormalizeSize(frame)
         return
     end
     local width = tonumber(size.width) or FRAME_CFG.width
     local height = tonumber(size.height) or FRAME_CFG.height
     width = math.max(FRAME_CFG.minWidth, math.min(FRAME_CFG.maxWidth, width))
-    height = math.max(FRAME_CFG.minHeight, math.min(FRAME_CFG.maxHeight, height))
+    height = math.max(minHeight, math.min(maxHeight, height))
     frame:SetSize(width, height)
     self:NormalizeSize(frame)
 end
@@ -266,6 +343,7 @@ function MainFrame:CreateBackground(frame)
     bg:SetAllPoints(frame)
     local bgColor = UIConfig.GetColor("mainFrameBackground")
     bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    frame.mainBg = bg
 
     self:CreateDragArea(frame)
 end
@@ -384,6 +462,7 @@ function MainFrame:CreateSettingsButton(frame)
     end)
 
     frame.settingsButton = settingsButton
+    frame.settingsButtonBg = settingsBg
     frame.settingsDot1 = dot1
     frame.settingsDot2 = dot2
     frame.settingsDot3 = dot3
@@ -420,7 +499,51 @@ function MainFrame:CreateCloseButton(frame)
     end)
 
     frame.closeButton = closeButton
+    frame.closeButtonBg = closeBg
     frame.closeLine = line
+end
+
+function MainFrame:ApplyThemeColors(frame)
+    if not frame then
+        return
+    end
+
+    local mainBgColor = UIConfig.GetColor("mainFrameBackground")
+    if frame.mainBg then
+        frame.mainBg:SetColorTexture(mainBgColor[1], mainBgColor[2], mainBgColor[3], mainBgColor[4])
+    end
+
+    local titleBarColor = UIConfig.GetColor("titleBarBackground")
+    if frame.titleBg then
+        frame.titleBg:SetColorTexture(titleBarColor[1], titleBarColor[2], titleBarColor[3], titleBarColor[4])
+    end
+
+    local titleColor = UIConfig.GetTextColor("normal")
+    if frame.titleText then
+        frame.titleText:SetTextColor(titleColor[1], titleColor[2], titleColor[3], titleColor[4])
+    end
+
+    local buttonColor = UIConfig.GetColor("titleBarButton")
+    if frame.settingsButtonBg then
+        frame.settingsButtonBg:SetColorTexture(buttonColor[1], buttonColor[2], buttonColor[3], buttonColor[4])
+    end
+    if frame.closeButtonBg then
+        frame.closeButtonBg:SetColorTexture(buttonColor[1], buttonColor[2], buttonColor[3], buttonColor[4])
+    end
+
+    local normalTextColor = UIConfig.GetTextColor("normal")
+    if frame.settingsDot1 then
+        frame.settingsDot1:SetColorTexture(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    end
+    if frame.settingsDot2 then
+        frame.settingsDot2:SetColorTexture(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    end
+    if frame.settingsDot3 then
+        frame.settingsDot3:SetColorTexture(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    end
+    if frame.closeLine then
+        frame.closeLine:SetColorTexture(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    end
 end
 
 function MainFrame:CreateTableContainer(frame)
@@ -444,12 +567,99 @@ function MainFrame:CreateResizeHandle(frame)
     resizeHandle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizeHandle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
 
+    local function SetResizeHandleVisible(visible)
+        if not resizeHandle then
+            return
+        end
+        if frame.resizeHandleVisible == visible then
+            return
+        end
+        frame.resizeHandleVisible = visible
+        if visible then
+            resizeHandle:EnableMouse(true)
+            if resizeHandle.SetAlpha then
+                resizeHandle:SetAlpha(1)
+            end
+            resizeHandle:Show()
+        else
+            resizeHandle:EnableMouse(false)
+            if resizeHandle.SetAlpha then
+                resizeHandle:SetAlpha(0)
+                resizeHandle:Show()
+            else
+                resizeHandle:Hide()
+            end
+        end
+    end
+
+    local function IsCursorInsideFrame()
+        if not frame or not frame:IsShown() then
+            return false
+        end
+        local left, right = frame:GetLeft(), frame:GetRight()
+        local top, bottom = frame:GetTop(), frame:GetBottom()
+        if not left or not right or not top or not bottom then
+            return false
+        end
+        local x, y = GetCursorPosition()
+        local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if scale and scale > 0 then
+            x = x / scale
+            y = y / scale
+        end
+        return x >= left and x <= right and y >= bottom and y <= top
+    end
+
+    local function ShouldShowResizeHandle()
+        if not frame or not frame:IsShown() then
+            return false
+        end
+        if frame.isSizing then
+            return true
+        end
+        return IsCursorInsideFrame()
+    end
+
+    local function CancelHideTimer()
+        if frame.resizeHideTimer then
+            frame.resizeHideTimer:Cancel()
+            frame.resizeHideTimer = nil
+        end
+    end
+
+    local HIDE_DELAY_SECONDS = 2.0
+
+    local function ScheduleHideIfNeeded()
+        CancelHideTimer()
+        frame.resizeHideTimer = C_Timer.NewTimer(HIDE_DELAY_SECONDS, function()
+            frame.resizeHideTimer = nil
+            if not frame or not frame:IsShown() then
+                return
+            end
+            if frame.isSizing then
+                return
+            end
+            if IsCursorInsideFrame() then
+                return
+            end
+            SetResizeHandleVisible(false)
+        end)
+    end
+
+    local StopSizing
+
     local function StartLayoutRefreshTicker()
         if frame.layoutRefreshTicker then
             return
         end
         frame.layoutRefreshTicker = C_Timer.NewTicker(0.016, function()
             if not frame or not frame:IsShown() or not frame.isSizing then
+                return
+            end
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                if StopSizing then
+                    StopSizing()
+                end
                 return
             end
             NotifyLayoutChangedIfNeeded(frame)
@@ -463,7 +673,7 @@ function MainFrame:CreateResizeHandle(frame)
         end
     end
 
-    local function StopSizing()
+    StopSizing = function()
         if not frame.isSizing then
             return
         end
@@ -473,6 +683,12 @@ function MainFrame:CreateResizeHandle(frame)
         self:NormalizeSize(frame)
         SaveFrameSize(frame)
         NotifyLayoutChangedIfNeeded(frame)
+        CancelHideTimer()
+        if ShouldShowResizeHandle() then
+            SetResizeHandleVisible(true)
+        else
+            ScheduleHideIfNeeded()
+        end
     end
 
     resizeHandle:SetScript("OnMouseDown", function(_, button)
@@ -480,6 +696,7 @@ function MainFrame:CreateResizeHandle(frame)
             return
         end
         frame.isSizing = true
+        SetResizeHandleVisible(true)
         StartLayoutRefreshTicker()
         frame:StartSizing("BOTTOMRIGHT")
         NotifyLayoutChangedIfNeeded(frame)
@@ -495,11 +712,33 @@ function MainFrame:CreateResizeHandle(frame)
         end
     end)
 
+    frame:SetScript("OnEnter", function()
+        CancelHideTimer()
+        SetResizeHandleVisible(true)
+    end)
+
+    frame:SetScript("OnLeave", function()
+        if frame.isSizing then
+            return
+        end
+        ScheduleHideIfNeeded()
+    end)
+
+    frame:SetScript("OnShow", function()
+        CancelHideTimer()
+        SetResizeHandleVisible(ShouldShowResizeHandle())
+    end)
+
     frame:SetScript("OnHide", function()
         StopLayoutRefreshTicker()
+        CancelHideTimer()
+        frame.isSizing = false
+        SetResizeHandleVisible(false)
     end)
 
     frame.mainFrameResizeHandle = resizeHandle
+    frame.resizeHandleVisible = nil
+    SetResizeHandleVisible(false)
 end
 
 return MainFrame

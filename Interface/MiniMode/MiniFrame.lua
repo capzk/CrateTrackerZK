@@ -2,10 +2,11 @@
 
 local MiniFrame = BuildEnv("MiniFrame")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 local MainPanel = BuildEnv("MainPanel")
 local Data = BuildEnv("Data")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
+local ExpansionConfig = BuildEnv("ExpansionConfig")
 local L = CrateTrackerZK.L
 
 local frame = nil
@@ -48,6 +49,54 @@ local function EnsureMiniDB()
     end
     CRATETRACKERZK_UI_DB.miniMode = CRATETRACKERZK_UI_DB.miniMode or {}
     return CRATETRACKERZK_UI_DB.miniMode
+end
+
+local function GetHiddenMaps()
+    if Data and Data.GetHiddenMaps then
+        return Data:GetHiddenMaps()
+    end
+    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {}
+    end
+    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData = {}
+    end
+    local expansionID = "default"
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        expansionID = ExpansionConfig:GetCurrentExpansionID() or expansionID
+    end
+    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {}
+    end
+    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID]
+    if type(bucket.hiddenMaps) ~= "table" then
+        bucket.hiddenMaps = {}
+    end
+    return bucket.hiddenMaps
+end
+
+local function GetHiddenRemainingStore()
+    if Data and Data.GetHiddenRemaining then
+        return Data:GetHiddenRemaining()
+    end
+    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {}
+    end
+    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData = {}
+    end
+    local expansionID = "default"
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        expansionID = ExpansionConfig:GetCurrentExpansionID() or expansionID
+    end
+    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {}
+    end
+    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID]
+    if type(bucket.hiddenRemaining) ~= "table" then
+        bucket.hiddenRemaining = {}
+    end
+    return bucket.hiddenRemaining
 end
 
 local function GetCollapsedRowLimit()
@@ -231,13 +280,13 @@ end
 
 local function IsHiddenMap(mapData)
     if not mapData then return false end
-    local hiddenMaps = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps or {}
+    local hiddenMaps = GetHiddenMaps()
     return hiddenMaps and hiddenMaps[mapData.mapID] == true
 end
 
 local function GetHiddenRemaining(mapData)
     if not mapData then return nil end
-    local hiddenRemaining = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenRemaining or {}
+    local hiddenRemaining = GetHiddenRemainingStore()
     local value = hiddenRemaining and hiddenRemaining[mapData.mapID]
     if value and value < 0 then
         value = 0
@@ -407,7 +456,7 @@ local function ShowUnifiedTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     ApplyTooltipStyle()
     GameTooltip:ClearLines()
-    GameTooltip:AddLine(LT("MiniModeTooltipLine1", "右键发送通知"), 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("右键发送通知", 0.8, 0.8, 0.8)
     GameTooltip:Show()
 end
 

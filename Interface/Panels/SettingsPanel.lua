@@ -2,11 +2,14 @@
 
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local UIConfig = BuildEnv("UIConfig")
+local ThemeConfig = BuildEnv("ThemeConfig")
 local HelpTextProvider = BuildEnv("HelpTextProvider")
 local AboutTextProvider = BuildEnv("AboutTextProvider")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
+local MainPanel = BuildEnv("MainPanel")
+local Data = BuildEnv("Data")
+local ExpansionConfig = BuildEnv("ExpansionConfig")
 local L = CrateTrackerZK.L
 
 local TAB_SETTINGS = "settings"
@@ -55,16 +58,16 @@ end
 
 local function GetTheme()
     return {
-        background = UIConfig.GetSettingsColor("background"),
-        titleBar = UIConfig.GetSettingsColor("titleBar"),
-        panel = UIConfig.GetSettingsColor("panel"),
-        navBg = UIConfig.GetSettingsColor("navBg"),
-        navItem = UIConfig.GetSettingsColor("navItem"),
-        navItemActive = UIConfig.GetSettingsColor("navItemActive"),
-        navIndicator = UIConfig.GetSettingsColor("navIndicator"),
-        button = UIConfig.GetSettingsColor("button"),
-        buttonHover = UIConfig.GetSettingsColor("buttonHover"),
-        text = UIConfig.GetSettingsColor("text"),
+        background = ThemeConfig.GetSettingsColor("background"),
+        titleBar = ThemeConfig.GetSettingsColor("titleBar"),
+        panel = ThemeConfig.GetSettingsColor("panel"),
+        navBg = ThemeConfig.GetSettingsColor("navBg"),
+        navItem = ThemeConfig.GetSettingsColor("navItem"),
+        navItemActive = ThemeConfig.GetSettingsColor("navItemActive"),
+        navIndicator = ThemeConfig.GetSettingsColor("navIndicator"),
+        button = ThemeConfig.GetSettingsColor("button"),
+        buttonHover = ThemeConfig.GetSettingsColor("buttonHover"),
+        text = ThemeConfig.GetSettingsColor("text"),
     }
 end
 
@@ -184,36 +187,115 @@ local function GetAutoTeamReportInterval()
     return 60
 end
 
-local function GetMiniModeCollapsedRows()
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.miniMode and CRATETRACKERZK_UI_DB.miniMode.collapsedRows ~= nil then
-        local value = tonumber(CRATETRACKERZK_UI_DB.miniMode.collapsedRows)
-        if value and value >= 1 then
-            return math.floor(value)
-        end
-    end
-    return 7
+local function IsExpansionSwitchEnabled()
+    return ExpansionConfig and ExpansionConfig.IsSwitchEnabled and ExpansionConfig:IsSwitchEnabled()
 end
 
-local function ApplyMiniModeCollapsedRows(editBox)
-    if not editBox then
+local function GetExpansionOptions()
+    if ExpansionConfig and ExpansionConfig.GetAvailableExpansions then
+        return ExpansionConfig:GetAvailableExpansions() or {}
+    end
+    return {}
+end
+
+local function GetCurrentExpansionButtonText()
+    if not IsExpansionSwitchEnabled() then
+        return LT("SettingsToggleOff", "已关闭")
+    end
+    local expansionID = ExpansionConfig and ExpansionConfig.GetCurrentExpansionID and ExpansionConfig:GetCurrentExpansionID()
+    local options = GetExpansionOptions()
+    for _, option in ipairs(options) do
+        if option.id == expansionID then
+            return option.id
+        end
+    end
+    return expansionID or "N/A"
+end
+
+local function CycleExpansionVersion()
+    if not IsExpansionSwitchEnabled() then
         return
     end
-    local value = tonumber(editBox:GetText())
-    if not value then
-        value = GetMiniModeCollapsedRows()
+    if not ExpansionConfig or not ExpansionConfig.GetCurrentExpansionID or not ExpansionConfig.GetNextExpansionID then
+        return
     end
-    value = math.floor(value)
-    if value < 1 then
-        value = 1
-    elseif value > 20 then
-        value = 20
+
+    local currentID = ExpansionConfig:GetCurrentExpansionID()
+    local nextID = ExpansionConfig:GetNextExpansionID(currentID)
+    if not nextID or nextID == currentID then
+        return
     end
-    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
-        CRATETRACKERZK_UI_DB = {}
+
+    if Data and Data.SwitchExpansion then
+        Data:SwitchExpansion(nextID)
+    elseif ExpansionConfig.SetCurrentExpansionID then
+        ExpansionConfig:SetCurrentExpansionID(nextID)
     end
-    CRATETRACKERZK_UI_DB.miniMode = CRATETRACKERZK_UI_DB.miniMode or {}
-    CRATETRACKERZK_UI_DB.miniMode.collapsedRows = value
-    editBox:SetText(tostring(value))
+
+    if CrateTrackerZK and CrateTrackerZK.Reinitialize then
+        CrateTrackerZK:Reinitialize()
+    end
+end
+
+local function IsThemeSwitchEnabled()
+    return ThemeConfig and ThemeConfig.IsSwitchEnabled and ThemeConfig:IsSwitchEnabled()
+end
+
+local function GetThemeOptions()
+    if ThemeConfig and ThemeConfig.GetThemeList then
+        return ThemeConfig:GetThemeList() or {}
+    end
+    return {}
+end
+
+local function GetCurrentThemeButtonText()
+    if not IsThemeSwitchEnabled() then
+        return LT("SettingsToggleOff", "已关闭")
+    end
+    local currentID = ThemeConfig and ThemeConfig.GetCurrentThemeID and ThemeConfig.GetCurrentThemeID()
+    local options = GetThemeOptions()
+    for _, option in ipairs(options) do
+        if option.id == currentID then
+            return option.label or option.id
+        end
+    end
+    return currentID or "N/A"
+end
+
+local function CycleTheme()
+    if not IsThemeSwitchEnabled() then
+        return
+    end
+    if not ThemeConfig or not ThemeConfig.GetCurrentThemeID or not ThemeConfig.SetCurrentThemeID then
+        return
+    end
+    local options = GetThemeOptions()
+    if #options == 0 then
+        return
+    end
+
+    local currentID = ThemeConfig.GetCurrentThemeID()
+    local currentIndex = 1
+    for i, option in ipairs(options) do
+        if option.id == currentID then
+            currentIndex = i
+            break
+        end
+    end
+    local nextIndex = currentIndex + 1
+    if nextIndex > #options then
+        nextIndex = 1
+    end
+    local nextID = options[nextIndex].id
+    if nextID then
+        ThemeConfig:SetCurrentThemeID(nextID)
+    end
+
+    if MainPanel and MainPanel.RefreshTheme then
+        MainPanel:RefreshTheme()
+    elseif MainPanel and MainPanel.UpdateTable then
+        MainPanel:UpdateTable(true)
+    end
 end
 
 local function EnsureClearDialog()
@@ -275,6 +357,8 @@ local function UpdateSettingsState()
     UpdateToggleButtonState(settingControls.autoReport, autoEnabled)
     SetControlEnabled(settingControls.teamNotify, addonEnabled)
     SetControlEnabled(settingControls.autoReport, addonEnabled and teamEnabled)
+    SetControlEnabled(settingControls.expansionSwitch, addonEnabled and IsExpansionSwitchEnabled())
+    SetControlEnabled(settingControls.themeSwitch, IsThemeSwitchEnabled())
     SetControlEnabled(settingControls.clearData, addonEnabled)
     local autoControl = settingControls.autoReport
     if autoControl and autoControl.button and autoControl.text then
@@ -312,9 +396,11 @@ local function UpdateSettingsState()
         end
     end
 
-    local miniControl = settingControls.miniCollapsedRows
-    if miniControl and miniControl.editBox and not miniControl.editBox:HasFocus() then
-        miniControl.editBox:SetText(tostring(GetMiniModeCollapsedRows()))
+    if settingControls.expansionSwitch and settingControls.expansionSwitch.text then
+        settingControls.expansionSwitch.text:SetText(GetCurrentExpansionButtonText())
+    end
+    if settingControls.themeSwitch and settingControls.themeSwitch.text then
+        settingControls.themeSwitch.text:SetText(GetCurrentThemeButtonText())
     end
 end
 
@@ -471,9 +557,21 @@ function SettingsPanel:CreateFrame()
         contentArea:Hide()
 
         if tabKey == TAB_SETTINGS then
+            local SECTION_X = 10
+            local ITEM_X = 24
+            local NOTE_X = 36
+
+            local function IndentText(level, text)
+                local depth = tonumber(level) or 0
+                if depth < 0 then
+                    depth = 0
+                end
+                return string.rep("  ", depth) .. (text or "")
+            end
+
             local function AddToggleRow(label, controlKey, onClick, yOffset)
                 local rowLabel = CreateNoShadowText(contentArea, "GameFontNormal", label)
-                rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, yOffset)
+                rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, yOffset)
 
                 local button, text = CreateSettingButton(contentArea, "")
                 button:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, yOffset + 2)
@@ -491,34 +589,61 @@ function SettingsPanel:CreateFrame()
                 }
             end
 
+            local function AddCycleRow(label, controlKey, onClick, yOffset)
+                local rowLabel = CreateNoShadowText(contentArea, "GameFontNormal", label)
+                rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, yOffset)
+
+                local button, text = CreateSettingButton(contentArea, "")
+                button:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, yOffset + 2)
+                button:SetScript("OnClick", function()
+                    onClick()
+                    UpdateSettingsState()
+                end)
+
+                settingControls[controlKey] = {
+                    button = button,
+                    text = text,
+                    label = rowLabel,
+                }
+            end
+
             local y = -10
-            local controlTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionControl", "插件控制"))
-            controlTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            local expansionTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionExpansion", "版本设置"))
+            expansionTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
 
             y = y - 30
-            AddToggleRow(LT("SettingsAddonToggle", "插件开关"), "addon", function()
+            AddCycleRow(IndentText(1, LT("SettingsExpansionVersion", "游戏版本")), "expansionSwitch", function()
+                CycleExpansionVersion()
+            end, y)
+
+            y = y - 40
+            local controlTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionControl", "插件控制"))
+            controlTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
+
+            y = y - 30
+            AddToggleRow(IndentText(1, LT("SettingsAddonToggle", "插件开关")), "addon", function()
                 if Commands and Commands.HandleAddonToggle then
                     Commands:HandleAddonToggle(not IsAddonEnabled())
                 end
             end, y)
 
             y = y - 28
-            AddToggleRow(LT("SettingsTeamNotify", "团队通知"), "teamNotify", function()
+            AddToggleRow(IndentText(1, LT("SettingsTeamNotify", "团队通知")), "teamNotify", function()
                 if Notification and Notification.SetTeamNotificationEnabled then
                     Notification:SetTeamNotificationEnabled(not IsTeamNotificationEnabled())
                 end
             end, y)
 
             y = y - 28
-            AddToggleRow(LT("SettingsAutoReport", "自动通知"), "autoReport", function()
+            AddToggleRow(IndentText(1, LT("SettingsAutoReport", "自动通知")), "autoReport", function()
                 if Notification and Notification.SetAutoTeamReportEnabled then
                     Notification:SetAutoTeamReportEnabled(not IsAutoTeamReportEnabled())
                 end
             end, y)
 
             y = y - 28
-            local intervalLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsAutoReportInterval", "通知频率（秒）"))
-            intervalLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            local intervalLabel = CreateNoShadowText(contentArea, "GameFontNormal", IndentText(1, LT("SettingsAutoReportInterval", "通知频率（秒）")))
+            intervalLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, y)
 
             local intervalBox = CreateFrame("EditBox", nil, contentArea)
             intervalBox:SetSize(70, 22)
@@ -554,11 +679,11 @@ function SettingsPanel:CreateFrame()
 
             y = y - 40
             local dataTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionData", "数据管理"))
-            dataTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            dataTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
 
             y = y - 30
-            local clearLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearAllData", "清除所有数据"))
-            clearLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            local clearLabel = CreateNoShadowText(contentArea, "GameFontNormal", IndentText(1, LT("SettingsClearAllData", "清除所有数据")))
+            clearLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, y)
 
             local clearBtn, clearText = CreateSettingButton(contentArea, LT("SettingsClearButton", "清除"))
             clearBtn:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
@@ -577,58 +702,19 @@ function SettingsPanel:CreateFrame()
 
             y = y - 24
             local clearDesc = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearDesc", "• 会清空所有空投时间与位面记录"))
-            clearDesc:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            clearDesc:SetPoint("TOPLEFT", contentArea, "TOPLEFT", NOTE_X, y)
             if settingControls.clearData then
                 settingControls.clearData.desc = clearDesc
             end
 
             y = y - 40
             local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionUI", "界面设置"))
-            settingsTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            settingsTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
 
-            y = y - 28
-            local miniRowsLabel = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsMiniModeCollapsedRows", "极简模式列表折叠后保留的行数"))
-            miniRowsLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
-
-            local miniRowsBox = CreateFrame("EditBox", nil, contentArea)
-            miniRowsBox:SetSize(70, 22)
-            miniRowsBox:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
-            miniRowsBox:SetAutoFocus(false)
-            miniRowsBox:SetFontObject("GameFontNormal")
-            miniRowsBox:SetJustifyH("CENTER")
-            miniRowsBox:SetNumeric(true)
-            miniRowsBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
-            miniRowsBox:SetShadowOffset(0, 0)
-
-            local miniRowsBg = miniRowsBox:CreateTexture(nil, "BACKGROUND")
-            miniRowsBg:SetAllPoints(miniRowsBox)
-            miniRowsBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-
-            miniRowsBox:SetScript("OnEscapePressed", function(self)
-                self:ClearFocus()
-                self:SetText(tostring(GetMiniModeCollapsedRows()))
-            end)
-            miniRowsBox:SetScript("OnEnterPressed", function(self)
-                ApplyMiniModeCollapsedRows(self)
-                self:ClearFocus()
-            end)
-            miniRowsBox:SetScript("OnEditFocusLost", function(self)
-                ApplyMiniModeCollapsedRows(self)
-            end)
-
-            settingControls.miniCollapsedRows = {
-                editBox = miniRowsBox,
-                bg = miniRowsBg,
-                label = miniRowsLabel,
-            }
-
-            y = y - 28
-            local desc1 = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsUIConfigDesc", "• 界面风格可在 UiConfig.lua 调整"))
-            desc1:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
-
-            y = y - 20
-            local desc2 = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsReloadDesc", "• 修改后使用 /reload 生效"))
-            desc2:SetPoint("TOPLEFT", contentArea, "TOPLEFT", 10, y)
+            y = y - 30
+            AddCycleRow(IndentText(1, LT("SettingsThemeSwitch", "界面主题")), "themeSwitch", function()
+                CycleTheme()
+            end, y)
 
             UpdateSettingsState()
         elseif tabKey == TAB_HELP then

@@ -2,7 +2,7 @@
 
 local MainPanel = BuildEnv("MainPanel")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 local MainFrame = BuildEnv("MainFrame")
 local TableUI = BuildEnv("TableUI")
 local SortingSystem = BuildEnv("SortingSystem")
@@ -14,6 +14,7 @@ local Notification = BuildEnv("Notification")
 local MapTracker = BuildEnv("MapTracker")
 local IconDetector = BuildEnv("IconDetector")
 local Area = BuildEnv("Area")
+local ExpansionConfig = BuildEnv("ExpansionConfig")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local L = CrateTrackerZK.L
 
@@ -24,18 +25,65 @@ local function EnsureUIState()
     if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
         CRATETRACKERZK_UI_DB = {}
     end
-    CRATETRACKERZK_UI_DB.hiddenMaps = CRATETRACKERZK_UI_DB.hiddenMaps or {}
-    CRATETRACKERZK_UI_DB.hiddenRemaining = CRATETRACKERZK_UI_DB.hiddenRemaining or {}
+end
+
+local function GetCurrentExpansionID()
+    if Data and Data.GetCurrentExpansionID then
+        local id = Data:GetCurrentExpansionID()
+        if id then
+            return id
+        end
+    end
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        local id = ExpansionConfig:GetCurrentExpansionID()
+        if id then
+            return id
+        end
+    end
+    return "default"
+end
+
+local function GetFallbackExpansionBucket()
+    EnsureUIState()
+    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData = {}
+    end
+    local expansionID = GetCurrentExpansionID()
+    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {}
+    end
+    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID]
+    if type(bucket.hiddenMaps) ~= "table" then
+        bucket.hiddenMaps = {}
+    end
+    if type(bucket.hiddenRemaining) ~= "table" then
+        bucket.hiddenRemaining = {}
+    end
+    return bucket
+end
+
+local function GetHiddenMaps()
+    if Data and Data.GetHiddenMaps then
+        return Data:GetHiddenMaps()
+    end
+    return GetFallbackExpansionBucket().hiddenMaps
+end
+
+local function GetHiddenRemaining()
+    if Data and Data.GetHiddenRemaining then
+        return Data:GetHiddenRemaining()
+    end
+    return GetFallbackExpansionBucket().hiddenRemaining
 end
 
 local function GetHiddenState(mapData)
-    EnsureUIState()
-    return CRATETRACKERZK_UI_DB.hiddenMaps[mapData.mapID] == true
+    local hiddenMaps = GetHiddenMaps()
+    return hiddenMaps[mapData.mapID] == true
 end
 
 local function GetFrozenRemaining(mapData)
-    EnsureUIState()
-    local value = CRATETRACKERZK_UI_DB.hiddenRemaining[mapData.mapID]
+    local hiddenRemaining = GetHiddenRemaining()
+    local value = hiddenRemaining[mapData.mapID]
     if value and value < 0 then
         value = 0
     end
@@ -76,8 +124,8 @@ function MainPanel:BuildRowData()
     local rows = {}
     local maps = Data and Data.GetAllMaps and Data:GetAllMaps() or {}
     local now = time()
-    local hiddenSet = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps or {}
-    local frozenSet = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenRemaining or {}
+    local hiddenSet = GetHiddenMaps()
+    local frozenSet = GetHiddenRemaining()
 
     for index, mapData in ipairs(maps) do
         if mapData then
@@ -144,7 +192,14 @@ function MainPanel:BuildHeaderLabels()
 end
 
 function MainPanel:CreateMainFrame()
-    if CrateTrackerZKFrame then return CrateTrackerZKFrame end
+    if CrateTrackerZKFrame then
+        self.mainFrame = CrateTrackerZKFrame
+        if MainFrame and MainFrame.ApplyAdaptiveHeight then
+            MainFrame:ApplyAdaptiveHeight(self.mainFrame)
+        end
+        self:UpdateTable(true)
+        return CrateTrackerZKFrame
+    end
 
     EnsureUIState()
 
@@ -225,6 +280,13 @@ function MainPanel:UpdateTable(skipVisibilityCheck)
     TableUI:RebuildUI(self.mainFrame, headers)
 end
 
+function MainPanel:RefreshTheme()
+    if self.mainFrame and MainFrame and MainFrame.ApplyThemeColors then
+        MainFrame:ApplyThemeColors(self.mainFrame)
+    end
+    self:UpdateTable(true)
+end
+
 function MainPanel:NotifyMapById(mapId)
     if not mapId then return end
     local now = GetTime()
@@ -261,9 +323,11 @@ function MainPanel:HideMap(mapId)
     if not mapData then return end
 
     local remaining = self:GetRemainingSeconds(mapData)
-    CRATETRACKERZK_UI_DB.hiddenMaps[mapData.mapID] = true
+    local hiddenMaps = GetHiddenMaps()
+    local hiddenRemaining = GetHiddenRemaining()
+    hiddenMaps[mapData.mapID] = true
     if remaining and remaining < 0 then remaining = 0 end
-    CRATETRACKERZK_UI_DB.hiddenRemaining[mapData.mapID] = remaining
+    hiddenRemaining[mapData.mapID] = remaining
 
     self:UpdateTable(true)
 end
@@ -273,8 +337,10 @@ function MainPanel:RestoreMap(mapId)
     local mapData = Data:GetMap(mapId)
     if not mapData then return end
 
-    CRATETRACKERZK_UI_DB.hiddenMaps[mapData.mapID] = nil
-    CRATETRACKERZK_UI_DB.hiddenRemaining[mapData.mapID] = nil
+    local hiddenMaps = GetHiddenMaps()
+    local hiddenRemaining = GetHiddenRemaining()
+    hiddenMaps[mapData.mapID] = nil
+    hiddenRemaining[mapData.mapID] = nil
 
     self:UpdateTable(true)
 end

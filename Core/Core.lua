@@ -47,9 +47,6 @@ local function OnLogin()
     if type(CRATETRACKERZK_DB) ~= "table" then
         CRATETRACKERZK_DB = {};
     end
-    if type(CRATETRACKERZK_DB.mapData) ~= "table" then
-        CRATETRACKERZK_DB.mapData = {};
-    end
     
 
     if Localization and not Localization.isInitialized then
@@ -201,8 +198,19 @@ local function OnEvent(self, event, ...)
             Logger:Debug("Core", "状态", "退出游戏，已清除位面ID缓存");
         end
         if not CrateTrackerZK.isReloading then
-            if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.phaseCache then
-                CRATETRACKERZK_UI_DB.phaseCache = nil;
+            if Data and Data.GetPhaseCache then
+                local phaseCache = Data:GetPhaseCache();
+                for k in pairs(phaseCache) do
+                    phaseCache[k] = nil;
+                end
+            elseif CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.expansionUIData) == "table" then
+                for _, bucket in pairs(CRATETRACKERZK_UI_DB.expansionUIData) do
+                    if type(bucket) == "table" and type(bucket.phaseCache) == "table" then
+                        for k in pairs(bucket.phaseCache) do
+                            bucket.phaseCache[k] = nil;
+                        end
+                    end
+                end
             end
         end
         CrateTrackerZK.isReloading = nil;

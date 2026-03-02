@@ -3,6 +3,7 @@
 local MiniModeManager = BuildEnv("MiniModeManager")
 local MiniFrame = BuildEnv("MiniFrame")
 local MainPanel = BuildEnv("MainPanel")
+MiniModeManager.enabled = false
 
 local function IsStandardShown()
     return CrateTrackerZKFrame and CrateTrackerZKFrame:IsShown()
@@ -38,6 +39,10 @@ function MiniModeManager:ShowStandard()
 end
 
 function MiniModeManager:ShowMini()
+    if self.enabled ~= true then
+        self:ShowStandard()
+        return
+    end
     if CrateTrackerZKFrame then
         CrateTrackerZKFrame:Hide()
     end
@@ -56,6 +61,10 @@ function MiniModeManager:HideAll()
 end
 
 function MiniModeManager:CycleMode()
+    if self.enabled ~= true then
+        self:ShowStandard()
+        return "standard"
+    end
     if IsMiniShown() then
         self:HideAll()
         return "hidden"

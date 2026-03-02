@@ -5,10 +5,16 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
 local Area = BuildEnv("Area");
+local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
-Phase.phaseCache = {};  -- 位面ID缓存，使用 targetMapData.mapID 作为key
+Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
+
+local function GetExpansionAwareCacheKey(mapID)
+    local expansionID = (Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID()) or "default";
+    return tostring(expansionID) .. ":" .. tostring(mapID);
+end
 
 local function SafeSplitGuid(guid)
     if not guid or type(guid) ~= "string" then
@@ -58,9 +64,9 @@ function Phase:UpdatePhaseInfo()
         return;
     end
     
-    -- 排除主城区域（多恩诺嘉尔），不进行位面检测
-    if currentMapID == 2339 then
-        Logger:Debug("Phase", "排除", string.format("跳过主城区域位面检测：地图ID=%d（多恩诺嘉尔）", currentMapID));
+    -- 排除主城区域，不进行位面检测
+    if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(currentMapID) then
+        Logger:Debug("Phase", "排除", string.format("跳过主城区域位面检测：地图ID=%d", currentMapID));
         return;
     end
     
@@ -91,13 +97,14 @@ function Phase:UpdatePhaseInfo()
     
     if targetMapData then
         -- 隐藏地图：暂停位面检测
-        if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps and CRATETRACKERZK_UI_DB.hiddenMaps[targetMapData.mapID] then
+        local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
+        if hiddenMaps[targetMapData.mapID] then
             return;
         end
 
         local detectedPhaseID = self:GetLayerFromNPC();
-        -- 使用 targetMapData.mapID 作为缓存key，确保子地图和主地图共享同一缓存
-        local cacheKey = targetMapData.mapID;
+        -- 使用 版本+mapID 作为缓存key，确保不同版本数据隔离
+        local cacheKey = GetExpansionAwareCacheKey(targetMapData.mapID);
         local cachedPhaseID = self.phaseCache[cacheKey];
         
         local shouldUpdate = false;
@@ -132,14 +139,15 @@ function Phase:UpdatePhaseInfo()
             
             -- 消息发送逻辑：使用 targetMapData.mapID 作为key，避免子地图和主地图重复发送
             if shouldUpdate then
-                local mapPhaseKey = targetMapData.mapID .. "-" .. currentPhaseID;
+                local mapPhaseKey = cacheKey .. "-" .. currentPhaseID;
                 local lastReportedKey = self.lastReportedMapPhaseKey;
                 
                 local lastReportedMapID = nil;
                 if lastReportedKey then
                     local parts = {strsplit("-", lastReportedKey)};
                     if #parts >= 1 then
-                        lastReportedMapID = tonumber(parts[1]);
+                        local mapPart = parts[1];
+                        lastReportedMapID = tonumber(mapPart:match(":(%d+)$")) or tonumber(mapPart);
                     end
                 end
                 

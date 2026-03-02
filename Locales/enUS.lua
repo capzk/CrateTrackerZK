@@ -18,8 +18,6 @@ local localeData = {};
 -- Floating Button
 localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
 
-localeData["MiniModeTooltipLine1"] = "Right-click to notify";
-
 -- Notifications (Airdrop)
 localeData["Enabled"] = "Team notifications enabled";
 localeData["Disabled"] = "Team notifications disabled";
@@ -52,10 +50,12 @@ localeData["MenuAbout"] = "About";
 -- Settings Panel
 localeData["SettingsPanelTitle"] = "CrateTrackerZK - Settings";
 localeData["SettingsTabSettings"] = "Settings";
+localeData["SettingsSectionExpansion"] = "Version Settings";
 localeData["SettingsSectionControl"] = "Addon Control";
 localeData["SettingsSectionData"] = "Data Management";
 localeData["SettingsSectionUI"] = "UI Settings";
-localeData["SettingsMiniModeCollapsedRows"] = "Rows kept after mini mode collapses";
+localeData["SettingsExpansionVersion"] = "Game Version";
+localeData["SettingsThemeSwitch"] = "Theme";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsTeamNotify"] = "Team Notifications";
 localeData["SettingsAutoReport"] = "Auto Notify";
@@ -63,8 +63,6 @@ localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
 localeData["SettingsClearAllData"] = "Clear All Data";
 localeData["SettingsClearButton"] = "Clear";
 localeData["SettingsClearDesc"] = "• Clears all airdrop time and phase records";
-localeData["SettingsUIConfigDesc"] = "• UI style can be adjusted in UiConfig.lua";
-localeData["SettingsReloadDesc"] = "• Use /reload after changes";
 localeData["SettingsToggleOn"] = "Enabled";
 localeData["SettingsToggleOff"] = "Disabled";
 localeData["SettingsClearConfirmText"] = "Clear all data and reinitialize? This action cannot be undone.";

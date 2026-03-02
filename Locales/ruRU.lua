@@ -18,8 +18,6 @@ local localeData = {};
 -- Floating Button
 localeData["FloatingButtonTooltipLine3"] = "Правый клик — открыть настройки";
 
-localeData["MiniModeTooltipLine1"] = "ПКМ — уведомить";
-
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
@@ -53,10 +51,12 @@ localeData["MenuAbout"] = "О аддоне";
 -- Settings Panel
 localeData["SettingsPanelTitle"] = "CrateTrackerZK - Настройки";
 localeData["SettingsTabSettings"] = "Настройки";
+localeData["SettingsSectionExpansion"] = "Настройки версии";
 localeData["SettingsSectionControl"] = "Управление аддоном";
 localeData["SettingsSectionData"] = "Управление данными";
 localeData["SettingsSectionUI"] = "Настройки интерфейса";
-localeData["SettingsMiniModeCollapsedRows"] = "Строк после сворачивания мини-режима";
+localeData["SettingsExpansionVersion"] = "Версия игры";
+localeData["SettingsThemeSwitch"] = "Тема";
 localeData["SettingsAddonToggle"] = "Переключатель аддона";
 localeData["SettingsTeamNotify"] = "Уведомления группы";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
@@ -64,8 +64,6 @@ localeData["SettingsAutoReportInterval"] = "Интервал отправки (�
 localeData["SettingsClearAllData"] = "Очистить все данные";
 localeData["SettingsClearButton"] = "Очистить";
 localeData["SettingsClearDesc"] = "• Сбросит все записи времени и фаз";
-localeData["SettingsUIConfigDesc"] = "• Стиль интерфейса настраивается в UiConfig.lua";
-localeData["SettingsReloadDesc"] = "• После изменений выполните /reload";
 localeData["SettingsToggleOn"] = "Включено";
 localeData["SettingsToggleOff"] = "Выключено";
 localeData["SettingsClearConfirmText"] = "Очистить все данные и переинициализировать аддон? Действие необратимо.";

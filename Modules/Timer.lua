@@ -120,7 +120,8 @@ function TimerManager:DetectMapIcons()
     end
 
     -- 如果地图被隐藏，暂停该地图的空投检测
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps and CRATETRACKERZK_UI_DB.hiddenMaps[targetMapData.mapID] then
+    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
+    if hiddenMaps[targetMapData.mapID] then
         SafeDebugLimited("detection_loop:hidden_map_" .. tostring(targetMapData.mapID), "地图被隐藏，跳过空投检测", Data:GetMapDisplayName(targetMapData));
         -- 清除该地图的检测状态，避免残留
         self.detectionState[targetMapData.id] = nil;

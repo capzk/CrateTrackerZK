@@ -9,8 +9,6 @@ function HelpTextProvider:GetHelpText()
 插件更新地址：
 https://www.curseforge.com/wow/addons/cratetrackerzk
 
--插件UI的颜色和透明度暂时可以通过编辑\CrateTrackerZK\UiConfig.lua来设置；
-
 == 问题反馈 ==
 如遇到问题，可在此留言反馈：
 https://www.curseforge.com/wow/addons/cratetrackerzk/comments
@@ -18,8 +16,6 @@ https://www.curseforge.com/wow/addons/cratetrackerzk/comments
 
 Addon update URL:
 https://www.curseforge.com/wow/addons/cratetrackerzk
-
-- UI color and opacity can be configured for now by editing \CrateTrackerZK\UiConfig.lua
 
 
 == Feedback ==

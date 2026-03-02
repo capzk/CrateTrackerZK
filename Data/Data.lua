@@ -4,20 +4,80 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Data = BuildEnv('Data');
+local ExpansionConfig = BuildEnv('ExpansionConfig');
 
 -- 引用UnifiedDataManager模块
 local UnifiedDataManager = BuildEnv('UnifiedDataManager');
 
 Data.DEFAULT_REFRESH_INTERVAL = (Data.MAP_CONFIG and Data.MAP_CONFIG.defaults and Data.MAP_CONFIG.defaults.interval) or 1100;
 Data.maps = {};
+Data.SCHEMA_VERSION = 4;
 
 local function ensureDB()
     if type(CRATETRACKERZK_DB) ~= "table" then
         CRATETRACKERZK_DB = {};
     end
-    if type(CRATETRACKERZK_DB.mapData) ~= "table" then
-        CRATETRACKERZK_DB.mapData = {};
+    -- 全新版本仅使用按版本分桶结构
+    CRATETRACKERZK_DB.mapData = nil;
+    if type(CRATETRACKERZK_DB.expansionData) ~= "table" then
+        CRATETRACKERZK_DB.expansionData = {};
     end
+end
+
+local function getCurrentExpansionID()
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        return ExpansionConfig:GetCurrentExpansionID();
+    end
+    return "default";
+end
+
+local function ensureExpansionMapData(expansionID)
+    ensureDB();
+    expansionID = expansionID or getCurrentExpansionID() or "default";
+
+    if type(CRATETRACKERZK_DB.expansionData[expansionID]) ~= "table" then
+        CRATETRACKERZK_DB.expansionData[expansionID] = {};
+    end
+    if type(CRATETRACKERZK_DB.expansionData[expansionID].mapData) ~= "table" then
+        CRATETRACKERZK_DB.expansionData[expansionID].mapData = {};
+    end
+
+    return CRATETRACKERZK_DB.expansionData[expansionID].mapData, expansionID;
+end
+
+local function ensureUIRoot()
+    if type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    -- 全新版本不保留旧全局字段
+    CRATETRACKERZK_UI_DB.hiddenMaps = nil;
+    CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
+    CRATETRACKERZK_UI_DB.phaseCache = nil;
+    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData = {};
+    end
+    return CRATETRACKERZK_UI_DB.expansionUIData;
+end
+
+local function ensureExpansionUIData(expansionID)
+    expansionID = expansionID or getCurrentExpansionID() or "default";
+    local expansionUIData = ensureUIRoot();
+
+    if type(expansionUIData[expansionID]) ~= "table" then
+        expansionUIData[expansionID] = {};
+    end
+    local bucket = expansionUIData[expansionID];
+    if type(bucket.hiddenMaps) ~= "table" then
+        bucket.hiddenMaps = {};
+    end
+    if type(bucket.hiddenRemaining) ~= "table" then
+        bucket.hiddenRemaining = {};
+    end
+    if type(bucket.phaseCache) ~= "table" then
+        bucket.phaseCache = {};
+    end
+
+    return bucket, expansionID;
 end
 
 local function sanitizeTimestamp(ts)
@@ -27,14 +87,95 @@ local function sanitizeTimestamp(ts)
     return ts;
 end
 
+function Data:ResetDatabaseIfNeeded(forceReset)
+    ensureDB();
+    local shouldReset = forceReset == true or CRATETRACKERZK_DB.schemaVersion ~= self.SCHEMA_VERSION;
+    if shouldReset then
+        CRATETRACKERZK_DB = {
+            schemaVersion = self.SCHEMA_VERSION,
+            expansionData = {},
+        };
+        if type(CRATETRACKERZK_UI_DB) == "table" then
+            -- 全新数据结构初始化时，仅重置与空投数据相关的版本分桶
+            CRATETRACKERZK_UI_DB.expansionUIData = {};
+            CRATETRACKERZK_UI_DB.hiddenMaps = nil;
+            CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
+            CRATETRACKERZK_UI_DB.phaseCache = nil;
+        end
+        if Logger and Logger.Info then
+            Logger:Info("Data", "初始化", string.format("检测到新数据结构版本，已重置数据（schema=%d）", self.SCHEMA_VERSION));
+        end
+    end
+    ensureDB();
+    CRATETRACKERZK_DB.schemaVersion = self.SCHEMA_VERSION;
+    ensureExpansionMapData();
+end
+
+function Data:GetCurrentExpansionInfo()
+    local expansionID = nil;
+    local label = nil;
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        expansionID = ExpansionConfig:GetCurrentExpansionID();
+        if ExpansionConfig.GetCurrentExpansionLabel then
+            label = ExpansionConfig:GetCurrentExpansionLabel();
+        end
+    end
+    return expansionID, label or expansionID;
+end
+
+function Data:GetCurrentExpansionID()
+    return getCurrentExpansionID();
+end
+
+function Data:GetExpansionUIData(expansionID)
+    local bucket = ensureExpansionUIData(expansionID);
+    return bucket;
+end
+
+function Data:GetHiddenMaps(expansionID)
+    local bucket = ensureExpansionUIData(expansionID);
+    return bucket.hiddenMaps;
+end
+
+function Data:GetHiddenRemaining(expansionID)
+    local bucket = ensureExpansionUIData(expansionID);
+    return bucket.hiddenRemaining;
+end
+
+function Data:GetPhaseCache(expansionID)
+    local bucket = ensureExpansionUIData(expansionID);
+    return bucket.phaseCache;
+end
+
+function Data:SwitchExpansion(expansionID)
+    if not ExpansionConfig or not ExpansionConfig.SetCurrentExpansionID then
+        return false;
+    end
+    if not ExpansionConfig:SetCurrentExpansionID(expansionID) then
+        return false;
+    end
+    ensureExpansionMapData(expansionID);
+    ensureExpansionUIData(expansionID);
+    if self.ReloadMapConfigForExpansion then
+        self:ReloadMapConfigForExpansion();
+    end
+    return true;
+end
+
 function Data:Initialize()
     Logger:Debug("Data", "初始化", "开始初始化数据模块");
+    self:ResetDatabaseIfNeeded(false);
+    if self.ReloadMapConfigForExpansion then
+        self:ReloadMapConfigForExpansion();
+    end
     ensureDB();
+    local mapStore, activeExpansionID = ensureExpansionMapData();
+    ensureExpansionUIData(activeExpansionID);
     self.maps = {};
 
     local mapConfig = self.MAP_CONFIG and self.MAP_CONFIG.current_maps or {};
     if not mapConfig or #mapConfig == 0 then
-        Logger:Error("Data", "错误", "MAP_CONFIG.current_maps is empty or nil");
+        Logger:Warn("Data", "初始化", "当前资料片配置没有地图，数据模块将以空列表运行");
         return;
     end
 
@@ -47,7 +188,7 @@ function Data:Initialize()
     for _, cfg in ipairs(mapConfig) do
         if cfg and cfg.mapID and (cfg.enabled ~= false) then
             local mapID = cfg.mapID;
-            local savedData = CRATETRACKERZK_DB.mapData[mapID];
+            local savedData = mapStore[mapID];
             local isNewInstall = false;
             
             if type(savedData) ~= "table" then 
@@ -59,36 +200,8 @@ function Data:Initialize()
             local lastRefresh = sanitizeTimestamp(savedData.lastRefresh);
             local createTime = sanitizeTimestamp(savedData.createTime) or time();
             local interval = cfg.interval or defaults.interval or self.DEFAULT_REFRESH_INTERVAL;
-
-            -- 旧版本数据迁移
-            if savedData.currentAirdropSpawnUID ~= nil then
-                savedData.currentAirdropSpawnUID = nil;
-                Logger:Debug("Data", "迁移", string.format("已清除旧版本字段 currentAirdropSpawnUID（地图ID=%d）", mapID));
-            end
-            if savedData.lastRefreshInstance ~= nil then
-                savedData.lastRefreshInstance = nil;
-                Logger:Debug("Data", "迁移", string.format("已清除旧版本字段 lastRefreshInstance（地图ID=%d）", mapID));
-            end
-            
-            local currentAirdropObjectGUID = savedData.currentAirdropObjectGUID;
-            if currentAirdropObjectGUID and type(currentAirdropObjectGUID) ~= "string" then
-                currentAirdropObjectGUID = nil;
-            end
-            
-            -- 验证 objectGUID 格式（至少7部分）
-            if currentAirdropObjectGUID then
-                local parts = {strsplit("-", currentAirdropObjectGUID)};
-                if #parts < 7 then
-                    Logger:Warn("Data", "清理", string.format("检测到无效的 objectGUID 格式（地图ID=%d）：%s，已清除（可能是旧版本只保存了 SpawnUID）", mapID, currentAirdropObjectGUID));
-                    currentAirdropObjectGUID = nil;
-                    savedData.currentAirdropObjectGUID = nil;
-                end
-            end
-
-            local lastRefreshPhase = savedData.lastRefreshPhase;
-            if lastRefreshPhase and type(lastRefreshPhase) ~= "string" then
-                lastRefreshPhase = nil;
-            end
+            local currentAirdropObjectGUID = type(savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil;
+            local lastRefreshPhase = type(savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil;
             
             local mapData = {
                 id = nextId,
@@ -124,7 +237,7 @@ function Data:Initialize()
     end
     
     
-    Logger:DebugLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：已加载 %d 个地图，跳过 %d 个", loadedCount, skippedCount));
+    Logger:DebugLimited("data:init_complete", "Data", "初始化", string.format("数据模块初始化完成：资料片=%s，已加载 %d 个地图，跳过 %d 个", tostring(activeExpansionID), loadedCount, skippedCount));
 end
 
 function Data:SaveMapData(mapId)
@@ -135,6 +248,7 @@ function Data:SaveMapData(mapId)
     end
 
     ensureDB();
+    local mapStore, activeExpansionID = ensureExpansionMapData();
 
     local savedData = {
         lastRefresh = mapData.lastRefresh,
@@ -143,33 +257,22 @@ function Data:SaveMapData(mapId)
         currentAirdropTimestamp = mapData.currentAirdropTimestamp,
         lastRefreshPhase = mapData.lastRefreshPhase,  -- 从空投的 objectGUID 提取的位面ID
     };
-    
-    -- 确保保存的数据不包含旧版本字段（清理旧数据）
-    savedData.currentAirdropSpawnUID = nil;
-    savedData.lastRefreshInstance = nil;
-    
-    CRATETRACKERZK_DB.mapData[mapData.mapID] = savedData;
+
+    mapStore[mapData.mapID] = savedData;
     
     Logger:DebugLimited("data_save:map_" .. mapData.mapID, "Data", "保存", 
-        string.format("已保存地图数据：地图ID=%d（配置ID=%d），上次刷新=%s，objectGUID=%s", 
-            mapData.mapID, mapId,
+        string.format("已保存地图数据：资料片=%s，地图ID=%d（配置ID=%d），上次刷新=%s，objectGUID=%s", 
+            tostring(activeExpansionID), mapData.mapID, mapId,
             mapData.lastRefresh and UnifiedDataManager:FormatDateTime(mapData.lastRefresh) or "无",
             mapData.currentAirdropObjectGUID or "nil"));
     
     -- 验证保存的数据是否正确
     if Logger and Logger.Debug then
-        local verifyData = CRATETRACKERZK_DB.mapData[mapData.mapID];
+        local verifyData = mapStore[mapData.mapID];
         if verifyData then
             if verifyData.currentAirdropObjectGUID ~= mapData.currentAirdropObjectGUID then
                 Logger:Error("Data", "错误", string.format("数据保存验证失败：地图ID=%d，期望objectGUID=%s，实际objectGUID=%s", 
                     mapData.mapID, mapData.currentAirdropObjectGUID or "nil", verifyData.currentAirdropObjectGUID or "nil"));
-            end
-            -- 确保旧版本字段已被清除
-            -- 注意：lastRefreshPhase 是新版本的正确字段，不应该被清除
-            if verifyData.currentAirdropSpawnUID or verifyData.lastRefreshInstance then
-                Logger:Warn("Data", "清理", string.format("检测到保存的数据中仍有旧版本字段（地图ID=%d），已清除", mapData.mapID));
-                verifyData.currentAirdropSpawnUID = nil;
-                verifyData.lastRefreshInstance = nil;
             end
         end
     end
@@ -303,16 +406,21 @@ end
 function Data:ClearAllData()
     if not self.maps then return false end
     
+    ensureDB();
+    if CRATETRACKERZK_DB.expansionData then
+        for _, expansionBucket in pairs(CRATETRACKERZK_DB.expansionData) do
+            if type(expansionBucket) == "table" then
+                expansionBucket.mapData = {};
+            end
+        end
+    end
+
     for i, mapData in ipairs(self.maps) do
         if mapData then
             mapData.lastRefresh = nil;
             mapData.nextRefresh = nil;
             mapData.currentAirdropObjectGUID = nil;
             mapData.currentAirdropTimestamp = nil;
-            
-            if CRATETRACKERZK_DB.mapData and mapData.mapID then
-                CRATETRACKERZK_DB.mapData[mapData.mapID] = nil;
-            end
         end
     end
     

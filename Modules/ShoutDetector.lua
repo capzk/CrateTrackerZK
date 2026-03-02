@@ -44,10 +44,11 @@ local function GetTrackedMap()
 end
 
 local function IsMapHidden(targetMapData)
-    if not targetMapData or not CRATETRACKERZK_UI_DB or not CRATETRACKERZK_UI_DB.hiddenMaps then
+    if not targetMapData then
         return false;
     end
-    return CRATETRACKERZK_UI_DB.hiddenMaps[targetMapData.mapID] == true;
+    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
+    return hiddenMaps[targetMapData.mapID] == true;
 end
 
 local function OnShoutDetected(message)

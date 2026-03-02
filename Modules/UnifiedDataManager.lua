@@ -12,6 +12,7 @@ local UnifiedDataManager = BuildEnv('UnifiedDataManager')
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local L = CrateTrackerZK.L;
+local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 if not Data then
     Data = BuildEnv('Data')
@@ -41,6 +42,47 @@ UnifiedDataManager.TEMPORARY_PHASE_EXPIRE = 1800  -- 30分钟
 
 -- 采用临时时间用于持久化的最大时间偏移（秒）
 UnifiedDataManager.TEMPORARY_TIME_ADOPTION_WINDOW = 120  -- 2分钟
+
+local function GetCurrentExpansionID()
+    if Data and Data.GetCurrentExpansionID then
+        local id = Data:GetCurrentExpansionID();
+        if id then
+            return id;
+        end
+    end
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        local id = ExpansionConfig:GetCurrentExpansionID();
+        if id then
+            return id;
+        end
+    end
+    return "default";
+end
+
+local function BuildScopedMapKey(mapId)
+    return tostring(GetCurrentExpansionID()) .. ":" .. tostring(mapId);
+end
+
+local function GetPhaseCacheStore()
+    if Data and Data.GetPhaseCache then
+        return Data:GetPhaseCache();
+    end
+    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
+        CRATETRACKERZK_UI_DB = {};
+    end
+    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData = {};
+    end
+    local expansionID = GetCurrentExpansionID();
+    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
+        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {};
+    end
+    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID];
+    if type(bucket.phaseCache) ~= "table" then
+        bucket.phaseCache = {};
+    end
+    return bucket.phaseCache;
+end
 
 -- 初始化
 function UnifiedDataManager:Initialize()
@@ -119,19 +161,21 @@ end
 
 -- 获取或创建时间数据
 function UnifiedDataManager:GetOrCreateTimeData(mapId)
-    if not self.temporaryTimes[mapId] then
-        self.temporaryTimes[mapId] = CreateTimeData(mapId);
+    local scopedKey = BuildScopedMapKey(mapId);
+    if not self.temporaryTimes[scopedKey] then
+        self.temporaryTimes[scopedKey] = CreateTimeData(mapId);
     end
-    return self.temporaryTimes[mapId];
+    return self.temporaryTimes[scopedKey];
 end
 
 -- 获取或创建位面数据
 function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary)
+    local scopedKey = BuildScopedMapKey(mapId);
     local storage = isTemporary and self.temporaryPhases or self.persistentPhases;
-    if not storage[mapId] then
-        storage[mapId] = CreatePhaseData(mapId);
+    if not storage[scopedKey] then
+        storage[scopedKey] = CreatePhaseData(mapId);
     end
-    return storage[mapId];
+    return storage[scopedKey];
 end
 
 -- 统一时间设置接口
@@ -185,7 +229,8 @@ end
 
 -- 获取未过期的临时时间（不清除）
 function UnifiedDataManager:GetValidTemporaryTime(mapId)
-    local timeData = self.temporaryTimes[mapId];
+    local scopedKey = BuildScopedMapKey(mapId);
+    local timeData = self.temporaryTimes[scopedKey];
     if not timeData or not timeData.temporaryTime then
         return nil;
     end
@@ -203,8 +248,9 @@ end
 
 -- 清除指定地图的临时时间
 function UnifiedDataManager:ClearTemporaryTime(mapId)
-    if self.temporaryTimes[mapId] then
-        self.temporaryTimes[mapId].temporaryTime = nil;
+    local scopedKey = BuildScopedMapKey(mapId);
+    if self.temporaryTimes[scopedKey] then
+        self.temporaryTimes[scopedKey].temporaryTime = nil;
     end
 end
 
@@ -267,7 +313,8 @@ function UnifiedDataManager:GetDisplayTime(mapId)
         return nil;
     end
     
-    local timeData = self.temporaryTimes[mapId];
+    local scopedKey = BuildScopedMapKey(mapId);
+    local timeData = self.temporaryTimes[scopedKey];
     local now = time();
 
     local tempRecord = nil;
@@ -363,13 +410,12 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
     phaseData.source = source;
     phaseData.detectTime = time();
     
-    if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.phaseCache = CRATETRACKERZK_UI_DB.phaseCache or {};
-        CRATETRACKERZK_UI_DB.phaseCache[mapId] = {
-            phaseId = phaseId,
-            detectTime = phaseData.detectTime
-        };
-    end
+    local phaseCache = GetPhaseCacheStore();
+    phaseCache[BuildScopedMapKey(mapId)] = {
+        mapId = mapId,
+        phaseId = phaseId,
+        detectTime = phaseData.detectTime
+    };
 
     Logger:Debug("UnifiedDataManager", "临时位面", string.format("设置临时位面成功：地图ID=%d，位面ID=%s，来源=%s", 
         mapId, phaseId, source));
@@ -407,7 +453,8 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     end
     
     -- 优先使用临时位面（如果存在且未过期）
-    local tempPhase = self.temporaryPhases[mapId];
+    local scopedKey = BuildScopedMapKey(mapId);
+    local tempPhase = self.temporaryPhases[scopedKey];
     if tempPhase and tempPhase.phaseId then
         local now = time();
         if now - tempPhase.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
@@ -421,7 +468,7 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     end
     
     -- 使用持久化位面
-    local persistentPhase = self.persistentPhases[mapId];
+    local persistentPhase = self.persistentPhases[scopedKey];
     if persistentPhase and persistentPhase.phaseId then
         return persistentPhase.phaseId;
     end
@@ -435,7 +482,8 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
         return nil;
     end
     
-    local persistentPhase = self.persistentPhases[mapId];
+    local scopedKey = BuildScopedMapKey(mapId);
+    local persistentPhase = self.persistentPhases[scopedKey];
     if persistentPhase and persistentPhase.phaseId then
         return persistentPhase.phaseId;
     end
@@ -600,22 +648,21 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
     local now = time();
     local expiredCount = 0;
     
-    for mapId, phaseData in pairs(self.temporaryPhases) do
+    local phaseCache = GetPhaseCacheStore();
+    for scopedKey, phaseData in pairs(self.temporaryPhases) do
         if phaseData.phaseId and phaseData.detectTime then
             if now - phaseData.detectTime > self.TEMPORARY_PHASE_EXPIRE then
                 phaseData.phaseId = nil;
                 phaseData.source = nil;
                 phaseData.detectTime = nil;
                 expiredCount = expiredCount + 1;
-                if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.phaseCache then
-                    CRATETRACKERZK_UI_DB.phaseCache[mapId] = nil;
-                end
+                phaseCache[scopedKey] = nil;
             end
         end
         
         -- 如果位面数据为空，移除整个条目
         if not phaseData.phaseId then
-            self.temporaryPhases[mapId] = nil;
+            self.temporaryPhases[scopedKey] = nil;
         end
     end
     
@@ -625,12 +672,14 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
 end
 
 function UnifiedDataManager:RestoreTemporaryPhaseCache()
-    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB.phaseCache) ~= "table" then
+    local phaseCache = GetPhaseCacheStore();
+    if type(phaseCache) ~= "table" then
         return;
     end
     local now = time();
-    for mapId, record in pairs(CRATETRACKERZK_UI_DB.phaseCache) do
-        if record and record.phaseId and record.detectTime then
+    for scopedKey, record in pairs(phaseCache) do
+        local mapId = tonumber(record and record.mapId) or tonumber(tostring(scopedKey):match(":(%d+)$")) or tonumber(scopedKey);
+        if mapId and record and record.phaseId and record.detectTime then
             if now - record.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
                 local phaseData = self:GetOrCreatePhaseData(mapId, true);
                 phaseData.phaseId = record.phaseId;

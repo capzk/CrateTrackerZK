@@ -19,8 +19,6 @@ local localeData = {};
 -- Floating Button
 localeData["FloatingButtonTooltipLine3"] = "우클릭으로 설정 열기";
 
-localeData["MiniModeTooltipLine1"] = "우클릭으로 알리기";
-
 -- Notifications (Airdrop)
 localeData["Enabled"] = "그룹 알림 활성화";
 localeData["Disabled"] = "그룹 알림 비활성화";
@@ -53,10 +51,12 @@ localeData["MenuAbout"] = "소개";
 -- Settings Panel
 localeData["SettingsPanelTitle"] = "CrateTrackerZK - 설정";
 localeData["SettingsTabSettings"] = "설정";
+localeData["SettingsSectionExpansion"] = "버전 설정";
 localeData["SettingsSectionControl"] = "애드온 제어";
 localeData["SettingsSectionData"] = "데이터 관리";
 localeData["SettingsSectionUI"] = "UI 설정";
-localeData["SettingsMiniModeCollapsedRows"] = "축소한 후 유지되는 행 수";
+localeData["SettingsExpansionVersion"] = "게임 버전";
+localeData["SettingsThemeSwitch"] = "테마";
 localeData["SettingsAddonToggle"] = "애드온 전환";
 localeData["SettingsTeamNotify"] = "그룹 알림";
 localeData["SettingsAutoReport"] = "자동 알림";
@@ -64,8 +64,6 @@ localeData["SettingsAutoReportInterval"] = "알림 간격 (초)";
 localeData["SettingsClearAllData"] = "모든 데이터 삭제";
 localeData["SettingsClearButton"] = "삭제";
 localeData["SettingsClearDesc"] = "• 모든 보급품 시간 및 위상 기록 삭제";
-localeData["SettingsUIConfigDesc"] = "• UI 스타일은 UiConfig.lua에서 조정할 수 있습니다.";
-localeData["SettingsReloadDesc"] = "• 변경 후 /reload 실행";
 localeData["SettingsToggleOn"] = "활성화";
 localeData["SettingsToggleOff"] = "비활성화";
 localeData["SettingsClearConfirmText"] = "모든 데이터를 삭제하고 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.";

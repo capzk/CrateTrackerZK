@@ -1,6 +1,6 @@
 -- TableSystems.lua - 表格系统（排序 + 倒计时）
 
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 
 -- ========================================
 -- 排序系统
@@ -204,8 +204,8 @@ local function GetRemaining(rowId)
     local mapData = Data:GetMap(rowId)
     if not mapData then return nil, false end
 
-    local hiddenMaps = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps or {}
-    local hiddenRemaining = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenRemaining or {}
+    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {}
+    local hiddenRemaining = (Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {}
     local isHidden = hiddenMaps and hiddenMaps[mapData.mapID] == true
 
     if isHidden then

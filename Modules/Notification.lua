@@ -293,7 +293,7 @@ function Notification:GetNearestAirdropInfo()
         return nil;
     end
 
-    local hiddenMaps = CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.hiddenMaps or {};
+    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
     local bestMap = nil;
     local bestRemaining = nil;
 

@@ -1,7 +1,7 @@
 -- TableUI.lua - 表格界面
 
 local TableUI = BuildEnv("TableUI")
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local SortingSystem = BuildEnv("SortingSystem")
 local CountdownSystem = BuildEnv("CountdownSystem")

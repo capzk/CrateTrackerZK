@@ -2,10 +2,9 @@
 
 local MinimapButton = BuildEnv("MinimapButton")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local UIConfig = BuildEnv("UIConfig")
+local UIConfig = BuildEnv("ThemeConfig")
 local MainPanel = BuildEnv("MainPanel")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
-local MiniModeManager = BuildEnv("MiniModeManager")
 local L = CrateTrackerZK.L
 
 local minimapButton = nil
@@ -50,9 +49,7 @@ end
 
 local function HandleClick(button)
     if button == "LeftButton" then
-        if MiniModeManager and MiniModeManager.CycleMode then
-            MiniModeManager:CycleMode()
-        elseif MainPanel and MainPanel.Toggle then
+        if MainPanel and MainPanel.Toggle then
             MainPanel:Toggle()
         end
     elseif button == "RightButton" then

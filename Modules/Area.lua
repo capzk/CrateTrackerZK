@@ -3,6 +3,7 @@
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local Area = BuildEnv("Area");
+local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 Area.lastAreaValidState = nil;
 Area.detectionPaused = false;
@@ -72,6 +73,15 @@ function Area:CheckAndUpdateAreaValid()
         if self.lastAreaValidState ~= false then
             self.lastAreaValidState = false;
             Logger:Debug("Area", "区域", DT("DebugAreaCannotGetMapID"));
+            self:PauseAllDetections();
+        end
+        return false;
+    end
+
+    if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(currentMapID) then
+        if self.lastAreaValidState ~= false then
+            self.lastAreaValidState = false;
+            Logger:Debug("Area", "区域", string.format("区域变化：有效 -> 无效，地图ID=%d（主城已排除）", currentMapID));
             self:PauseAllDetections();
         end
         return false;
