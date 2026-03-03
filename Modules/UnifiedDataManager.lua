@@ -313,14 +313,14 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId)
 end
 
 -- 获取显示时间
-function UnifiedDataManager:GetDisplayTime(mapId)
+function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
     if not self.isInitialized then
         return nil;
     end
     
     local scopedKey = BuildScopedMapKey(mapId);
     local timeData = self.temporaryTimes[scopedKey];
-    local now = time();
+    local now = currentTime or time();
 
     local tempRecord = nil;
     local persistentRecord = nil;
@@ -578,22 +578,23 @@ function UnifiedDataManager:GetPhaseDisplayInfo(mapId)
 end
 
 -- 获取剩余时间
-function UnifiedDataManager:GetRemainingTime(mapId)
+function UnifiedDataManager:GetRemainingTime(mapId, currentTime, displayTime)
     if not self.isInitialized then
         return nil;
     end
     
-    local displayTime = self:GetDisplayTime(mapId);
+    local now = currentTime or time();
+    displayTime = displayTime or self:GetDisplayTime(mapId, now);
     if not displayTime then
         return nil;
     end
     
-    local nextRefresh = self:GetNextRefreshTime(mapId);
+    local nextRefresh = self:GetNextRefreshTime(mapId, now, displayTime);
     if not nextRefresh then
         return nil;
     end
     
-    local remaining = nextRefresh - time();
+    local remaining = nextRefresh - now;
     if remaining < 0 then
         remaining = 0;
     end
@@ -602,18 +603,18 @@ function UnifiedDataManager:GetRemainingTime(mapId)
 end
 
 -- 获取下次刷新时间
-function UnifiedDataManager:GetNextRefreshTime(mapId)
+function UnifiedDataManager:GetNextRefreshTime(mapId, currentTime, displayTime)
     if not self.isInitialized then
         return nil;
     end
 
-    local displayTime = self:GetDisplayTime(mapId);
+    displayTime = displayTime or self:GetDisplayTime(mapId, currentTime);
     if not displayTime then
         return nil;
     end
 
     local interval = GetMapInterval(mapId);
-    return CalculateNextRefreshTime(displayTime.time, interval);
+    return CalculateNextRefreshTime(displayTime.time, interval, currentTime);
 end
 
 -- 清除过期的临时时间数据

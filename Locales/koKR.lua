@@ -25,12 +25,12 @@ localeData["Disabled"] = "그룹 알림 비활성화";
 localeData["AirdropDetected"] = "[%s] 전쟁 보급품 공중 투하 감지!!!";  -- Auto detection message (with "Detected" keyword)
 localeData["AirdropDetectedManual"] = "[%s] 전쟁 보급품 공중 투하!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] 기록된 시간 없음!!!";
-localeData["TimeRemaining"] = "[%s] 전쟁 보급품 공중 투하: %s!!!";
-localeData["AutoTeamReportMessage"] = "현재 [%s] 전쟁 보급품 보유량: %s!!";
+localeData["TimeRemaining"] = "[%s] 전쟁 보급품 공중 투하까지 남은 시간: %s!!!";
+localeData["AutoTeamReportMessage"] = "현재 [%s] 전쟁 보급품 공중 투하까지 남은 시간: %s!!";
 
 -- Phase Detection Alerts
-localeData["PhaseDetectedFirstTime"] = "[%s] 현재 위상 ID: |cffffff00%s|r";
-localeData["InstanceChangedTo"] = "[%s] 현재 위상 ID 변경됨: |cffffff00%s|r";
+localeData["PhaseDetectedFirstTime"] = "[%s] 현재 위상: |cffffff00%s|r";
+localeData["InstanceChangedTo"] = "[%s] 현재 위상이 다음으로 변경됨: |cffffff00%s|r";
 
 -- UI
 localeData["MapName"] = "지역 이름";

@@ -174,8 +174,11 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local L = CrateTrackerZK.L
 
 local textByRowId = {}
-local updateTimer = nil
+local rowDisplayCache = {}
+local updateDriver = nil
+local updateElapsed = 0
 local sortRefreshCallback = nil
+local UPDATE_INTERVAL = 0.2
 
 local function GetCountdownConfig()
     return UIConfig
@@ -199,13 +202,47 @@ local function FormatRemaining(seconds)
     return UnifiedDataManager:FormatTime(seconds)
 end
 
-local function GetRemaining(rowId)
+local function BuildTickContext(now)
+    return {
+        now = now or time(),
+        hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {},
+        hiddenRemaining = (Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {},
+    }
+end
+
+local function ShouldRealtimeUpdate(rowId, context)
+    if not Data or not Data.GetMap then
+        return false
+    end
+
+    local mapData = Data:GetMap(rowId)
+    if not mapData then
+        return false
+    end
+
+    local hiddenMaps = (context and context.hiddenMaps) or ((Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {})
+    if hiddenMaps and hiddenMaps[mapData.mapID] == true then
+        return false
+    end
+
+    if UnifiedDataManager and UnifiedDataManager.GetDisplayTime then
+        local display = UnifiedDataManager:GetDisplayTime(rowId, (context and context.now) or time())
+        if display and display.time then
+            return true
+        end
+    end
+
+    return mapData.lastRefresh ~= nil
+end
+
+local function GetRemaining(rowId, context)
     if not Data then return nil, false end
     local mapData = Data:GetMap(rowId)
     if not mapData then return nil, false end
 
-    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {}
-    local hiddenRemaining = (Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {}
+    local now = (context and context.now) or time()
+    local hiddenMaps = (context and context.hiddenMaps) or ((Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {})
+    local hiddenRemaining = (context and context.hiddenRemaining) or ((Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {})
     local isHidden = hiddenMaps and hiddenMaps[mapData.mapID] == true
 
     if isHidden then
@@ -214,14 +251,13 @@ local function GetRemaining(rowId)
         return frozen, true
     end
 
-    local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(rowId)
+    local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(rowId, now)
     if remaining ~= nil then
         if remaining < 0 then remaining = 0 end
         return remaining, false
     end
 
     if mapData.lastRefresh then
-        local now = time()
         if mapData.nextRefresh and mapData.nextRefresh <= now then
             Data:UpdateNextRefresh(mapData.id, mapData)
         end
@@ -273,53 +309,81 @@ end
 
 function CountdownSystem:RegisterText(rowId, textObject)
     textByRowId[rowId] = textObject
-    local remaining, isHidden = GetRemaining(rowId)
+    local context = BuildTickContext(time())
+    local remaining, isHidden = GetRemaining(rowId, context)
     local text = FormatRemaining(remaining)
     local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden)
     textObject:SetText(text)
     textObject:SetTextColor(r, g, b, a)
+    rowDisplayCache[rowId] = {
+        text = text,
+        r = r, g = g, b = b, a = a,
+    }
 end
 
 function CountdownSystem:ClearTexts()
     textByRowId = {}
+    rowDisplayCache = {}
+end
+
+local function RefreshCountdownUI(now)
+    local context = BuildTickContext(now)
+
+    for rowId, textObject in pairs(textByRowId) do
+        if ShouldRealtimeUpdate(rowId, context) then
+            local remaining, isHidden = GetRemaining(rowId, context)
+            local text = FormatRemaining(remaining)
+            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden)
+            local cache = rowDisplayCache[rowId]
+            if not cache or cache.text ~= text or cache.r ~= r or cache.g ~= g or cache.b ~= b or cache.a ~= a then
+                textObject:SetText(text)
+                textObject:SetTextColor(r, g, b, a)
+                rowDisplayCache[rowId] = {
+                    text = text,
+                    r = r, g = g, b = b, a = a,
+                }
+            end
+        end
+    end
+
+    if SortingRef and SortingRef.GetSortState and SortingRef:GetSortState() ~= "default" then
+        local currentTime = GetTime()
+        local lastTime = SortingRef:GetLastSortTime()
+        if not lastTime or currentTime - lastTime >= 10 then
+            if sortRefreshCallback then
+                sortRefreshCallback()
+            end
+            SortingRef:SetLastSortTime(currentTime)
+        end
+    end
 end
 
 function CountdownSystem:Start()
-    if updateTimer then
-        updateTimer:Cancel()
+    if not updateDriver then
+        updateDriver = CreateFrame("Frame")
     end
 
-    updateTimer = C_Timer.NewTicker(1, function()
+    updateElapsed = UPDATE_INTERVAL
+    updateDriver:SetScript("OnUpdate", function(_, elapsed)
         if CrateTrackerZKFrame and not CrateTrackerZKFrame:IsShown() then
             return
         end
 
-        for rowId, textObject in pairs(textByRowId) do
-            local remaining, isHidden = GetRemaining(rowId)
-            local text = FormatRemaining(remaining)
-            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden)
-            textObject:SetText(text)
-            textObject:SetTextColor(r, g, b, a)
+        updateElapsed = updateElapsed + (elapsed or 0)
+        if updateElapsed < UPDATE_INTERVAL then
+            return
         end
+        updateElapsed = 0
 
-        if SortingRef and SortingRef.GetSortState and SortingRef:GetSortState() ~= "default" then
-            local currentTime = GetTime()
-            local lastTime = SortingRef:GetLastSortTime()
-            if not lastTime or currentTime - lastTime >= 10 then
-                if sortRefreshCallback then
-                    sortRefreshCallback()
-                end
-                SortingRef:SetLastSortTime(currentTime)
-            end
-        end
+        RefreshCountdownUI(time())
     end)
 end
 
 function CountdownSystem:Stop()
-    if updateTimer then
-        updateTimer:Cancel()
-        updateTimer = nil
+    if updateDriver and updateDriver:GetScript("OnUpdate") then
+        updateDriver:SetScript("OnUpdate", nil)
     end
+    updateElapsed = 0
 end
 
 return {

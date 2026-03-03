@@ -34,11 +34,11 @@ localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Aut
 localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
 localeData["NoTimeRecord"] = "[%s] No time record!!!";
 localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
-localeData["AutoTeamReportMessage"] = "Current [%s] War Supplies in: %s!!";
+localeData["AutoTeamReportMessage"] = "Current [%s] War Supplies airdrop in: %s!!";
 
 -- Phase Detection Alerts
-localeData["PhaseDetectedFirstTime"] = "[%s] Current phasing ID: |cffffff00%s|r";
-localeData["InstanceChangedTo"] = "[%s] Current phasing ID changed to: |cffffff00%s|r";
+localeData["PhaseDetectedFirstTime"] = "[%s] Current phase: |cffffff00%s|r";
+localeData["InstanceChangedTo"] = "[%s] Current phase changed to: |cffffff00%s|r";
 
 -- UI
 localeData["MapName"] = "Map Name";

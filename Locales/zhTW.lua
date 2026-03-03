@@ -24,12 +24,12 @@ localeData["Disabled"] = "團隊通知已關閉";
 localeData["AirdropDetected"] = "【%s】 檢測到戰爭補給正在空投！！！";  -- 自動檢測消息（帶"檢測到"關鍵字）
 localeData["AirdropDetectedManual"] = "【%s】 戰爭補給正在空投！！！";  -- 手動通知消息（不帶"檢測到"關鍵字）
 localeData["NoTimeRecord"] = "【%s】 暫無時間記錄！！！";
-localeData["TimeRemaining"] = "【%s】 距離 戰爭補給 空投還有：%s！！！";
+localeData["TimeRemaining"] = "【%s】 距離戰爭補給空投還有：%s！！！";
 localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";
 
 -- 位面檢測提示
-localeData["PhaseDetectedFirstTime"] = "【%s】當前位面ID：|cffffff00%s|r";
-localeData["InstanceChangedTo"] = "【%s】當前位面ID已變更為：|cffffff00%s|r";
+localeData["PhaseDetectedFirstTime"] = "【%s】當前位面：|cffffff00%s|r";
+localeData["InstanceChangedTo"] = "【%s】當前位面已變更為：|cffffff00%s|r";
 
 -- UI
 localeData["MapName"] = "地圖名稱";
