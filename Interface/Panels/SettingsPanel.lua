@@ -19,8 +19,14 @@ local settingsFrame = nil
 local currentTab = TAB_SETTINGS
 local tabButtons = {}
 local settingControls = {}
+local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
+local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
+local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
 
 local function LT(key, fallback)
+    if SettingsPanelState and SettingsPanelState.LT then
+        return SettingsPanelState:LT(key, fallback)
+    end
     if L and L[key] then
         return L[key]
     end
@@ -28,35 +34,23 @@ local function LT(key, fallback)
 end
 
 local function GetTabLabel(key)
-    if key == TAB_SETTINGS then
-        return LT("SettingsTabSettings", "设置")
-    end
-    if key == TAB_HELP then
-        return LT("MenuHelp", "帮助")
-    end
-    if key == TAB_ABOUT then
-        return LT("MenuAbout", "关于")
+    if SettingsPanelState and SettingsPanelState.GetTabLabel then
+        return SettingsPanelState:GetTabLabel(key)
     end
     return tostring(key)
 end
 
 local function ResolveTabKey(tabName)
-    if tabName == TAB_SETTINGS or tabName == TAB_HELP or tabName == TAB_ABOUT then
-        return tabName
-    end
-    if tabName == GetTabLabel(TAB_SETTINGS) then
-        return TAB_SETTINGS
-    end
-    if tabName == GetTabLabel(TAB_HELP) then
-        return TAB_HELP
-    end
-    if tabName == GetTabLabel(TAB_ABOUT) then
-        return TAB_ABOUT
+    if SettingsPanelState and SettingsPanelState.ResolveTabKey then
+        return SettingsPanelState:ResolveTabKey(tabName)
     end
     return nil
 end
 
 local function GetTheme()
+    if SettingsPanelLayout and SettingsPanelLayout.GetTheme then
+        return SettingsPanelLayout:GetTheme()
+    end
     return {
         background = ThemeConfig.GetSettingsColor("background"),
         titleBar = ThemeConfig.GetSettingsColor("titleBar"),
@@ -72,250 +66,106 @@ local function GetTheme()
 end
 
 local function CreateNoShadowText(parent, template, text)
-    local theme = GetTheme()
+    if SettingsPanelLayout and SettingsPanelLayout.CreateNoShadowText then
+        return SettingsPanelLayout:CreateNoShadowText(parent, template, text)
+    end
     local fontString = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
     fontString:SetText(text or "")
-    fontString:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
-    fontString:SetShadowOffset(0, 0)
     return fontString
 end
 
 local function CreateScrollableText(parent, text, enableWrap)
-    local theme = GetTheme()
-    local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -28, 0)
-
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(parent:GetWidth() or 520, parent:GetHeight() or 300)
-    scroll:SetScrollChild(content)
-
-    local editBox = CreateFrame("EditBox", nil, content)
-    editBox:SetPoint("TOPLEFT", content, "TOPLEFT", 6, -6)
-    editBox:SetPoint("TOPRIGHT", content, "TOPRIGHT", -6, -6)
-    editBox:SetFontObject("GameFontNormal")
-    editBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
-    editBox:SetShadowOffset(0, 0)
-    editBox:SetMultiLine(true)
-    if enableWrap then
-        if editBox.SetWordWrap then
-            editBox:SetWordWrap(true)
-        end
-        if editBox.SetNonSpaceWrap then
-            editBox:SetNonSpaceWrap(true)
-        end
-    else
-        if editBox.SetWordWrap then
-            editBox:SetWordWrap(false)
-        end
-        if editBox.SetNonSpaceWrap then
-            editBox:SetNonSpaceWrap(false)
-        end
+    if SettingsPanelLayout and SettingsPanelLayout.CreateScrollableText then
+        return SettingsPanelLayout:CreateScrollableText(parent, text, enableWrap)
     end
-    editBox:SetAutoFocus(false)
-    editBox:EnableMouse(true)
-    editBox:SetScript("OnEscapePressed", function() editBox:ClearFocus() end)
-    editBox:SetScript("OnEditFocusLost", function() editBox:HighlightText(0, 0) end)
-    editBox:SetScript("OnTextChanged", function(self)
-        if self.ignoreTextChanged then return end
-        self.ignoreTextChanged = true
-        self:SetText(self.originalText or "")
-        self.ignoreTextChanged = false
-    end)
-
-    editBox.originalText = text or ""
-    editBox.ignoreTextChanged = true
-    editBox:SetText(text or "")
-    editBox.ignoreTextChanged = false
-
-    local function UpdateLayout()
-        local viewW = scroll:GetWidth()
-        if viewW and viewW > 0 then
-            content:SetWidth(viewW)
-            editBox:SetWidth(viewW - 12)
-        end
-        local h = (editBox.GetStringHeight and editBox:GetStringHeight() or editBox:GetHeight()) + 20
-        local viewH = scroll:GetHeight()
-        local child = scroll:GetScrollChild()
-        if child then child:SetHeight(math.max(h, viewH)) end
-        local sb = scroll.ScrollBar
-        if sb then
-            if h > viewH + 1 then sb:Show() else sb:Hide() scroll:SetVerticalScroll(0) end
-        end
-    end
-
-    scroll:SetScript("OnSizeChanged", UpdateLayout)
-    C_Timer.After(0.05, UpdateLayout)
-
-    return editBox
+    return nil
 end
 
 local function IsAddonEnabled()
-    if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
-        return true
+    if SettingsPanelState and SettingsPanelState.IsAddonEnabled then
+        return SettingsPanelState:IsAddonEnabled()
     end
-    return CRATETRACKERZK_UI_DB.addonEnabled == true
+    return true
 end
 
 local function IsTeamNotificationEnabled()
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.teamNotificationEnabled ~= nil then
-        return CRATETRACKERZK_UI_DB.teamNotificationEnabled == true
+    if SettingsPanelState and SettingsPanelState.IsTeamNotificationEnabled then
+        return SettingsPanelState:IsTeamNotificationEnabled()
     end
-    if Notification and Notification.IsTeamNotificationEnabled then
-        return Notification:IsTeamNotificationEnabled()
+    return true
+end
+
+local function IsSoundAlertEnabled()
+    if SettingsPanelState and SettingsPanelState.IsSoundAlertEnabled then
+        return SettingsPanelState:IsSoundAlertEnabled()
     end
     return true
 end
 
 local function IsAutoTeamReportEnabled()
-    if Notification and Notification.IsAutoTeamReportEnabled then
-        return Notification:IsAutoTeamReportEnabled()
+    if SettingsPanelState and SettingsPanelState.IsAutoTeamReportEnabled then
+        return SettingsPanelState:IsAutoTeamReportEnabled()
     end
     return false
 end
 
 local function GetAutoTeamReportInterval()
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportInterval ~= nil then
-        local value = tonumber(CRATETRACKERZK_UI_DB.autoTeamReportInterval)
-        if value and value > 0 then
-            return math.floor(value)
-        end
-    end
-    if Notification and Notification.GetAutoTeamReportInterval then
-        return Notification:GetAutoTeamReportInterval()
+    if SettingsPanelState and SettingsPanelState.GetAutoTeamReportInterval then
+        return SettingsPanelState:GetAutoTeamReportInterval()
     end
     return 60
 end
 
 local function IsExpansionSwitchEnabled()
-    return ExpansionConfig and ExpansionConfig.IsSwitchEnabled and ExpansionConfig:IsSwitchEnabled()
-end
-
-local function GetExpansionOptions()
-    if ExpansionConfig and ExpansionConfig.GetAvailableExpansions then
-        return ExpansionConfig:GetAvailableExpansions() or {}
+    if SettingsPanelState and SettingsPanelState.IsExpansionSwitchEnabled then
+        return SettingsPanelState:IsExpansionSwitchEnabled()
     end
-    return {}
+    return false
 end
 
 local function GetCurrentExpansionButtonText()
-    if not IsExpansionSwitchEnabled() then
-        return LT("SettingsToggleOff", "已关闭")
+    if SettingsPanelState and SettingsPanelState.GetCurrentExpansionButtonText then
+        return SettingsPanelState:GetCurrentExpansionButtonText()
     end
-    local expansionID = ExpansionConfig and ExpansionConfig.GetCurrentExpansionID and ExpansionConfig:GetCurrentExpansionID()
-    local options = GetExpansionOptions()
-    for _, option in ipairs(options) do
-        if option.id == expansionID then
-            return option.id
-        end
-    end
-    return expansionID or "N/A"
+    return "N/A"
 end
 
 local function CycleExpansionVersion()
-    if not IsExpansionSwitchEnabled() then
-        return
-    end
-    if not ExpansionConfig or not ExpansionConfig.GetCurrentExpansionID or not ExpansionConfig.GetNextExpansionID then
-        return
-    end
-
-    local currentID = ExpansionConfig:GetCurrentExpansionID()
-    local nextID = ExpansionConfig:GetNextExpansionID(currentID)
-    if not nextID or nextID == currentID then
-        return
-    end
-
-    if Data and Data.SwitchExpansion then
-        Data:SwitchExpansion(nextID)
-    elseif ExpansionConfig.SetCurrentExpansionID then
-        ExpansionConfig:SetCurrentExpansionID(nextID)
-    end
-
-    if CrateTrackerZK and CrateTrackerZK.Reinitialize then
-        CrateTrackerZK:Reinitialize()
+    if SettingsPanelActions and SettingsPanelActions.CycleExpansionVersion then
+        SettingsPanelActions:CycleExpansionVersion()
     end
 end
 
 local function IsThemeSwitchEnabled()
-    return ThemeConfig and ThemeConfig.IsSwitchEnabled and ThemeConfig:IsSwitchEnabled()
-end
-
-local function GetThemeOptions()
-    if ThemeConfig and ThemeConfig.GetThemeList then
-        return ThemeConfig:GetThemeList() or {}
+    if SettingsPanelState and SettingsPanelState.IsThemeSwitchEnabled then
+        return SettingsPanelState:IsThemeSwitchEnabled()
     end
-    return {}
+    return false
 end
 
 local function GetCurrentThemeButtonText()
-    if not IsThemeSwitchEnabled() then
-        return LT("SettingsToggleOff", "已关闭")
+    if SettingsPanelState and SettingsPanelState.GetCurrentThemeButtonText then
+        return SettingsPanelState:GetCurrentThemeButtonText()
     end
-    local currentID = ThemeConfig and ThemeConfig.GetCurrentThemeID and ThemeConfig.GetCurrentThemeID()
-    local options = GetThemeOptions()
-    for _, option in ipairs(options) do
-        if option.id == currentID then
-            return option.label or option.id
-        end
-    end
-    return currentID or "N/A"
+    return "N/A"
 end
 
 local function CycleTheme()
-    if not IsThemeSwitchEnabled() then
-        return
-    end
-    if not ThemeConfig or not ThemeConfig.GetCurrentThemeID or not ThemeConfig.SetCurrentThemeID then
-        return
-    end
-    local options = GetThemeOptions()
-    if #options == 0 then
-        return
-    end
-
-    local currentID = ThemeConfig.GetCurrentThemeID()
-    local currentIndex = 1
-    for i, option in ipairs(options) do
-        if option.id == currentID then
-            currentIndex = i
-            break
-        end
-    end
-    local nextIndex = currentIndex + 1
-    if nextIndex > #options then
-        nextIndex = 1
-    end
-    local nextID = options[nextIndex].id
-    if nextID then
-        ThemeConfig:SetCurrentThemeID(nextID)
-    end
-
-    if MainPanel and MainPanel.RefreshTheme then
-        MainPanel:RefreshTheme()
-    elseif MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable(true)
+    if SettingsPanelActions and SettingsPanelActions.CycleTheme then
+        SettingsPanelActions:CycleTheme()
     end
 end
 
 local function EnsureClearDialog()
-    if not StaticPopupDialogs or StaticPopupDialogs["CRATETRACKERZK_CLEAR_DATA"] then
-        return
+    if SettingsPanelActions and SettingsPanelActions.EnsureClearDialog then
+        SettingsPanelActions:EnsureClearDialog()
     end
+end
 
-    StaticPopupDialogs["CRATETRACKERZK_CLEAR_DATA"] = {
-        text = LT("SettingsClearConfirmText", "确认清除所有数据并重新初始化？该操作不可撤销。"),
-        button1 = LT("SettingsClearConfirmYes", "确认"),
-        button2 = LT("SettingsClearConfirmNo", "取消"),
-        OnAccept = function()
-            if Commands and Commands.HandleClearCommand then
-                Commands:HandleClearCommand()
-            end
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-    }
+local function ApplyAutoTeamReportInterval(editBox)
+    if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
+        SettingsPanelActions:ApplyAutoTeamReportInterval(editBox)
+    end
 end
 
 local function UpdateToggleButtonState(control, enabled)
@@ -351,11 +201,14 @@ end
 local function UpdateSettingsState()
     local addonEnabled = IsAddonEnabled()
     local teamEnabled = addonEnabled and IsTeamNotificationEnabled()
+    local soundEnabled = addonEnabled and IsSoundAlertEnabled()
     local autoEnabled = addonEnabled and teamEnabled and IsAutoTeamReportEnabled()
     UpdateToggleButtonState(settingControls.addon, addonEnabled)
     UpdateToggleButtonState(settingControls.teamNotify, teamEnabled)
+    UpdateToggleButtonState(settingControls.soundAlert, soundEnabled)
     UpdateToggleButtonState(settingControls.autoReport, autoEnabled)
     SetControlEnabled(settingControls.teamNotify, addonEnabled)
+    SetControlEnabled(settingControls.soundAlert, addonEnabled)
     SetControlEnabled(settingControls.autoReport, addonEnabled and teamEnabled)
     SetControlEnabled(settingControls.expansionSwitch, addonEnabled and IsExpansionSwitchEnabled())
     SetControlEnabled(settingControls.themeSwitch, IsThemeSwitchEnabled())
@@ -404,42 +257,14 @@ local function UpdateSettingsState()
     end
 end
 
-local function ApplyAutoTeamReportInterval(editBox)
-    if not editBox then
-        return
-    end
-    local value = editBox:GetText()
-    local applied = nil
-    if Notification and Notification.SetAutoTeamReportInterval then
-        applied = Notification:SetAutoTeamReportInterval(value)
-    end
-    if applied then
-        editBox:SetText(tostring(applied))
-    else
-        editBox:SetText(tostring(GetAutoTeamReportInterval()))
-    end
-end
-
 local function CreateSettingButton(parent, text)
-    local theme = GetTheme()
+    if SettingsPanelLayout and SettingsPanelLayout.CreateSettingButton then
+        return SettingsPanelLayout:CreateSettingButton(parent, text)
+    end
     local button = CreateFrame("Button", nil, parent)
     button:SetSize(90, 22)
-
-    local bg = button:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(button)
-    bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-    button.bg = bg
-
     local label = CreateNoShadowText(button, "GameFontNormal", text or "")
     label:SetPoint("CENTER", button, "CENTER", 0, 0)
-
-    button:SetScript("OnEnter", function()
-        bg:SetColorTexture(theme.buttonHover[1], theme.buttonHover[2], theme.buttonHover[3], theme.buttonHover[4])
-    end)
-    button:SetScript("OnLeave", function()
-        bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-    end)
-
     return button, label
 end
 
@@ -631,6 +456,13 @@ function SettingsPanel:CreateFrame()
             AddToggleRow(IndentText(1, LT("SettingsTeamNotify", "团队通知")), "teamNotify", function()
                 if Notification and Notification.SetTeamNotificationEnabled then
                     Notification:SetTeamNotificationEnabled(not IsTeamNotificationEnabled())
+                end
+            end, y)
+
+            y = y - 28
+            AddToggleRow(IndentText(1, LT("SettingsSoundAlert", "声音提示")), "soundAlert", function()
+                if Notification and Notification.SetSoundAlertEnabled then
+                    Notification:SetSoundAlertEnabled(not IsSoundAlertEnabled())
                 end
             end, y)
 

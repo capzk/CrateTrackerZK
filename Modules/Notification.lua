@@ -8,8 +8,10 @@ local Area = BuildEnv("Area");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
+Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
+Notification.airdropAlertSoundFile = "Interface\\AddOns\\CrateTrackerZK\\Interface\\Assets\\Sounds\\ctk_airdrop_detected_v1.ogg";
 -- 首次通知时间记录（用于30秒限制）
 Notification.firstNotificationTime = {};
 -- 玩家发送通知记录（防止重复发送）
@@ -35,7 +37,23 @@ function Notification:Initialize()
         end
     end
 
-    self.autoTeamReportEnabled = false;
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.soundAlertEnabled ~= nil then
+        self.soundAlertEnabled = CRATETRACKERZK_UI_DB.soundAlertEnabled == true;
+    else
+        self.soundAlertEnabled = true;
+        if CRATETRACKERZK_UI_DB then
+            CRATETRACKERZK_UI_DB.soundAlertEnabled = true;
+        end
+    end
+
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportEnabled ~= nil then
+        self.autoTeamReportEnabled = CRATETRACKERZK_UI_DB.autoTeamReportEnabled == true;
+    else
+        self.autoTeamReportEnabled = false;
+        if CRATETRACKERZK_UI_DB then
+            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
+        end
+    end
 
     if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportInterval ~= nil then
         local value = tonumber(CRATETRACKERZK_UI_DB.autoTeamReportInterval);
@@ -55,6 +73,10 @@ function Notification:IsTeamNotificationEnabled()
     return self.teamNotificationEnabled;
 end
 
+function Notification:IsSoundAlertEnabled()
+    return self.soundAlertEnabled == true;
+end
+
 function Notification:SetTeamNotificationEnabled(enabled)
     self.teamNotificationEnabled = enabled;
     
@@ -67,6 +89,9 @@ function Notification:SetTeamNotificationEnabled(enabled)
 
     if not enabled then
         self.autoTeamReportEnabled = false;
+        if CRATETRACKERZK_UI_DB then
+            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
+        end
     end
     if CrateTrackerZK then
         if not enabled and CrateTrackerZK.StopAutoTeamReportTicker then
@@ -74,6 +99,13 @@ function Notification:SetTeamNotificationEnabled(enabled)
         elseif enabled and self:IsAutoTeamReportEnabled() and CrateTrackerZK.RestartAutoTeamReportTicker then
             CrateTrackerZK:RestartAutoTeamReportTicker();
         end
+    end
+end
+
+function Notification:SetSoundAlertEnabled(enabled)
+    self.soundAlertEnabled = enabled == true;
+    if CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB.soundAlertEnabled = self.soundAlertEnabled;
     end
 end
 
@@ -100,9 +132,15 @@ end
 function Notification:SetAutoTeamReportEnabled(enabled)
     if enabled and not self:IsTeamNotificationEnabled() then
         self.autoTeamReportEnabled = false;
+        if CRATETRACKERZK_UI_DB then
+            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
+        end
         return;
     end
     self.autoTeamReportEnabled = enabled == true;
+    if CRATETRACKERZK_UI_DB then
+        CRATETRACKERZK_UI_DB.autoTeamReportEnabled = self.autoTeamReportEnabled;
+    end
     if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
         CrateTrackerZK:RestartAutoTeamReportTicker();
     end
@@ -192,6 +230,30 @@ function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
     return (currentTime - lastTime) <= windowSeconds, lastTime;
 end
 
+local function TryPlaySound(path)
+    if not path or path == "" or not PlaySoundFile then
+        return false;
+    end
+    local ok, result = pcall(PlaySoundFile, path, "Master");
+    if ok and result then
+        return true;
+    end
+    local ok2, result2 = pcall(PlaySoundFile, path);
+    return ok2 and result2 == true;
+end
+
+function Notification:PlayAirdropAlertSound()
+    if not self:IsSoundAlertEnabled() then
+        return false;
+    end
+    local soundPath = self.airdropAlertSoundFile;
+    local played = TryPlaySound(soundPath);
+    if not played then
+        Logger:Warn("Notification", "通知", string.format("空投提示音播放失败：%s", tostring(soundPath)));
+    end
+    return played;
+end
+
 function Notification:NotifyAirdropDetected(mapName, detectionSource)
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
@@ -244,6 +306,8 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     end
     
     local message = string.format(L["AirdropDetected"], mapName);
+
+    self:PlayAirdropAlertSound();
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
     

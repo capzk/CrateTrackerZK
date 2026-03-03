@@ -54,6 +54,9 @@
     <Script file="Interface/MainFrame/TableUI.lua"/>
     <Script file="Interface/MainFrame/MainFrame.lua"/>
     <Script file="Interface/Providers/TextProviders.lua"/>
+    <Script file="Interface/Panels/SettingsPanelState.lua"/>
+    <Script file="Interface/Panels/SettingsPanelLayout.lua"/>
+    <Script file="Interface/Panels/SettingsPanelActions.lua"/>
     <Script file="Interface/Panels/SettingsPanel.lua"/>
     <Script file="Interface/Panels/MainPanel.lua"/>
     <Script file="Interface/MiniMode/MiniFrame.lua"/>

@@ -138,12 +138,12 @@ local function GetMapInterval(mapId)
 end
 
 -- 计算下一次刷新时间，确保返回值始终指向“未来”
-local function CalculateNextRefreshTime(lastRefresh, interval)
+local function CalculateNextRefreshTime(lastRefresh, interval, currentTime)
     if not lastRefresh or not interval or interval <= 0 then
         return nil;
     end
 
-    local now = time();
+    local now = currentTime or time();
 
     -- 如果记录时间在未来或刚刚发生，直接推一个间隔
     if now <= lastRefresh then
@@ -157,6 +157,11 @@ local function CalculateNextRefreshTime(lastRefresh, interval)
     end
 
     return lastRefresh + cycles * interval;
+end
+
+-- 对外暴露统一时间计算入口，便于其他模块复用
+function UnifiedDataManager:CalculateNextRefreshTime(lastRefresh, interval, currentTime)
+    return CalculateNextRefreshTime(lastRefresh, interval, currentTime);
 end
 
 -- 获取或创建时间数据

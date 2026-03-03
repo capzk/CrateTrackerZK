@@ -59,6 +59,7 @@ localeData["SettingsExpansionVersion"] = "게임 버전";
 localeData["SettingsThemeSwitch"] = "테마";
 localeData["SettingsAddonToggle"] = "애드온 전환";
 localeData["SettingsTeamNotify"] = "그룹 알림";
+localeData["SettingsSoundAlert"] = "사운드 알림";
 localeData["SettingsAutoReport"] = "자동 알림";
 localeData["SettingsAutoReportInterval"] = "알림 간격 (초)";
 localeData["SettingsClearAllData"] = "모든 데이터 삭제";

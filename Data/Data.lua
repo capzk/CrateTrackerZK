@@ -300,37 +300,24 @@ function Data:UpdateMap(mapId, mapData)
 end
 
 local function CalculateNextRefreshTime(lastRefresh, interval, currentTime)
+    if UnifiedDataManager and UnifiedDataManager.CalculateNextRefreshTime then
+        return UnifiedDataManager:CalculateNextRefreshTime(lastRefresh, interval, currentTime);
+    end
+
     if not lastRefresh or not interval or interval <= 0 then
         return nil;
     end
-    
+
     currentTime = currentTime or time();
-    
-    local diffTime = currentTime - lastRefresh;
-    local n = math.ceil(diffTime / interval);
-    
-    if n <= 0 then
-        local forwardCount = math.floor((lastRefresh - currentTime) / interval);
-        local candidateRefresh = lastRefresh - forwardCount * interval;
-        
-        if candidateRefresh <= currentTime then
-            return candidateRefresh + interval;
-        else
-            local prevRefresh = candidateRefresh - interval;
-            if prevRefresh > currentTime then
-                while prevRefresh > currentTime do
-                    candidateRefresh = prevRefresh;
-                    prevRefresh = candidateRefresh - interval;
-                end
-            end
-            return candidateRefresh;
-        end
-    else
-        if n == 0 then
-            n = 1;
-        end
-        return lastRefresh + n * interval;
+    if currentTime <= lastRefresh then
+        return lastRefresh + interval;
     end
+
+    local cycles = math.ceil((currentTime - lastRefresh) / interval);
+    if cycles < 1 then
+        cycles = 1;
+    end
+    return lastRefresh + cycles * interval;
 end
 
 function Data:UpdateNextRefresh(mapId, mapData)

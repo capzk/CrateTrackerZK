@@ -59,6 +59,7 @@ localeData["SettingsExpansionVersion"] = "Версия игры";
 localeData["SettingsThemeSwitch"] = "Тема";
 localeData["SettingsAddonToggle"] = "Переключатель аддона";
 localeData["SettingsTeamNotify"] = "Уведомления группы";
+localeData["SettingsSoundAlert"] = "Звуковое уведомление";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
 localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";
 localeData["SettingsClearAllData"] = "Очистить все данные";

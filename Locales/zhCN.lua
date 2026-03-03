@@ -57,6 +57,7 @@ localeData["SettingsExpansionVersion"] = "游戏版本";
 localeData["SettingsThemeSwitch"] = "界面主题";
 localeData["SettingsAddonToggle"] = "插件开关";
 localeData["SettingsTeamNotify"] = "团队通知";
+localeData["SettingsSoundAlert"] = "声音提示";
 localeData["SettingsAutoReport"] = "自动通知";
 localeData["SettingsAutoReportInterval"] = "通知频率（秒）";
 localeData["SettingsClearAllData"] = "清除所有数据";
@@ -74,6 +75,10 @@ localeData.AirdropShouts = {
     "路费欧斯说： 附近有满满一箱资源，赶紧找，不然难免大打出手哦！",
     "路费欧斯说： 机会送上门来了！只要你够有勇气，那些宝贝在等着你呢。",
     "路费欧斯说： 区域里出现了珍贵资源！快去抢吧！",
+    "兹尔丹说： 看来远方就有一处宝物。不要放过这个机会！",
+    "维迪奥斯说： 你喜欢好东西吧？那就去找到它们。",
+    "维迪奥斯说： 时刻关注战利品出现的机会，比如现在！",
+    "兹尔丹说： 抢占先机，夺取你的战利品。",
 };
 
 -- Register this locale

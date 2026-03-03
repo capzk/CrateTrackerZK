@@ -58,6 +58,7 @@ localeData["SettingsExpansionVersion"] = "遊戲版本";
 localeData["SettingsThemeSwitch"] = "介面主題";
 localeData["SettingsAddonToggle"] = "插件開關";
 localeData["SettingsTeamNotify"] = "團隊通知";
+localeData["SettingsSoundAlert"] = "聲音提示";
 localeData["SettingsAutoReport"] = "自動通知";
 localeData["SettingsAutoReportInterval"] = "通知頻率（秒）";
 localeData["SettingsClearAllData"] = "清除所有資料";

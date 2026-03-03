@@ -2,7 +2,7 @@
 
 local ExpansionConfig = BuildEnv("ExpansionConfig")
 
-ExpansionConfig.defaultExpansionID = "11.0"
+ExpansionConfig.defaultExpansionID = "12.0"
 ExpansionConfig.enableSwitch = true
 
 ExpansionConfig.expansionOrder = {
@@ -54,11 +54,10 @@ ExpansionConfig.expansions = {
             2393,
         },
         mapIDs = {
-            2424,
-            2541,
-            2413,
+            2395,
             2437,
             2405,
+            2413,
         },
     },
 }

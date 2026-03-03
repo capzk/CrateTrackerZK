@@ -58,6 +58,7 @@ localeData["SettingsExpansionVersion"] = "Game Version";
 localeData["SettingsThemeSwitch"] = "Theme";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsTeamNotify"] = "Team Notifications";
+localeData["SettingsSoundAlert"] = "Sound Alert";
 localeData["SettingsAutoReport"] = "Auto Notify";
 localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
 localeData["SettingsClearAllData"] = "Clear All Data";
