@@ -32,6 +32,25 @@ local function IsAreaActive()
     return Area and Area.lastAreaValidState == true and not Area.detectionPaused;
 end
 
+local function ClearAllPhaseCaches()
+    if CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.expansionUIData) == "table" then
+        for _, bucket in pairs(CRATETRACKERZK_UI_DB.expansionUIData) do
+            if type(bucket) == "table" and type(bucket.phaseCache) == "table" then
+                for k in pairs(bucket.phaseCache) do
+                    bucket.phaseCache[k] = nil;
+                end
+            end
+        end
+    end
+
+    -- 兼容旧结构：若仍存在全局 phaseCache，一并清理
+    if CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.phaseCache) == "table" then
+        for k in pairs(CRATETRACKERZK_UI_DB.phaseCache) do
+            CRATETRACKERZK_UI_DB.phaseCache[k] = nil;
+        end
+    end
+end
+
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
@@ -198,20 +217,7 @@ local function OnEvent(self, event, ...)
             Logger:Debug("Core", "状态", "退出游戏，已清除位面ID缓存");
         end
         if not CrateTrackerZK.isReloading then
-            if Data and Data.GetPhaseCache then
-                local phaseCache = Data:GetPhaseCache();
-                for k in pairs(phaseCache) do
-                    phaseCache[k] = nil;
-                end
-            elseif CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.expansionUIData) == "table" then
-                for _, bucket in pairs(CRATETRACKERZK_UI_DB.expansionUIData) do
-                    if type(bucket) == "table" and type(bucket.phaseCache) == "table" then
-                        for k in pairs(bucket.phaseCache) do
-                            bucket.phaseCache[k] = nil;
-                        end
-                    end
-                end
-            end
+            ClearAllPhaseCaches();
         end
         CrateTrackerZK.isReloading = nil;
     elseif event == "CHAT_MSG_MONSTER_SAY"

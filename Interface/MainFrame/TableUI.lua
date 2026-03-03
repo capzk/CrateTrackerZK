@@ -17,6 +17,7 @@ local BASE_FRAME_HEIGHT = 335
 local BASE_ROW_HEIGHT = 35
 local MIN_FRAME_SCALE = 0.6
 local MAX_FRAME_SCALE = 1.25
+local MINIMIZED_WIDTH_THRESHOLD = math.floor(BASE_FRAME_WIDTH * MIN_FRAME_SCALE + 0.5)
 
 local function GetConfig()
     return UIConfig
@@ -60,6 +61,14 @@ local function GetScaleFactor(frame)
     local width = frame:GetWidth() or BASE_FRAME_WIDTH
     local widthScale = width / BASE_FRAME_WIDTH
     return Clamp(widthScale, MIN_FRAME_SCALE, MAX_FRAME_SCALE)
+end
+
+local function IsMinimizedCompactMode(frame)
+    if not frame or not frame.GetWidth then
+        return false
+    end
+    local width = frame:GetWidth() or BASE_FRAME_WIDTH
+    return width <= (MINIMIZED_WIDTH_THRESHOLD + 0.5)
 end
 
 local function GetScaledFontSize(baseSize, scale)
@@ -209,7 +218,7 @@ local function DistributeWidths(desired, minWidths, maxWidths, total)
     return result
 end
 
-local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale)
+local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, compactMode)
     local headers = headerLabels or {}
     local notifyText = L["Notify"] or "通知"
     local noRecord = L["NoRecord"] or "--:--"
@@ -224,6 +233,35 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale)
                 mapMax = width
             end
         end
+    end
+
+    if compactMode then
+        local activeDesired = {
+            math.floor((mapMax + 36) * widthScale + 0.5),
+            math.floor((GetMaxWidth({headers[2] or "", notAcquired, "0000-0000"}) + 24) * widthScale + 0.5),
+            math.floor((GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 26) * widthScale + 0.5),
+            math.floor((GetMaxWidth({headers[5] or "", notifyText}) + 26) * widthScale + 0.5),
+        }
+        local activeMinWidths = {
+            math.floor(140 * widthScale + 0.5),
+            math.floor(86 * widthScale + 0.5),
+            math.floor(112 * widthScale + 0.5),
+            math.floor(84 * widthScale + 0.5),
+        }
+        local activeMaxWidths = {
+            math.floor(340 * widthScale + 0.5),
+            math.floor(170 * widthScale + 0.5),
+            math.floor(190 * widthScale + 0.5),
+            math.floor(150 * widthScale + 0.5),
+        }
+        local active = DistributeWidths(activeDesired, activeMinWidths, activeMaxWidths, totalWidth)
+        return {
+            active[1] or 0,
+            active[2] or 0,
+            0, -- 紧凑模式隐藏“上次刷新”列
+            active[3] or 0,
+            active[4] or 0,
+        }
     end
 
     local desired = {
@@ -265,13 +303,25 @@ local function CalculateTableLayout(frame, rowCount)
     end
 
     local scale = GetScaleFactor(frame)
-    local baseRowHeight = math.floor(BASE_ROW_HEIGHT * scale + 0.5)
+    local compactMode = IsMinimizedCompactMode(frame)
+    local fontScale = scale
+    if compactMode then
+        fontScale = Clamp(scale * 1.55, 0.9, 1.1)
+    end
+
+    local baseRowScale = compactMode and math.max(scale, 0.9) or scale
+    local baseRowHeight = math.floor(BASE_ROW_HEIGHT * baseRowScale + 0.5)
     local rowGap = math.max(0, math.floor(2 * scale + 0.5))
-    local totalRows = math.max(1, (rowCount or 0) + 1)
+    local showHeader = not compactMode
+    local totalRows = math.max(1, (rowCount or 0) + (showHeader and 1 or 0))
     local availableForRows = math.max(1, contentHeight - (totalRows - 1) * rowGap)
     local fitRowHeight = math.floor(availableForRows / totalRows)
     local rowHeight = math.min(baseRowHeight, fitRowHeight)
-    rowHeight = Clamp(rowHeight, 2, 44)
+    if compactMode then
+        rowHeight = Clamp(rowHeight, 20, 54)
+    else
+        rowHeight = Clamp(rowHeight, 2, 44)
+    end
 
     local usedHeight = totalRows * rowHeight + (totalRows - 1) * rowGap
     if usedHeight > contentHeight then
@@ -280,12 +330,14 @@ local function CalculateTableLayout(frame, rowCount)
 
     return {
         parent = tableParent,
-        scale = scale,
+        scale = fontScale,
         rowHeight = rowHeight,
         rowGap = rowGap,
         tableWidth = math.max(1, math.floor(contentWidth + 0.5)),
         startX = 0,
         startY = 0,
+        compactMode = compactMode,
+        showHeader = showHeader,
     }
 end
 
@@ -314,14 +366,20 @@ function TableUI:RebuildUI(frame, headerLabels)
         CountdownSystem:ClearTexts()
     end
 
+    if SortingSystem and SortingSystem.SetHeaderButton then
+        SortingSystem:SetHeaderButton(nil)
+    end
+
     if RowStateSystem then
         RowStateSystem:ClearRowRefs()
     end
 
     local layout = CalculateTableLayout(frame, #rows)
-    local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale)
+    local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale, layout.compactMode)
 
-    self:CreateHeaderRow(layout.parent, headerLabels, colWidths, layout)
+    if layout.showHeader then
+        self:CreateHeaderRow(layout.parent, headerLabels, colWidths, layout)
+    end
 
     for displayIndex, rowInfo in ipairs(rows) do
         self:CreateDataRow(layout.parent, rowInfo, displayIndex, colWidths, layout)
@@ -423,7 +481,8 @@ end
 
 function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     local rowId = rowInfo.rowId
-    local actualRowIndex = displayIndex
+    local headerOffset = layout.showHeader and 1 or 0
+    local actualRowIndex = (displayIndex - 1) + headerOffset
 
     local slotY = (layout.rowHeight + layout.rowGap) * actualRowIndex
     local rowFrame = CreateFrame("Frame", nil, parent)
@@ -465,7 +524,7 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
         end
     end)
 
-    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale)
+    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale, layout)
 
     local notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, layout.scale)
     if RowStateSystem and notifyBtn then
@@ -475,7 +534,7 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     table.insert(tableRows, rowFrame)
 end
 
-function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale)
+function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layout)
     local cfg = GetConfig()
     local currentX = 0
     local leftPadding = math.floor(15 * (scale or 1) + 0.5)
@@ -523,13 +582,16 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale)
     local nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
 
     local columns = {
-        {text = rowInfo.mapName, align = "left", color = cfg.GetTextColor("normal")},
-        {text = phaseText, align = "center", color = phaseColor},
-        {text = lastRefreshText, align = "center", color = lastColor},
-        {text = nextRefreshText, align = "center", color = cfg.GetTextColor("normal"), isCountdown = true},
+        {colIndex = 1, text = rowInfo.mapName, align = "left", color = cfg.GetTextColor("normal")},
+        {colIndex = 2, text = phaseText, align = "center", color = phaseColor},
     }
+    if not (layout and layout.compactMode) then
+        table.insert(columns, {colIndex = 3, text = lastRefreshText, align = "center", color = lastColor})
+    end
+    table.insert(columns, {colIndex = 4, text = nextRefreshText, align = "center", color = cfg.GetTextColor("normal"), isCountdown = true})
 
-    for colIndex, colData in ipairs(columns) do
+    for _, colData in ipairs(columns) do
+        local colIndex = colData.colIndex
         local cellText = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
         if colIndex == 1 then

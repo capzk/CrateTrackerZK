@@ -164,7 +164,7 @@ end
 
 local function BuildPrefix(level, module, func)
     local color = Logger.COLORS[level] or Logger.COLORS[Logger.LEVELS.INFO];
-    local prefix = "|c" .. color .. "[CrateTrackerZK";
+    local prefix = "|c" .. color .. "CrateTrackerZK";
     
     -- 用户可见的信息/成功级别仅保留插件名前缀
     if level ~= Logger.LEVELS.INFO and level ~= Logger.LEVELS.SUCCESS then
@@ -179,7 +179,7 @@ local function BuildPrefix(level, module, func)
         end
     end
     
-    prefix = prefix .. "]|r";
+    prefix = prefix .. ":|r";
     return prefix;
 end
 

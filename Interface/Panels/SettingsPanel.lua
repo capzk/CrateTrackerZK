@@ -8,8 +8,6 @@ local AboutTextProvider = BuildEnv("AboutTextProvider")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
 local MainPanel = BuildEnv("MainPanel")
-local Data = BuildEnv("Data")
-local ExpansionConfig = BuildEnv("ExpansionConfig")
 local L = CrateTrackerZK.L
 
 local TAB_SETTINGS = "settings"
