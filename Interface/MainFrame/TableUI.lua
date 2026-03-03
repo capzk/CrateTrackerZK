@@ -11,6 +11,8 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local L = CrateTrackerZK.L
 
 local tableRows = {}
+local rowFramePool = {}
+local headerRowFrame = nil
 local measureText = nil
 local BASE_FRAME_WIDTH = 600
 local BASE_FRAME_HEIGHT = 335
@@ -80,12 +82,20 @@ local function ApplyFontScale(fontString, scale)
     if not fontString or not fontString.GetFont then
         return
     end
-    local font, size, flags = fontString:GetFont()
-    if not font then
-        local defaultFont, defaultSize, defaultFlags = GameFontNormal:GetFont()
-        font, size, flags = defaultFont, defaultSize, defaultFlags
+    if not fontString.__ctkBaseFont then
+        local font, size, flags = fontString:GetFont()
+        if not font then
+            local defaultFont, defaultSize, defaultFlags = GameFontNormal:GetFont()
+            font, size, flags = defaultFont, defaultSize, defaultFlags
+        end
+        fontString.__ctkBaseFont = {
+            font = font,
+            size = size or 12,
+            flags = flags,
+        }
     end
-    fontString:SetFont(font, GetScaledFontSize(size or 12, scale or 1), flags)
+    local base = fontString.__ctkBaseFont
+    fontString:SetFont(base.font, GetScaledFontSize(base.size, scale or 1), base.flags)
 end
 
 local function GetStringLength(text)
@@ -348,19 +358,58 @@ local function IsAddonEnabled()
     return CRATETRACKERZK_UI_DB.addonEnabled == true
 end
 
+local function HideVisibleFrames()
+    for _, frameRef in ipairs(tableRows) do
+        if frameRef and frameRef.Hide then
+            frameRef:Hide()
+        end
+    end
+    tableRows = {}
+end
+
+local function AcquireRowFrame(parent, index)
+    local rowFrame = rowFramePool[index]
+    if rowFrame then
+        if rowFrame:GetParent() ~= parent then
+            rowFrame:SetParent(parent)
+        end
+        return rowFrame
+    end
+
+    rowFrame = CreateFrame("Frame", nil, parent)
+    rowFrame:EnableMouse(true)
+    rowFrame.rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+    rowFrame.rowBg:SetAllPoints(rowFrame)
+    rowFrame.cellTexts = {}
+
+    rowFrame:SetScript("OnMouseDown", function(self, button)
+        local rowId = self.rowId
+        if not rowId then
+            return
+        end
+        if button == "RightButton" and RowStateSystem then
+            local currentState = RowStateSystem:GetRowState(rowId)
+            if currentState.rightClicked then
+                RowStateSystem:OnGlobalLeftClick()
+            else
+                RowStateSystem:OnGlobalLeftClick()
+                RowStateSystem:OnRowRightClick(rowId)
+            end
+        elseif button == "LeftButton" and RowStateSystem then
+            RowStateSystem:OnGlobalLeftClick()
+        end
+    end)
+
+    rowFramePool[index] = rowFrame
+    return rowFrame
+end
+
 function TableUI:RebuildUI(frame, headerLabels)
     if not frame then return end
     if not SortingSystem then return end
 
     local rows = SortingSystem:GetCurrentRows() or {}
-
-    for _, rowFrame in pairs(tableRows) do
-        if rowFrame and rowFrame:GetObjectType() == "Frame" then
-            rowFrame:Hide()
-            rowFrame:SetParent(nil)
-        end
-    end
-    tableRows = {}
+    HideVisibleFrames()
 
     if CountdownSystem then
         CountdownSystem:ClearTexts()
@@ -379,10 +428,19 @@ function TableUI:RebuildUI(frame, headerLabels)
 
     if layout.showHeader then
         self:CreateHeaderRow(layout.parent, headerLabels, colWidths, layout)
+    elseif headerRowFrame then
+        headerRowFrame:Hide()
     end
 
     for displayIndex, rowInfo in ipairs(rows) do
         self:CreateDataRow(layout.parent, rowInfo, displayIndex, colWidths, layout)
+    end
+
+    for idx = #rows + 1, #rowFramePool do
+        local extraFrame = rowFramePool[idx]
+        if extraFrame then
+            extraFrame:Hide()
+        end
     end
 
     if SortingSystem then
@@ -392,75 +450,135 @@ end
 
 function TableUI:CreateHeaderRow(parent, headerLabels, colWidths, layout)
     local cfg = GetConfig()
-    local headerRowFrame = CreateFrame("Frame", nil, parent)
+    if not headerRowFrame then
+        headerRowFrame = CreateFrame("Frame", nil, parent)
+        headerRowFrame.headerBg = headerRowFrame:CreateTexture(nil, "BACKGROUND")
+        headerRowFrame.headerBg:SetAllPoints(headerRowFrame)
+        headerRowFrame.headerCells = {}
+    elseif headerRowFrame:GetParent() ~= parent then
+        headerRowFrame:SetParent(parent)
+    end
+
     headerRowFrame:SetSize(layout.tableWidth, layout.rowHeight)
     headerRowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -layout.startY)
     headerRowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     headerRowFrame:SetAlpha(1.0)
+    headerRowFrame:Show()
 
-    local headerBg = headerRowFrame:CreateTexture(nil, "BACKGROUND")
+    local headerBg = headerRowFrame.headerBg
     headerBg:SetAllPoints(headerRowFrame)
     local headerColor = cfg.GetColor("tableHeader")
     headerBg:SetColorTexture(headerColor[1], headerColor[2], headerColor[3], headerColor[4])
+
+    for _, cell in pairs(headerRowFrame.headerCells) do
+        if cell then
+            cell:Hide()
+        end
+    end
+    if headerRowFrame.sortHeaderButton then
+        headerRowFrame.sortHeaderButton:Hide()
+    end
 
     local currentX = 0
     for colIndex, label in ipairs(headerLabels) do
         if colIndex <= 5 then
             if colIndex == 4 then
-                local sortHeaderButton = self:CreateSortHeaderButton(headerRowFrame, label, colWidths[colIndex], layout, currentX)
+                local sortHeaderButton = self:CreateSortHeaderButton(
+                    headerRowFrame,
+                    label,
+                    colWidths[colIndex],
+                    layout,
+                    currentX,
+                    headerRowFrame.sortHeaderButton
+                )
+                headerRowFrame.sortHeaderButton = sortHeaderButton
+                sortHeaderButton:Show()
                 if SortingSystem then
                     SortingSystem:SetHeaderButton(sortHeaderButton)
                 end
             else
-                self:CreateHeaderText(headerRowFrame, label, colIndex, colWidths[colIndex], layout, currentX, headerBg)
+                local cellText = self:CreateHeaderText(
+                    headerRowFrame,
+                    label,
+                    colIndex,
+                    colWidths[colIndex],
+                    layout,
+                    currentX,
+                    headerBg,
+                    headerRowFrame.headerCells[colIndex]
+                )
+                headerRowFrame.headerCells[colIndex] = cellText
+                cellText:Show()
             end
         end
-        currentX = currentX + colWidths[colIndex]
+        currentX = currentX + (colWidths[colIndex] or 0)
     end
 
     table.insert(tableRows, headerRowFrame)
 end
 
-function TableUI:CreateSortHeaderButton(parent, label, colWidth, layout, currentX)
+function TableUI:CreateSortHeaderButton(parent, label, colWidth, layout, currentX, existingButton)
     local cfg = GetConfig()
-    local sortHeaderButton = CreateFrame("Button", nil, parent)
+    local sortHeaderButton = existingButton
+    if not sortHeaderButton then
+        sortHeaderButton = CreateFrame("Button", nil, parent)
+
+        local buttonBg = sortHeaderButton:CreateTexture(nil, "BACKGROUND")
+        buttonBg:SetAllPoints(sortHeaderButton)
+        buttonBg:SetColorTexture(0, 0, 0, 0)
+        sortHeaderButton.bg = buttonBg
+
+        local buttonText = sortHeaderButton:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        buttonText:SetPoint("CENTER", sortHeaderButton, "CENTER", 0, 0)
+        buttonText:SetJustifyH("CENTER")
+        buttonText:SetJustifyV("MIDDLE")
+        buttonText:SetShadowOffset(0, 0)
+        sortHeaderButton.label = buttonText
+
+        sortHeaderButton:SetScript("OnClick", function()
+            if SortingSystem then
+                SortingSystem:OnHeaderClick()
+            end
+        end)
+
+        sortHeaderButton:SetScript("OnEnter", function(self)
+            local hoverColor = cfg.GetColor("actionButtonHover")
+            if self.bg then
+                self.bg:SetColorTexture(hoverColor[1], hoverColor[2], hoverColor[3], hoverColor[4])
+            end
+        end)
+        sortHeaderButton:SetScript("OnLeave", function(self)
+            if self.bg then
+                self.bg:SetColorTexture(0, 0, 0, 0)
+            end
+        end)
+    elseif sortHeaderButton:GetParent() ~= parent then
+        sortHeaderButton:SetParent(parent)
+    end
+
     sortHeaderButton:SetSize(colWidth, layout.rowHeight)
+    sortHeaderButton:ClearAllPoints()
     sortHeaderButton:SetPoint("CENTER", parent, "LEFT", currentX + colWidth / 2, 0)
 
-    local buttonBg = sortHeaderButton:CreateTexture(nil, "BACKGROUND")
-    buttonBg:SetAllPoints(sortHeaderButton)
-    buttonBg:SetColorTexture(0, 0, 0, 0)
-
-    local buttonText = sortHeaderButton:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    buttonText:SetPoint("CENTER", sortHeaderButton, "CENTER", 0, 0)
+    local buttonText = sortHeaderButton.label
     buttonText:SetText(label)
     local textColor = cfg.GetTextColor("normal")
     buttonText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
-    buttonText:SetJustifyH("CENTER")
-    buttonText:SetJustifyV("MIDDLE")
-    buttonText:SetShadowOffset(0, 0)
     ApplyFontScale(buttonText, layout.scale)
-
-    sortHeaderButton:SetScript("OnClick", function()
-        if SortingSystem then
-            SortingSystem:OnHeaderClick()
-        end
-    end)
-
-    sortHeaderButton:SetScript("OnEnter", function()
-        local hoverColor = cfg.GetColor("actionButtonHover")
-        buttonBg:SetColorTexture(hoverColor[1], hoverColor[2], hoverColor[3], hoverColor[4])
-    end)
-    sortHeaderButton:SetScript("OnLeave", function()
-        buttonBg:SetColorTexture(0, 0, 0, 0)
-    end)
 
     return sortHeaderButton
 end
 
-function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, layout, currentX, headerBg)
+function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, layout, currentX, headerBg, existingText)
     local cfg = GetConfig()
-    local cellText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local cellText = existingText
+    if not cellText then
+        cellText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    if cellText.GetParent and cellText:GetParent() ~= parent then
+        cellText:SetParent(parent)
+    end
+    cellText:ClearAllPoints()
     local leftPadding = math.floor(15 * (layout.scale or 1) + 0.5)
 
     if colIndex == 1 then
@@ -477,6 +595,7 @@ function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, layout, cur
     local textColor = cfg.GetTextColor("normal")
     cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
     ApplyFontScale(cellText, layout.scale)
+    return cellText
 end
 
 function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
@@ -485,17 +604,26 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     local actualRowIndex = (displayIndex - 1) + headerOffset
 
     local slotY = (layout.rowHeight + layout.rowGap) * actualRowIndex
-    local rowFrame = CreateFrame("Frame", nil, parent)
+    local rowFrame = AcquireRowFrame(parent, displayIndex)
     rowFrame:SetSize(layout.tableWidth, layout.rowHeight)
+    rowFrame:ClearAllPoints()
     rowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
     rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     rowFrame:SetAlpha(1.0)
-    rowFrame:EnableMouse(true)
+    rowFrame:Show()
     rowFrame.uiScale = layout.scale
     rowFrame.uiRowHeight = layout.rowHeight
+    rowFrame.rowId = rowId
 
-    local rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+    local rowBg = rowFrame.rowBg
     rowBg:SetAllPoints(rowFrame)
+
+    if rowFrame.__ctkDeleteBtn then
+        rowFrame.__ctkDeleteBtn:Hide()
+    end
+    if rowFrame.__ctkRestoreBtn then
+        rowFrame.__ctkRestoreBtn:Hide()
+    end
 
     local rowColor = UIConfig.GetDataRowColor(displayIndex)
     if rowInfo.isHidden then
@@ -509,20 +637,6 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
         RowStateSystem:RegisterRowFrame(rowId, rowFrame)
         RowStateSystem:SyncRowState(rowId, rowInfo.isHidden)
     end
-
-    rowFrame:SetScript("OnMouseDown", function(_, button)
-        if button == "RightButton" and RowStateSystem then
-            local currentState = RowStateSystem:GetRowState(rowId)
-            if currentState.rightClicked then
-                RowStateSystem:OnGlobalLeftClick()
-            else
-                RowStateSystem:OnGlobalLeftClick()
-                RowStateSystem:OnRowRightClick(rowId)
-            end
-        elseif button == "LeftButton" and RowStateSystem then
-            RowStateSystem:OnGlobalLeftClick()
-        end
-    end)
 
     self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale, layout)
 
@@ -538,6 +652,13 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
     local cfg = GetConfig()
     local currentX = 0
     local leftPadding = math.floor(15 * (scale or 1) + 0.5)
+    rowFrame.cellTexts = rowFrame.cellTexts or {}
+
+    for _, cellText in pairs(rowFrame.cellTexts) do
+        if cellText then
+            cellText:Hide()
+        end
+    end
 
     local hasCurrentPhase = rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= ""
     local phaseText = L["NotAcquired"] or "---:---"
@@ -592,7 +713,12 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
 
     for _, colData in ipairs(columns) do
         local colIndex = colData.colIndex
-        local cellText = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local cellText = rowFrame.cellTexts[colIndex]
+        if not cellText then
+            cellText = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            rowFrame.cellTexts[colIndex] = cellText
+        end
+        cellText:ClearAllPoints()
 
         if colIndex == 1 then
             cellText:SetPoint("LEFT", rowBg, "LEFT", currentX + leftPadding, 0)
@@ -623,6 +749,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
         cellText:SetJustifyV("MIDDLE")
         cellText:SetShadowOffset(0, 0)
         ApplyFontScale(cellText, scale)
+        cellText:Show()
 
         local textColor = colData.color or cfg.GetTextColor("normal")
         if rowInfo.isHidden then
@@ -645,16 +772,42 @@ function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, scale)
     local columnCenter = operationColumnStart + colWidths[5] / 2
     rowFrame.operationColumnCenter = columnCenter
     local notifyText = L["Notify"] or "通知"
-    local notifyBtn = self:CreateActionButton(rowFrame, rowBg, notifyText, columnCenter, function()
-        if rowInfo.isHidden then
-            return
-        end
-        if MainPanel and MainPanel.NotifyMapById then
-            MainPanel:NotifyMapById(rowId)
-        end
-    end, rowInfo.isHidden, scale)
+
+    local notifyBtn = rowFrame.notifyBtn
+    if not notifyBtn then
+        notifyBtn = self:CreateActionButton(rowFrame, rowBg, notifyText, columnCenter, nil, rowInfo.isHidden, scale)
+        rowFrame.notifyBtn = notifyBtn
+    end
+
+    if notifyBtn:GetParent() ~= rowFrame then
+        notifyBtn:SetParent(rowFrame)
+    end
+
     notifyBtn:ClearAllPoints()
     notifyBtn:SetPoint("CENTER", rowBg, "LEFT", columnCenter, 0)
+    notifyBtn:Show()
+
+    local cfg = GetConfig()
+    local normalColor = cfg.GetTextColor("normal")
+    local normalTextColor = rowInfo.isHidden and {0.5, 0.5, 0.5, 0.8} or normalColor
+
+    notifyBtn.__ctkRowId = rowId
+    notifyBtn.__ctkIsHidden = rowInfo.isHidden == true
+    notifyBtn.__ctkNormalTextColor = normalTextColor
+
+    local height = Clamp(math.floor(20 * (scale or 1) + 0.5), 18, 24)
+    local minWidth = math.floor(30 * (scale or 1) + 0.5)
+    local padding = math.floor(10 * (scale or 1) + 0.5)
+
+    if notifyBtn.label then
+        notifyBtn.label:SetText(notifyText)
+        ApplyFontScale(notifyBtn.label, scale)
+        local textWidth = notifyBtn.label:GetStringWidth() or 0
+        notifyBtn:SetSize(math.max(minWidth, textWidth + padding), height)
+        notifyBtn.label:SetTextColor(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    else
+        notifyBtn:SetSize(minWidth, height)
+    end
 
     return notifyBtn
 end
@@ -685,27 +838,36 @@ function TableUI:CreateActionButton(parent, parentBg, text, x, clickHandler, isH
     local targetWidth = math.max(minWidth, textWidth + padding)
     btn:SetSize(targetWidth, height)
 
-    local normalTextColor = nil
-    if isHidden then
-        normalTextColor = {0.5, 0.5, 0.5, 0.8}
-    else
-        normalTextColor = normalColor
-    end
+    local normalTextColor = isHidden and {0.5, 0.5, 0.5, 0.8} or normalColor
+    btn.__ctkIsHidden = isHidden == true
+    btn.__ctkNormalTextColor = normalTextColor
+    btn.__ctkRowId = nil
+    btn.__ctkClickHandler = clickHandler
     btnText:SetTextColor(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
 
-    btn:SetScript("OnClick", function()
+    btn:SetScript("OnClick", function(self)
         if not IsAddonEnabled() then
             return
         end
-        clickHandler()
+        if self.__ctkIsHidden then
+            return
+        end
+        if self.__ctkClickHandler then
+            self.__ctkClickHandler()
+            return
+        end
+        if self.__ctkRowId and MainPanel and MainPanel.NotifyMapById then
+            MainPanel:NotifyMapById(self.__ctkRowId)
+        end
     end)
 
-    btn:SetScript("OnEnter", function()
-        if isHidden then return end
+    btn:SetScript("OnEnter", function(self)
+        if self.__ctkIsHidden then return end
         btnText:SetTextColor(hoverTextColor[1], hoverTextColor[2], hoverTextColor[3], hoverTextColor[4])
     end)
-    btn:SetScript("OnLeave", function()
-        btnText:SetTextColor(normalTextColor[1], normalTextColor[2], normalTextColor[3], normalTextColor[4])
+    btn:SetScript("OnLeave", function(self)
+        local color = self.__ctkNormalTextColor or normalTextColor
+        btnText:SetTextColor(color[1], color[2], color[3], color[4])
     end)
 
     return btn

@@ -187,6 +187,7 @@ function RowStateSystem:CreateDeleteButton(parentFrame, rowId)
     end)
 
     deleteBtn:Hide()
+    parentFrame.__ctkDeleteBtn = deleteBtn
     return deleteBtn
 end
 
@@ -239,6 +240,7 @@ function RowStateSystem:CreateRestoreButton(parentFrame, rowId)
     end)
 
     restoreBtn:Hide()
+    parentFrame.__ctkRestoreBtn = restoreBtn
     return restoreBtn
 end
 

@@ -21,8 +21,8 @@ localeData["FloatingButtonTooltipLine3"] = "Правый клик — откры
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
-localeData["AirdropDetected"] = "";
-localeData["AirdropDetectedManual"] = "";
+localeData["AirdropDetected"] = "[%s] Обнаружен сброс военных припасов!!!";
+localeData["AirdropDetectedManual"] = "[%s] Сброс военных припасов!!!";
 localeData["NoTimeRecord"] = "[%s] Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s] До воздушного десанта военных припасов: %s!!!";
 localeData["AutoTeamReportMessage"] = "На [%s] до сброса военных припасов осталось: %s!!";
