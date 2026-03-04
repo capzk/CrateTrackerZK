@@ -92,30 +92,34 @@ local function ShouldSendNotification(eventTimestamp, currentTime)
     return timeSinceAirdrop <= 30;
 end
 
-function TimerManager:DetectMapIcons()
+function TimerManager:DetectMapIcons(currentMapID)
     if Area and Area.IsActive and not Area:IsActive() then
         return false;
     end
-    if not C_Map or not C_Map.GetBestMapForUnit then
-        SafeDebugLimited("detection_loop:api_unavailable", DT("DebugCMapAPINotAvailable"));
-        return false;
+    
+    local playerMapID = currentMapID;
+    if not playerMapID then
+        if not C_Map or not C_Map.GetBestMapForUnit then
+            SafeDebugLimited("detection_loop:api_unavailable", DT("DebugCMapAPINotAvailable"));
+            return false;
+        end
+        playerMapID = C_Map.GetBestMapForUnit("player");
     end
     
-    local currentMapID = C_Map.GetBestMapForUnit("player");
-    if not currentMapID then
+    if not playerMapID then
         SafeDebugLimited("detection_loop:no_map_id", DT("DebugCannotGetMapID"));
         return false;
     end
     
-    SafeDebugLimited("detection_loop:start", "开始检测循环", "当前地图ID=" .. currentMapID);
+    SafeDebugLimited("detection_loop:start", "开始检测循环", "当前地图ID=" .. playerMapID);
     if not MapTracker or not MapTracker.GetTargetMapData then
         Logger:Error("Timer", "错误", "MapTracker module not loaded");
         return false;
     end
     
-    local targetMapData = MapTracker:GetTargetMapData(currentMapID);
+    local targetMapData = MapTracker:GetTargetMapData(playerMapID);
     if not targetMapData then
-        SafeDebugLimited("detection_loop:map_not_in_list", "当前地图不在列表中，跳过检测", "地图ID=" .. currentMapID);
+        SafeDebugLimited("detection_loop:map_not_in_list", "当前地图不在列表中，跳过检测", "地图ID=" .. playerMapID);
         return false;
     end
 
@@ -129,7 +133,7 @@ function TimerManager:DetectMapIcons()
     end
     
     local currentTime = getCurrentTimestamp();
-    MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime);
+    MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
     
     if not IconDetector or not IconDetector.DetectIcon then
         Logger:Error("Timer", "错误", "IconDetector module not loaded");
@@ -137,7 +141,7 @@ function TimerManager:DetectMapIcons()
     end
     
     -- 检测图标
-    local iconResult = IconDetector:DetectIcon(currentMapID);
+    local iconResult = IconDetector:DetectIcon(playerMapID);
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
         if self.detectionState[targetMapData.id] then
@@ -241,7 +245,7 @@ function TimerManager:DetectMapIcons()
     local timeSinceFirstDetection = currentTime - detectionState.firstDetectedTime;
     if timeSinceFirstDetection >= self.CONFIRM_TIME then
         -- 2秒确认后重新检测
-        local currentIconResult = IconDetector:DetectIcon(currentMapID);
+        local currentIconResult = IconDetector:DetectIcon(playerMapID);
         if not currentIconResult or not currentIconResult.detected or currentIconResult.objectGUID ~= objectGUID then
             Logger:Debug("Timer", "状态", string.format("2秒确认后重新检测，图标已消失或objectGUID不同，跳过处理：地图=%s", 
                 Data:GetMapDisplayName(targetMapData)));

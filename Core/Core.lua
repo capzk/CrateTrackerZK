@@ -32,6 +32,16 @@ local function IsAreaActive()
     return Area and Area.lastAreaValidState == true and not Area.detectionPaused;
 end
 
+local function GetCurrentMapID()
+    if Area and Area.GetCurrentMapId then
+        return Area:GetCurrentMapId();
+    end
+    if C_Map and C_Map.GetBestMapForUnit then
+        return C_Map.GetBestMapForUnit("player");
+    end
+    return nil;
+end
+
 local function ClearAllPhaseCaches()
     if CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.expansionUIData) == "table" then
         for _, bucket in pairs(CRATETRACKERZK_UI_DB.expansionUIData) do
@@ -152,9 +162,10 @@ local function OnLogin()
     end
     
     local addonEnabled = IsAddonEnabled();
+    local currentMapID = addonEnabled and GetCurrentMapID() or nil;
     if Area then
         if addonEnabled then
-            Area:CheckAndUpdateAreaValid();
+            Area:CheckAndUpdateAreaValid(currentMapID);
         else
             Area.detectionPaused = true;
             Area.lastAreaValidState = nil;
@@ -176,12 +187,13 @@ local function OnLogin()
         end
         CrateTrackerZK.phaseTimerTicker = C_Timer.NewTicker(10, function()
             if IsAreaActive() and Phase then
-                Phase:UpdatePhaseInfo();
+                local tickerMapID = GetCurrentMapID();
+                Phase:UpdatePhaseInfo(tickerMapID);
             end
         end);
         CrateTrackerZK.phaseTimerPaused = false;
         Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-        if IsAreaActive() and Phase then Phase:UpdatePhaseInfo() end
+        if IsAreaActive() and Phase then Phase:UpdatePhaseInfo(currentMapID) end
     end
     
     DebugPrint("[核心] 初始化完成");
@@ -201,15 +213,19 @@ local function OnEvent(self, event, ...)
         OnLogin();
     elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(0.1, function()
-            if Area then Area:CheckAndUpdateAreaValid() end
+            local currentMapID = GetCurrentMapID();
+            if Area then Area:CheckAndUpdateAreaValid(currentMapID) end
             if IsAreaActive() then
-                if TimerManager then TimerManager:DetectMapIcons() end
-                if Phase then Phase:UpdatePhaseInfo() end
+                if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
+                if Phase then Phase:UpdatePhaseInfo(currentMapID) end
             end
         end)
     elseif event == "PLAYER_TARGET_CHANGED" then
         if IsAreaActive() then
-            if Phase then Phase:UpdatePhaseInfo() end
+            if Phase then
+                local currentMapID = GetCurrentMapID();
+                Phase:UpdatePhaseInfo(currentMapID);
+            end
         end
     elseif event == "PLAYER_LOGOUT" then
         if Phase and Phase.Reset then
@@ -294,12 +310,16 @@ function CrateTrackerZK:ResumeAllDetections()
     end
     self.phaseTimerTicker = C_Timer.NewTicker(10, function()
         if IsAreaActive() and Phase then
-            Phase:UpdatePhaseInfo();
+            local tickerMapID = GetCurrentMapID();
+            Phase:UpdatePhaseInfo(tickerMapID);
         end
     end);
     self.phaseTimerPaused = false;
     Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）");
-    if IsAreaActive() and Phase then Phase:UpdatePhaseInfo() end
+    if IsAreaActive() and Phase then
+        local currentMapID = GetCurrentMapID();
+        Phase:UpdatePhaseInfo(currentMapID);
+    end
 end
 
 function CrateTrackerZK:StartMapIconDetection(interval)
@@ -316,7 +336,8 @@ function CrateTrackerZK:StartMapIconDetection(interval)
     interval = interval or 1;
     self.mapIconDetectionTicker = C_Timer.NewTicker(interval, function()
         if IsAreaActive() then
-            TimerManager:DetectMapIcons();
+            local currentMapID = GetCurrentMapID();
+            TimerManager:DetectMapIcons(currentMapID);
         end
     end);
     
@@ -444,13 +465,15 @@ CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT");
 if TooltipDataProcessor then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function()
         if IsAreaActive() and Phase then
-            Phase:UpdatePhaseInfo();
+            local currentMapID = GetCurrentMapID();
+            Phase:UpdatePhaseInfo(currentMapID);
         end
     end)
 else
     GameTooltip:HookScript("OnTooltipSetUnit", function()
         if IsAreaActive() and Phase then
-            Phase:UpdatePhaseInfo();
+            local currentMapID = GetCurrentMapID();
+            Phase:UpdatePhaseInfo(currentMapID);
         end
     end)
 end

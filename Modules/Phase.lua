@@ -5,6 +5,7 @@ local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
 local Area = BuildEnv("Area");
+local MapTracker = BuildEnv("MapTracker");
 local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 Phase.lastReportedInstanceID = nil;
@@ -25,6 +26,38 @@ local function SafeSplitGuid(guid)
         return nil;
     end
     return unitType, shardID, instancePart;
+end
+
+local function ResolveTargetMapData(currentMapID)
+    if MapTracker and MapTracker.GetTargetMapData then
+        return MapTracker:GetTargetMapData(currentMapID);
+    end
+
+    if not Data or not Data.GetAllMaps then
+        return nil;
+    end
+
+    local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID);
+    if not mapInfo then
+        return nil;
+    end
+
+    local maps = Data:GetAllMaps();
+    for _, mapData in ipairs(maps) do
+        if mapData.mapID == currentMapID then
+            return mapData;
+        end
+    end
+
+    if mapInfo.parentMapID then
+        for _, mapData in ipairs(maps) do
+            if mapData.mapID == mapInfo.parentMapID then
+                return mapData;
+            end
+        end
+    end
+
+    return nil;
 end
 
 function Phase:Reset()
@@ -53,47 +86,24 @@ function Phase:GetLayerFromNPC()
     return nil;
 end
 
-function Phase:UpdatePhaseInfo()
+function Phase:UpdatePhaseInfo(currentMapID)
     if not Data then return end
     if Area and Area.IsActive and not Area:IsActive() then
         return;
     end
     
-    local currentMapID = Area:GetCurrentMapId();
-    if not currentMapID then
+    local playerMapID = Area:GetCurrentMapId(currentMapID);
+    if not playerMapID then
         return;
     end
     
     -- 排除主城区域，不进行位面检测
-    if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(currentMapID) then
-        Logger:Debug("Phase", "排除", string.format("跳过主城区域位面检测：地图ID=%d", currentMapID));
+    if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(playerMapID) then
+        Logger:Debug("Phase", "排除", string.format("跳过主城区域位面检测：地图ID=%d", playerMapID));
         return;
     end
     
-    local mapInfo = C_Map.GetMapInfo(currentMapID);
-    if not mapInfo then return end
-    
-    local maps = Data:GetAllMaps();
-    local targetMapData = nil;
-    
-    for _, mapData in ipairs(maps) do
-        if mapData.mapID == currentMapID then
-            targetMapData = mapData;
-            break;
-        end
-    end
-    
-    -- 支持父地图匹配（子地图场景）
-    if not targetMapData and mapInfo.parentMapID then
-        for _, mapData in ipairs(maps) do
-            if mapData.mapID == mapInfo.parentMapID then
-                targetMapData = mapData;
-                Logger:Debug("Phase", "匹配", string.format("父地图匹配成功：当前地图ID=%d，父地图ID=%d（配置ID=%d）", 
-                    currentMapID, mapInfo.parentMapID, mapData.id));
-                break;
-            end
-        end
-    end
+    local targetMapData = ResolveTargetMapData(playerMapID);
     
     if targetMapData then
         -- 隐藏地图：暂停位面检测
@@ -118,14 +128,14 @@ function Phase:UpdatePhaseInfo()
                 shouldUpdate = true;
                 isPhaseChanged = (cachedPhaseID ~= nil);
                 Logger:Debug("Phase", "缓存", string.format("位面ID已更新：配置地图ID=%d，当前地图ID=%d，旧位面=%s，新位面=%s，是否变化=%s", 
-                    targetMapData.mapID, currentMapID, cachedPhaseID or "无", detectedPhaseID, isPhaseChanged and "是" or "否（首次检测）"));
+                    targetMapData.mapID, playerMapID, cachedPhaseID or "无", detectedPhaseID, isPhaseChanged and "是" or "否（首次检测）"));
             else
                 currentPhaseID = detectedPhaseID;
             end
         elseif cachedPhaseID then
             currentPhaseID = cachedPhaseID;
             Logger:Debug("Phase", "缓存", string.format("使用缓存的位面ID：配置地图ID=%d，当前地图ID=%d，位面ID=%s", 
-                targetMapData.mapID, currentMapID, cachedPhaseID));
+                targetMapData.mapID, playerMapID, cachedPhaseID));
         end
         
         if currentPhaseID then

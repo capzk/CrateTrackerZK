@@ -20,6 +20,7 @@ local L = CrateTrackerZK.L
 
 MainPanel.lastNotifyClickTime = MainPanel.lastNotifyClickTime or {}
 MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5
+MainPanel.updateTimerActive = MainPanel.updateTimerActive or false
 
 local function EnsureUIState()
     if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
@@ -191,13 +192,41 @@ function MainPanel:BuildHeaderLabels()
     }
 end
 
+function MainPanel:IsMainFrameVisible()
+    return self.mainFrame and self.mainFrame.IsShown and self.mainFrame:IsShown()
+end
+
+function MainPanel:BindFrameLifecycle(frame)
+    if not frame or frame.__ctkMainPanelLifecycleBound then
+        return
+    end
+
+    if frame.HookScript then
+        frame:HookScript("OnShow", function()
+            MainPanel:StartUpdateTimer()
+            MainPanel:UpdateTable(true)
+        end)
+        frame:HookScript("OnHide", function()
+            MainPanel:StopUpdateTimer()
+        end)
+    end
+
+    frame.__ctkMainPanelLifecycleBound = true
+end
+
 function MainPanel:CreateMainFrame()
     if CrateTrackerZKFrame then
         self.mainFrame = CrateTrackerZKFrame
         if MainFrame and MainFrame.ApplyAdaptiveHeight then
             MainFrame:ApplyAdaptiveHeight(self.mainFrame)
         end
-        self:UpdateTable(true)
+        self:BindFrameLifecycle(self.mainFrame)
+        if self:IsMainFrameVisible() then
+            self:StartUpdateTimer()
+            self:UpdateTable(true)
+        else
+            self:StopUpdateTimer()
+        end
         return CrateTrackerZKFrame
     end
 
@@ -231,16 +260,22 @@ function MainPanel:CreateMainFrame()
     end
 
     self.mainFrame = frame
-    self:UpdateTable(true)
-    self:StartUpdateTimer()
-
+    self:BindFrameLifecycle(frame)
     frame:Hide()
     return frame
 end
 
 function MainPanel:StartUpdateTimer()
+    if not self:IsMainFrameVisible() then
+        self:StopUpdateTimer()
+        return
+    end
+    if self.updateTimerActive then
+        return
+    end
     if CountdownSystem and CountdownSystem.Start then
         CountdownSystem:Start()
+        self.updateTimerActive = true
     end
 end
 
@@ -248,6 +283,7 @@ function MainPanel:StopUpdateTimer()
     if CountdownSystem and CountdownSystem.Stop then
         CountdownSystem:Stop()
     end
+    self.updateTimerActive = false
 end
 
 function MainPanel:Toggle()
@@ -259,7 +295,6 @@ function MainPanel:Toggle()
         CrateTrackerZKFrame:Hide()
     else
         CrateTrackerZKFrame:Show()
-        self:UpdateTable(true)
     end
 end
 

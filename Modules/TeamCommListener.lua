@@ -33,296 +33,374 @@ if not Area then
 end
 
 TeamCommListener.isInitialized = false;
-TeamCommListener.messagePatterns = {};
-TeamCommListener.autoReportPatterns = {};
+TeamCommListener.messagePatterns = {};       -- 兼容保留
+TeamCommListener.autoReportPatterns = {};    -- 兼容保留
+TeamCommListener.preferredMessageParsers = {};
+TeamCommListener.fallbackMessageParsers = {};
+TeamCommListener.preferredAutoReportParsers = {};
+TeamCommListener.fallbackAutoReportParsers = {};
+TeamCommListener.mapNameToID = {};
+TeamCommListener.mapNameCacheSignature = nil;
+TeamCommListener.mapNameCacheMapsRef = nil;
+TeamCommListener.mapNameCacheCount = nil;
+TeamCommListener.mapNameCacheExpansionID = nil;
+TeamCommListener.playerName = nil;
+TeamCommListener.fullPlayerName = nil;
 
-local function SafeMatch(text, pattern)
-    if not text or type(text) ~= "string" then
+local TEAM_CHAT_TYPES = {
+    RAID = true,
+    RAID_WARNING = true,
+    PARTY = true,
+    INSTANCE_CHAT = true
+};
+
+local CHAT_EVENT_TO_TYPE = {
+    CHAT_MSG_RAID = "RAID",
+    CHAT_MSG_RAID_WARNING = "RAID_WARNING",
+    CHAT_MSG_PARTY = "PARTY",
+    CHAT_MSG_INSTANCE_CHAT = "INSTANCE_CHAT"
+};
+
+local function TrimString(value)
+    if type(value) ~= "string" then
         return nil;
     end
-    local ok, result = pcall(string.match, text, pattern);
-    if ok then
-        return result;
-    end
-    return nil;
+    return value:match("^%s*(.-)%s*$");
 end
 
--- 初始化消息模式
-local function InitializeMessagePatterns()
-    TeamCommListener.messagePatterns = {};
-    
-    local messageFormats = {};
-    
+local function IsDebugEnabled()
+    return Logger and Logger.debugEnabled == true;
+end
+
+local function BuildParser(messageFormat, locale)
+    if type(messageFormat) ~= "string" or messageFormat == "" then
+        return nil;
+    end
+    local segments = {};
+    local cursor = 1;
+    local placeholderCount = 0;
+
+    while true do
+        local tokenStart = messageFormat:find("%%s", cursor, true);
+        if not tokenStart then
+            table.insert(segments, messageFormat:sub(cursor));
+            break;
+        end
+        table.insert(segments, messageFormat:sub(cursor, tokenStart - 1));
+        cursor = tokenStart + 2;
+        placeholderCount = placeholderCount + 1;
+    end
+
+    if placeholderCount == 0 then
+        return nil;
+    end
+
+    return {
+        original = messageFormat,
+        locale = locale,
+        segments = segments,
+        placeholderCount = placeholderCount
+    };
+end
+
+local function MatchWithParser(message, parser)
+    if not parser then
+        return nil;
+    end
+    local textLen = #message;
+    local segments = parser.segments or {};
+    if #segments == 0 then
+        return nil;
+    end
+
+    local cursor = 1;
+    local captures = {};
+
+    for idx, seg in ipairs(segments) do
+        local isLastSegment = idx == #segments;
+        if idx == 1 then
+            if seg ~= "" then
+                local segLen = #seg;
+                if textLen < segLen or message:sub(1, segLen) ~= seg then
+                    return nil;
+                end
+                cursor = segLen + 1;
+            end
+        else
+            if seg == "" then
+                captures[idx - 1] = message:sub(cursor);
+                cursor = textLen + 1;
+            else
+                local pos = message:find(seg, cursor, true);
+                if not pos then
+                    return nil;
+                end
+                captures[idx - 1] = message:sub(cursor, pos - 1);
+                cursor = pos + #seg;
+            end
+        end
+
+        if isLastSegment and seg ~= "" and cursor <= textLen then
+            return nil;
+        end
+    end
+
+    local mapName = TrimString(captures[1]);
+    if not mapName or mapName == "" then
+        return nil;
+    end
+    return mapName;
+end
+
+local function MatchWithParsers(message, parsers)
+    if not parsers or #parsers == 0 then
+        return nil, nil;
+    end
+    for _, parser in ipairs(parsers) do
+        local mapName = MatchWithParser(message, parser);
+        if mapName then
+            return mapName, parser;
+        end
+    end
+    return nil, nil;
+end
+
+local function BuildParsersByLocaleKey(localeKey, skipEmpty)
+    local preferred = {};
+    local fallback = {};
+    local seenFormats = {};
+    local currentLocale = GetLocale and GetLocale() or nil;
+
+    local function AddFormat(locale, formatText, forcePreferred)
+        if type(formatText) ~= "string" then
+            return;
+        end
+        if skipEmpty and formatText == "" then
+            return;
+        end
+        if seenFormats[formatText] then
+            return;
+        end
+        seenFormats[formatText] = true;
+        local parser = BuildParser(formatText, locale);
+        if not parser then
+            return;
+        end
+        if forcePreferred or (currentLocale and locale == currentLocale) then
+            table.insert(preferred, parser);
+        else
+            table.insert(fallback, parser);
+        end
+    end
+
     local LocaleManager = BuildEnv("LocaleManager");
     if LocaleManager and LocaleManager.GetLocaleRegistry then
         local localeRegistry = LocaleManager.GetLocaleRegistry();
         if localeRegistry then
+            if currentLocale and localeRegistry[currentLocale] then
+                AddFormat(currentLocale, localeRegistry[currentLocale][localeKey], true);
+            end
             for locale, localeData in pairs(localeRegistry) do
-                if localeData and localeData.AirdropDetected then
-                    local found = false;
-                    for _, fmt in ipairs(messageFormats) do
-                        if fmt == localeData.AirdropDetected then
-                            found = true;
-                            break;
-                        end
-                    end
-                    if not found then
-                        table.insert(messageFormats, localeData.AirdropDetected);
-                        if Logger and Logger.Debug then
-                            Logger:Debug("TeamCommListener", "初始化", string.format("已添加语言消息格式：语言=%s，格式=%s", locale, localeData.AirdropDetected));
-                        end
-                    end
+                if localeData and locale ~= currentLocale then
+                    AddFormat(locale, localeData[localeKey], false);
                 end
             end
         end
     end
-    
-    if #messageFormats == 0 then
-        local L = CrateTrackerZK and CrateTrackerZK.L;
-        if L and L.AirdropDetected then
-            table.insert(messageFormats, L.AirdropDetected);
-            if Logger and Logger.Debug then
-                Logger:Debug("TeamCommListener", "初始化", string.format("使用当前语言消息格式（回退方案）：格式=%s", L.AirdropDetected));
-            end
-        end
+
+    local currentL = CrateTrackerZK and CrateTrackerZK.L;
+    if currentL then
+        AddFormat(currentLocale or "current", currentL[localeKey], true);
     end
-    
-    for _, messageFormat in ipairs(messageFormats) do
-        local msgPattern = messageFormat;
-        
-        msgPattern = msgPattern:gsub("%%", "%%%%");
-        msgPattern = msgPattern:gsub("%(", "%%(");
-        msgPattern = msgPattern:gsub("%)", "%%)");
-        msgPattern = msgPattern:gsub("%[", "%%[");
-        msgPattern = msgPattern:gsub("%]", "%%]");
-        msgPattern = msgPattern:gsub("%!", "%%!");
-        msgPattern = msgPattern:gsub("%+", "%%+");
-        msgPattern = msgPattern:gsub("%-", "%%-");
-        msgPattern = msgPattern:gsub("%*", "%%*");
-        msgPattern = msgPattern:gsub("%?", "%%?");
-        msgPattern = msgPattern:gsub("%^", "%%^");
-        msgPattern = msgPattern:gsub("%$", "%%$");
-        msgPattern = msgPattern:gsub("%.", "%%.");
-        
-        msgPattern = msgPattern:gsub("%%%%s", "(.+)");
-        
-        table.insert(TeamCommListener.messagePatterns, {
-            pattern = msgPattern,
-            original = messageFormat
-        });
-        
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "初始化", string.format("已加载消息模式：格式=%s，模式=%s", messageFormat, msgPattern));
-        end
+
+    return preferred, fallback;
+end
+
+local function FlattenParsers(preferred, fallback)
+    local result = {};
+    for _, parser in ipairs(preferred or {}) do
+        table.insert(result, parser);
     end
-    
+    for _, parser in ipairs(fallback or {}) do
+        table.insert(result, parser);
+    end
+    return result;
+end
+
+local function InitializeMessagePatterns()
+    TeamCommListener.preferredMessageParsers, TeamCommListener.fallbackMessageParsers = BuildParsersByLocaleKey("AirdropDetected", true);
+    TeamCommListener.messagePatterns = FlattenParsers(TeamCommListener.preferredMessageParsers, TeamCommListener.fallbackMessageParsers);
+
     if #TeamCommListener.messagePatterns == 0 then
         if Logger and Logger.Warn then
             Logger:Warn("TeamCommListener", "警告", "未找到任何消息模式，团队消息读取功能可能无法正常工作");
         end
+    elseif Logger and Logger.Debug then
+        local preferredCount = #TeamCommListener.preferredMessageParsers;
+        local fallbackCount = #TeamCommListener.fallbackMessageParsers;
+        Logger:Debug("TeamCommListener", "初始化", string.format("团队消息解析器已加载：首选=%d，回退=%d", preferredCount, fallbackCount));
     end
 end
 
--- 初始化自动播报消息模式（用于过滤）
 local function InitializeAutoReportPatterns()
-    TeamCommListener.autoReportPatterns = {};
-    local messageFormats = {};
-    
-    local LocaleManager = BuildEnv("LocaleManager");
-    if LocaleManager and LocaleManager.GetLocaleRegistry then
-        local localeRegistry = LocaleManager.GetLocaleRegistry();
-        if localeRegistry then
-            for locale, localeData in pairs(localeRegistry) do
-                if localeData and localeData.AutoTeamReportMessage and localeData.AutoTeamReportMessage ~= "" then
-                    local found = false;
-                    for _, fmt in ipairs(messageFormats) do
-                        if fmt == localeData.AutoTeamReportMessage then
-                            found = true;
-                            break;
-                        end
-                    end
-                    if not found then
-                        table.insert(messageFormats, localeData.AutoTeamReportMessage);
-                        if Logger and Logger.Debug then
-                            Logger:Debug("TeamCommListener", "初始化", string.format("已添加自动播报格式：语言=%s，格式=%s", locale, localeData.AutoTeamReportMessage));
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    if #messageFormats == 0 then
-        local L = CrateTrackerZK and CrateTrackerZK.L;
-        if L and L.AutoTeamReportMessage and L.AutoTeamReportMessage ~= "" then
-            table.insert(messageFormats, L.AutoTeamReportMessage);
-            if Logger and Logger.Debug then
-                Logger:Debug("TeamCommListener", "初始化", string.format("使用当前语言自动播报格式（回退方案）：格式=%s", L.AutoTeamReportMessage));
-            end
-        end
-    end
-    
-    for _, messageFormat in ipairs(messageFormats) do
-        local msgPattern = messageFormat;
-        
-        msgPattern = msgPattern:gsub("%%", "%%%%");
-        msgPattern = msgPattern:gsub("%(", "%%(");
-        msgPattern = msgPattern:gsub("%)", "%%)");
-        msgPattern = msgPattern:gsub("%[", "%%[");
-        msgPattern = msgPattern:gsub("%]", "%%]");
-        msgPattern = msgPattern:gsub("%!", "%%!");
-        msgPattern = msgPattern:gsub("%+", "%%+");
-        msgPattern = msgPattern:gsub("%-", "%%-");
-        msgPattern = msgPattern:gsub("%*", "%%*");
-        msgPattern = msgPattern:gsub("%?", "%%?");
-        msgPattern = msgPattern:gsub("%^", "%%^");
-        msgPattern = msgPattern:gsub("%$", "%%$");
-        msgPattern = msgPattern:gsub("%.", "%%.");
-        
-        msgPattern = msgPattern:gsub("%%%%s", "(.+)");
-        
-        table.insert(TeamCommListener.autoReportPatterns, {
-            pattern = msgPattern,
-            original = messageFormat
-        });
-        
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "初始化", string.format("已加载自动播报模式：格式=%s，模式=%s", messageFormat, msgPattern));
-        end
-    end
-end
+    TeamCommListener.preferredAutoReportParsers, TeamCommListener.fallbackAutoReportParsers = BuildParsersByLocaleKey("AutoTeamReportMessage", true);
+    TeamCommListener.autoReportPatterns = FlattenParsers(TeamCommListener.preferredAutoReportParsers, TeamCommListener.fallbackAutoReportParsers);
 
--- 检查是否是自动消息
-local function IsAutoMessage(message)
-    if not message or type(message) ~= "string" then
-        return false;
+    if Logger and Logger.Debug then
+        local preferredCount = #TeamCommListener.preferredAutoReportParsers;
+        local fallbackCount = #TeamCommListener.fallbackAutoReportParsers;
+        Logger:Debug("TeamCommListener", "初始化", string.format("自动播报解析器已加载：首选=%d，回退=%d", preferredCount, fallbackCount));
     end
-    
-    for _, patternData in ipairs(TeamCommListener.messagePatterns) do
-        local mapName = SafeMatch(message, patternData.pattern);
-        if mapName and mapName ~= "" then
-            if Logger and Logger.Debug then
-                Logger:Debug("TeamCommListener", "解析", string.format("检测到自动消息（匹配格式：%s）", patternData.original));
-            end
-            return true;
-        end
-    end
-    
-    return false;
-end
-
-local function IsAutoReportMessage(message)
-    if not message or type(message) ~= "string" then
-        return false;
-    end
-    
-    for _, patternData in ipairs(TeamCommListener.autoReportPatterns) do
-        local mapName = SafeMatch(message, patternData.pattern);
-        if mapName and mapName ~= "" then
-            if Logger and Logger.Debug then
-                Logger:Debug("TeamCommListener", "解析", string.format("检测到自动播报消息（匹配格式：%s）", patternData.original));
-            end
-            return true;
-        end
-    end
-    
-    return false;
 end
 
 local function ParseTeamMessage(message)
     if not message or type(message) ~= "string" then
         return nil;
     end
-    
-    if IsAutoReportMessage(message) then
+
+    local reportMapName = MatchWithParsers(message, TeamCommListener.preferredAutoReportParsers);
+    if not reportMapName then
+        reportMapName = MatchWithParsers(message, TeamCommListener.fallbackAutoReportParsers);
+    end
+    if reportMapName then
         if Logger and Logger.Debug then
             Logger:Debug("TeamCommListener", "解析", "消息为自动播报格式，跳过处理");
         end
         return nil;
     end
-    
-    if not IsAutoMessage(message) then
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "解析", "消息不匹配自动消息格式，跳过处理（可能是手动消息）");
-        end
-        return nil;
+
+    local mapName, parser = MatchWithParsers(message, TeamCommListener.preferredMessageParsers);
+    if not mapName then
+        mapName, parser = MatchWithParsers(message, TeamCommListener.fallbackMessageParsers);
     end
-    
-    for _, patternData in ipairs(TeamCommListener.messagePatterns) do
-        local mapName = SafeMatch(message, patternData.pattern);
-        if mapName and mapName ~= "" then
-            mapName = mapName:match("^%s*(.-)%s*$");
-            if mapName and mapName ~= "" then
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamCommListener", "解析", string.format("匹配到自动消息：格式=%s，地图名称=%s", 
-                        patternData.original, mapName));
-                end
-                return mapName;
-            end
+    if mapName then
+        if IsDebugEnabled() and Logger and Logger.Debug then
+            Logger:Debug("TeamCommListener", "解析", string.format("匹配到自动消息：语言=%s，格式=%s，地图名称=%s",
+                tostring(parser and parser.locale or "unknown"),
+                tostring(parser and parser.original or "unknown"),
+                mapName));
         end
+        return mapName;
     end
-    
+
+    if IsDebugEnabled() and Logger and Logger.Debug then
+        Logger:Debug("TeamCommListener", "解析", "消息不匹配自动消息格式，跳过处理（可能是手动消息）");
+    end
     return nil;
 end
 
--- 根据地图名称获取地图ID
-local function GetMapIdByName(mapName)
-    if not mapName or not Data then
-        return nil;
+local function BuildMapNameCache()
+    TeamCommListener.mapNameToID = {};
+    TeamCommListener.mapNameCacheSignature = nil;
+    TeamCommListener.mapNameCacheMapsRef = nil;
+    TeamCommListener.mapNameCacheCount = nil;
+    TeamCommListener.mapNameCacheExpansionID = nil;
+
+    if not Data or not Data.GetAllMaps then
+        return;
     end
-    
     local maps = Data:GetAllMaps();
-    if not maps then
-        return nil;
+    if not maps or #maps == 0 then
+        return;
     end
-    
+
+    local expansionID = (Data.GetCurrentExpansionID and Data:GetCurrentExpansionID()) or "default";
+    local signatureParts = { tostring(expansionID), tostring(#maps) };
     for _, mapData in ipairs(maps) do
-        local displayName = Data:GetMapDisplayName(mapData);
-        if displayName == mapName then
-            return mapData.id;
+        if mapData then
+            table.insert(signatureParts, tostring(mapData.id) .. ":" .. tostring(mapData.mapID));
         end
     end
-    
+    TeamCommListener.mapNameCacheSignature = table.concat(signatureParts, "|");
+    TeamCommListener.mapNameCacheMapsRef = maps;
+    TeamCommListener.mapNameCacheCount = #maps;
+    TeamCommListener.mapNameCacheExpansionID = expansionID;
+
+    for _, mapData in ipairs(maps) do
+        if mapData then
+            local displayName = Data:GetMapDisplayName(mapData);
+            if type(displayName) == "string" and displayName ~= "" then
+                TeamCommListener.mapNameToID[displayName] = mapData.id;
+            end
+        end
+    end
+
     local LocaleManager = BuildEnv("LocaleManager");
     if LocaleManager and LocaleManager.GetLocaleRegistry then
         local localeRegistry = LocaleManager.GetLocaleRegistry();
         if localeRegistry then
             for _, mapData in ipairs(maps) do
-                for locale, localeData in pairs(localeRegistry) do
-                    if localeData and localeData.MapNames and localeData.MapNames[mapData.mapID] then
-                        if localeData.MapNames[mapData.mapID] == mapName then
-                            if Logger and Logger.Debug then
-                                Logger:Debug("TeamCommListener", "匹配", string.format("使用语言=%s的地图名称匹配：地图ID=%d，地图名称=%s", locale, mapData.mapID, mapName));
-                            end
-                            return mapData.id;
+                if mapData and mapData.mapID then
+                    for _, localeData in pairs(localeRegistry) do
+                        local localizedName = localeData and localeData.MapNames and localeData.MapNames[mapData.mapID];
+                        if type(localizedName) == "string" and localizedName ~= "" and not TeamCommListener.mapNameToID[localizedName] then
+                            TeamCommListener.mapNameToID[localizedName] = mapData.id;
                         end
                     end
                 end
             end
         end
     end
-    
-    return nil;
+end
+
+local function EnsureMapNameCache()
+    if not Data or not Data.GetAllMaps then
+        return;
+    end
+    local maps = Data:GetAllMaps();
+    if not maps then
+        return;
+    end
+    local expansionID = (Data.GetCurrentExpansionID and Data:GetCurrentExpansionID()) or "default";
+    if TeamCommListener.mapNameCacheMapsRef ~= maps
+        or TeamCommListener.mapNameCacheCount ~= #maps
+        or TeamCommListener.mapNameCacheExpansionID ~= expansionID
+        or not TeamCommListener.mapNameToID then
+        BuildMapNameCache();
+    end
+end
+
+local function GetMapIdByName(mapName)
+    local name = TrimString(mapName);
+    if not name or name == "" then
+        return nil;
+    end
+    EnsureMapNameCache();
+    return TeamCommListener.mapNameToID and TeamCommListener.mapNameToID[name] or nil;
+end
+
+local function EnsurePlayerIdentityCache()
+    if TeamCommListener.playerName and TeamCommListener.fullPlayerName then
+        return;
+    end
+    local playerName = UnitName("player");
+    local realmName = GetRealmName();
+    TeamCommListener.playerName = playerName;
+    if playerName and realmName and realmName ~= "" then
+        TeamCommListener.fullPlayerName = playerName .. "-" .. realmName;
+    else
+        TeamCommListener.fullPlayerName = playerName;
+    end
 end
 
 function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
     if not message or type(message) ~= "string" then
         return false;
     end
-    
+
     if not self.isInitialized then
         self:Initialize();
     end
-    
-    if not chatType or (chatType ~= "RAID" and chatType ~= "RAID_WARNING" and chatType ~= "PARTY" and chatType ~= "INSTANCE_CHAT") then
+
+    if not chatType or not TEAM_CHAT_TYPES[chatType] then
         return false;
     end
-    
+
     local mapName = ParseTeamMessage(message);
     if not mapName then
         return false;
     end
-    
+
     local mapId = GetMapIdByName(mapName);
     if not mapId then
         if Logger and Logger.Warn then
@@ -330,50 +408,38 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
         end
         return false;
     end
-    
-    -- 跳过自己发送的消息
-    local playerName = UnitName("player");
-    local realmName = GetRealmName();
-    local fullPlayerName = playerName;
-    if realmName then
-        fullPlayerName = playerName .. "-" .. realmName;
-    end
-    
-    if sender and (sender == playerName or sender == fullPlayerName) then
-        if Logger and Logger.Debug then
+
+    EnsurePlayerIdentityCache();
+    if sender and (sender == self.playerName or sender == self.fullPlayerName) then
+        if IsDebugEnabled() and Logger and Logger.Debug then
             Logger:Debug("TeamCommListener", "处理", string.format("跳过自己发送的消息：发送者=%s，地图=%s", sender, mapName));
         end
         return false;
     end
-    
-    -- 检查是否在空投地图
+
     local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player");
     local mapData = Data:GetMap(mapId);
     local isOnMap = mapData and currentMapID == mapData.mapID;
-    
-    -- 如果不在空投地图，处理团队消息
-    
-    if Logger and Logger.Debug then
-        Logger:Debug("TeamCommListener", "处理", string.format("检测到团队空投消息：发送者=%s，地图=%s，聊天类型=%s", 
+
+    if IsDebugEnabled() and Logger and Logger.Debug then
+        Logger:Debug("TeamCommListener", "处理", string.format("检测到团队空投消息：发送者=%s，地图=%s，聊天类型=%s",
             sender or "未知", mapName, chatType));
     end
-    
+
     local currentTime = time();
-    
+
     if not Data or not Data.SetLastRefresh then
         return false;
     end
-    
-    -- 如果不在空投地图，处理团队消息（同地图时完全忽略队友消息，不占用通知窗口）
+
     if not isOnMap then
-        -- 检查30秒内的重复团队消息，使用临时时间缓存判定
         if UnifiedDataManager and UnifiedDataManager.GetValidTemporaryTime then
             local tempRecord = UnifiedDataManager:GetValidTemporaryTime(mapId);
             if tempRecord then
                 local timeSinceLast = currentTime - tempRecord.timestamp;
                 if timeSinceLast >= 0 and timeSinceLast <= 30 and currentTime > tempRecord.timestamp then
-                    if Logger and Logger.Debug then
-                        Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒", 
+                    if IsDebugEnabled() and Logger and Logger.Debug then
+                        Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒",
                             mapName,
                             UnifiedDataManager:FormatDateTime(tempRecord.timestamp),
                             UnifiedDataManager:FormatDateTime(currentTime),
@@ -384,37 +450,33 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
             end
         end
 
-        -- 使用UnifiedDataManager设置临时时间
         local success = false;
         if UnifiedDataManager and UnifiedDataManager.SetTime then
-            success = UnifiedDataManager:SetTime(mapId, currentTime, TimerManager.detectionSources.TEAM_MESSAGE);
-            if success then
-                if Logger and Logger.Debug then
-                    Logger:Debug("TeamCommListener", "处理", string.format("通过UnifiedDataManager设置临时时间成功：地图=%s", mapName));
-                end
+            local source = (TimerManager and TimerManager.detectionSources and TimerManager.detectionSources.TEAM_MESSAGE) or "team_message";
+            success = UnifiedDataManager:SetTime(mapId, currentTime, source);
+            if success and IsDebugEnabled() and Logger and Logger.Debug then
+                Logger:Debug("TeamCommListener", "处理", string.format("通过UnifiedDataManager设置临时时间成功：地图=%s", mapName));
             end
         else
-            -- 回退到原有逻辑
             success = Data:SetLastRefresh(mapId, currentTime);
         end
-        
+
         if not success then
             if Logger and Logger.Error then
                 Logger:Error("TeamCommListener", "错误", string.format("更新刷新时间失败：地图=%s", mapName));
             end
             return false;
         end
-        
+
         if TimerManager and TimerManager.UpdateUI then
             TimerManager:UpdateUI();
         end
     else
-        -- 在空投地图，不更新时间
-        if Logger and Logger.Debug then
+        if IsDebugEnabled() and Logger and Logger.Debug then
             Logger:Debug("TeamCommListener", "处理", string.format("在空投地图，跳过团队消息更新（由自己的检测处理）：地图=%s", mapName));
         end
     end
-    
+
     return true;
 end
 
@@ -422,26 +484,30 @@ function TeamCommListener:CheckHistoricalObjectGUID(mapId, objectGUID)
     if not mapId or not objectGUID then
         return false;
     end
-    
+
     local mapData = Data:GetMap(mapId);
     if mapData and mapData.currentAirdropObjectGUID == objectGUID then
-        if Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "比对", string.format("重载后比对：相同 objectGUID，是同一事件，忽略：地图ID=%d，objectGUID=%s", 
+        if IsDebugEnabled() and Logger and Logger.Debug then
+            Logger:Debug("TeamCommListener", "比对", string.format("重载后比对：相同 objectGUID，是同一事件，忽略：地图ID=%d，objectGUID=%s",
                 mapId, objectGUID));
         end
         return true;
     end
-    
+
     return false;
 end
 
 function TeamCommListener:Initialize()
     InitializeMessagePatterns();
     InitializeAutoReportPatterns();
+    BuildMapNameCache();
+    self.playerName = nil;
+    self.fullPlayerName = nil;
+    EnsurePlayerIdentityCache();
 
     self.isInitialized = true;
-    
-    if Logger and Logger.Debug then
+
+    if IsDebugEnabled() and Logger and Logger.Debug then
         Logger:Debug("TeamCommListener", "初始化", "团队消息读取器已初始化（被动）");
     end
 end
@@ -459,7 +525,11 @@ function TeamCommListener:HandleChatEvent(event, message, sender)
     if not event or not message or type(message) ~= "string" then
         return;
     end
-    local chatType = event:gsub("CHAT_MSG_", "");
+
+    local chatType = CHAT_EVENT_TO_TYPE[event];
+    if not chatType then
+        return;
+    end
     self:ProcessTeamMessage(message, chatType, sender);
 end
 

@@ -22,6 +22,12 @@ if not UnifiedDataManager then UnifiedDataManager = BuildEnv("UnifiedDataManager
 if not TimerManager then TimerManager = BuildEnv("TimerManager") end
 
 ShoutDetector.isInitialized = false;
+ShoutDetector.compiledShouts = ShoutDetector.compiledShouts or {};
+ShoutDetector.compiledLocale = ShoutDetector.compiledLocale or nil;
+
+local function IsDebugEnabled()
+    return Logger and Logger.debugEnabled == true;
+end
 
 local function SafeToString(value)
     local ok, result = pcall(tostring, value);
@@ -77,7 +83,9 @@ local function OnShoutDetected(message)
         Notification.firstNotificationTime[mapName] = nil;
         Notification.playerSentNotification[mapName] = nil;
     end
-    Logger:Debug("ShoutDetector", "触发", string.format("喊话触发通知：地图=%s，消息=%s", mapName, SafeToString(message)));
+    if IsDebugEnabled() then
+        Logger:Debug("ShoutDetector", "触发", string.format("喊话触发通知：地图=%s，消息=%s", mapName, SafeToString(message)));
+    end
     -- 立即发送通知（遵循现有开关/频道规则）
     if Notification and Notification.NotifyAirdropDetected then
         Notification:NotifyAirdropDetected(mapName, "npc_shout");
@@ -123,45 +131,76 @@ local function SafeNormalizeForMatch(value)
     return nil;
 end
 
+local function BuildShoutMatchers()
+    ShoutDetector.compiledShouts = {};
+    ShoutDetector.compiledLocale = GetLocale and GetLocale() or nil;
+
+    if not Localization or not Localization.GetAirdropShouts then
+        return 0;
+    end
+    local shouts = Localization:GetAirdropShouts();
+    if not shouts or #shouts == 0 then
+        return 0;
+    end
+
+    for _, shout in ipairs(shouts) do
+        if type(shout) == "string" and shout ~= "" then
+            local rawSuffix = shout:match("^[^:：]*[:：]%s*(.*)$");
+            local targetFull = SafeNormalizeForMatch(shout);
+            local targetSuffix = rawSuffix and SafeNormalizeForMatch(rawSuffix) or targetFull;
+            if (targetFull and targetFull ~= "") or (targetSuffix and targetSuffix ~= "") then
+                table.insert(ShoutDetector.compiledShouts, {
+                    original = shout,
+                    full = targetFull,
+                    suffix = targetSuffix
+                });
+            end
+        end
+    end
+
+    return #ShoutDetector.compiledShouts;
+end
+
 local function MessageMatchesShout(message)
     if not message or type(message) ~= "string" then
         return false;
     end
-    if not Localization or not Localization.GetAirdropShouts then
-        return false;
+    local currentLocale = GetLocale and GetLocale() or nil;
+    if not ShoutDetector.compiledShouts or #ShoutDetector.compiledShouts == 0 or ShoutDetector.compiledLocale ~= currentLocale then
+        if BuildShoutMatchers() == 0 then
+            return false;
+        end
     end
-    local shouts = Localization:GetAirdropShouts();
-    if not shouts or #shouts == 0 then
-        return false;
-    end
+
     local msg = SafeNormalizeForMatch(message);
     if not msg then
         return false;
     end
-    for _, shout in ipairs(shouts) do
-        if type(shout) == "string" then
-            -- 先保留原文做前缀切分，再归一化
-            local rawSuffix = shout:match("^[^:：]*[:：]%s*(.*)$");
-            local targetFull = SafeNormalizeForMatch(shout);
-            local targetSuffix = rawSuffix and SafeNormalizeForMatch(rawSuffix) or targetFull;
-            if targetFull and targetFull ~= "" and msg:find(targetFull, 1, true) then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", SafeToString(message), shout));
-                return true;
-            elseif targetSuffix and targetSuffix ~= "" and msg:find(targetSuffix, 1, true) then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（去前缀）：%s -> %s", SafeToString(message), shout));
-                return true;
+
+    for _, entry in ipairs(ShoutDetector.compiledShouts) do
+        if entry.full and entry.full ~= "" and msg:find(entry.full, 1, true) then
+            if IsDebugEnabled() then
+                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", SafeToString(message), entry.original));
             end
+            return true;
+        end
+        if entry.suffix and entry.suffix ~= "" and msg:find(entry.suffix, 1, true) then
+            if IsDebugEnabled() then
+                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（去前缀）：%s -> %s", SafeToString(message), entry.original));
+            end
+            return true;
         end
     end
+
     return false;
 end
 
 local function OnChatEvent(self, event, message)
-    if Logger then
+    if IsDebugEnabled() and Logger then
         Logger:Debug("ShoutDetector", "事件", string.format("收到聊天事件：%s，消息=%s", SafeToString(event), SafeToString(message)));
     end
     if not MessageMatchesShout(message) then
-        if Logger then
+        if IsDebugEnabled() and Logger then
             Logger:Debug("ShoutDetector", "未匹配", string.format("未匹配喊话：事件=%s，消息=%s", SafeToString(event), SafeToString(message)));
         end
         return;
@@ -172,9 +211,8 @@ end
 function ShoutDetector:Initialize()
     if self.isInitialized then return end
 
-    -- 如果当前语言没有配置喊话，直接跳过初始化
-    local shouts = Localization and Localization.GetAirdropShouts and Localization:GetAirdropShouts();
-    if not shouts or #shouts == 0 then
+    local compiledCount = BuildShoutMatchers();
+    if compiledCount == 0 then
         Logger:Debug("ShoutDetector", "初始化", "未配置喊話內容，跳過初始化");
         return;
     end
