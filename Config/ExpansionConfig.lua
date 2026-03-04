@@ -54,9 +54,10 @@ ExpansionConfig.expansions = {
             2393,
         },
         mapIDs = {
-            2395,
             2437,
+            2395,
             2405,
+            2444,
             2413,
         },
     },
