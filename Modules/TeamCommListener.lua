@@ -81,7 +81,7 @@ local function BuildParser(messageFormat, locale)
     local placeholderCount = 0;
 
     while true do
-        local tokenStart = messageFormat:find("%%s", cursor, true);
+        local tokenStart = messageFormat:find("%s", cursor, true);
         if not tokenStart then
             table.insert(segments, messageFormat:sub(cursor));
             break;
@@ -403,8 +403,8 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
 
     local mapId = GetMapIdByName(mapName);
     if not mapId then
-        if Logger and Logger.Warn then
-            Logger:Warn("TeamCommListener", "警告", string.format("无法找到地图：%s", mapName));
+        if IsDebugEnabled() and Logger and Logger.Debug then
+            Logger:Debug("TeamCommListener", "忽略", string.format("消息地图不在当前版本配置中，已忽略：%s", mapName));
         end
         return false;
     end
