@@ -244,9 +244,12 @@ local function OnEvent(self, event, ...)
             end
         end
     elseif event == "CHAT_MSG_RAID"
+        or event == "CHAT_MSG_RAID_LEADER"
         or event == "CHAT_MSG_RAID_WARNING"
         or event == "CHAT_MSG_PARTY"
-        or event == "CHAT_MSG_INSTANCE_CHAT" then
+        or event == "CHAT_MSG_PARTY_LEADER"
+        or event == "CHAT_MSG_INSTANCE_CHAT"
+        or event == "CHAT_MSG_INSTANCE_CHAT_LEADER" then
         if IsAreaActive() then
             if TeamCommListener and TeamCommListener.HandleChatEvent then
                 local message = select(1, ...);
@@ -440,9 +443,12 @@ CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_EMOTE");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_WHISPER");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_RAID");
+CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_RAID_LEADER");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_RAID_WARNING");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_PARTY");
+CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_PARTY_LEADER");
 CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT");
+CrateTrackerZK.eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER");
 
 if TooltipDataProcessor then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function()
