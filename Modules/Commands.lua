@@ -1,4 +1,4 @@
--- Commands.lua - 处理斜杠命令
+-- Commands.lua - 设置面板动作处理
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
@@ -33,128 +33,50 @@ function Commands:Initialize()
     self.isInitialized = true;
 end
 
-function Commands:HandleCommand(msg)
-    if not self.isInitialized then self:Initialize() end
-    
-    local command, arg = strsplit(" ", msg, 2);
-    command = string.lower(command or "");
-    
-    if command == "debug" then
-        self:HandleDebugCommand(arg);
-    elseif command == "clear" or command == "reset" then
-        self:HandleClearCommand(arg);
-    elseif command == "team" or command == "teamnotify" then
-        self:HandleTeamNotificationCommand(arg);
-    elseif command == "on" then
-        self:HandleAddonToggle(true);
-    elseif command == "off" then
-        self:HandleAddonToggle(false);
-    elseif command == "help" then
-        return;
-    elseif command == "" or command == nil then
-        if MainPanel and MainPanel.Toggle then
-            MainPanel:Toggle();
-        end
-    else
-        return;
-    end
-end
-
-function Commands:HandleDebugCommand(arg)
-    if not Logger then
-        Logger:Error("Commands", "错误", "Command module not loaded, please reload addon");
-        return;
-    end
-    local enableDebug = (arg == "on");
-    Logger:SetDebugEnabled(enableDebug);
-end
-
 function Commands:HandleClearCommand(arg)
-    if TimerManager then TimerManager:StopMapIconDetection() end
-    if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
-        CrateTrackerZK.phaseTimerTicker:Cancel();
-        CrateTrackerZK.phaseTimerTicker = nil;
+    if RuntimeResetManager and RuntimeResetManager.PrepareUIForClear then
+        RuntimeResetManager:PrepareUIForClear();
     end
-
-    if CrateTrackerZKFrame then
-        CrateTrackerZKFrame:Hide();
-        CrateTrackerZKFrame = nil;
+    if RuntimeResetManager and RuntimeResetManager.ClearPersistentData then
+        RuntimeResetManager:ClearPersistentData();
     end
-    if CrateTrackerZKFloatingButton then
-        CrateTrackerZKFloatingButton:Show();
-    end
-
-    if CRATETRACKERZK_DB then
-        -- 清除所有版本分组数据（新结构）
-        CRATETRACKERZK_DB.expansionData = {};
-        -- 清除旧结构残留字段
-        CRATETRACKERZK_DB.mapData = nil;
-        if Data and Data.SCHEMA_VERSION then
-            CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION;
+    if RuntimeResetManager and RuntimeResetManager.ResetCommandRuntimeState then
+        RuntimeResetManager:ResetCommandRuntimeState();
+    else
+        if Data then
+            Data.maps = {};
         end
-    end
-    if CRATETRACKERZK_UI_DB then
-        -- 清除所有UI设置
-        for k in pairs(CRATETRACKERZK_UI_DB) do
-            CRATETRACKERZK_UI_DB[k] = nil;
-        end
-    end
-
-    if Data then
-        Data.maps = {};
-    end
-    if TimerManager then
-        TimerManager.isInitialized = false;
-        -- 清除检测状态
-        if TimerManager.detectionState then
-            TimerManager.detectionState = {};
-        end
-    end
-    if MapTracker then
-        MapTracker:Initialize();  -- 重置所有地图追踪状态
-    end
-    if Phase and Phase.Reset then
-        Phase:Reset();  -- 重置位面检测状态
-    end
-    if Area then
-        Area.lastAreaValidState = nil;
-        Area.detectionPaused = false;
-    end
-    if Notification then
-        Notification.isInitialized = false;
-        Notification.firstNotificationTime = {};  -- 清除首次通知时间记录
-        Notification.playerSentNotification = {};  -- 清除玩家发送通知记录
-    end
-    if TeamCommListener then
-        TeamCommListener.isInitialized = false;
-        TeamCommListener.messagePatterns = {};
-        -- 清理聊天框架
-        if TeamCommListener.chatFrame then
-            TeamCommListener.chatFrame:UnregisterAllEvents();
-            TeamCommListener.chatFrame:SetScript("OnEvent", nil);
-            TeamCommListener.chatFrame = nil;
-        end
-    end
-    if Logger then
-        Logger:ClearMessageCache();
-    end
-    -- 重置核心模块的定时器状态
-    if CrateTrackerZK then
-        CrateTrackerZK.phaseTimerPaused = false;
-        CrateTrackerZK.phaseResumePending = false;
-    end
-    
-    -- 清除MainPanel的内存状态
-    if MainPanel then
-        MainPanel.lastNotifyClickTime = {};
-    end
-    
-    -- 清除所有地图数据中的内存状态
-    if Data and Data.maps then
-        for _, mapData in ipairs(Data.maps) do
-            if mapData then
-                mapData.currentPhaseID = nil;
+        if TimerManager then
+            TimerManager.isInitialized = false;
+            if TimerManager.detectionState then
+                TimerManager.detectionState = {};
             end
+        end
+        if TeamCommListener then
+            TeamCommListener.isInitialized = false;
+            TeamCommListener.messagePatterns = {};
+        end
+        if ShoutDetector then
+            ShoutDetector.isInitialized = false;
+        end
+        if CRATETRACKERZK_DB then
+            CRATETRACKERZK_DB.expansionData = {};
+            CRATETRACKERZK_DB.mapData = nil;
+            if Data and Data.SCHEMA_VERSION then
+                CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION;
+            end
+        end
+        if CRATETRACKERZK_UI_DB then
+            for k in pairs(CRATETRACKERZK_UI_DB) do
+                CRATETRACKERZK_UI_DB[k] = nil;
+            end
+        end
+        if CrateTrackerZKFrame then
+            CrateTrackerZKFrame:Hide();
+            CrateTrackerZKFrame = nil;
+        end
+        if CrateTrackerZKFloatingButton then
+            CrateTrackerZKFloatingButton:Show();
         end
     end
 
@@ -165,19 +87,6 @@ function Commands:HandleClearCommand(arg)
         end
     else
         Logger:Error("Commands", "错误", "Clear data failed: Data module not loaded");
-    end
-end
-
-function Commands:HandleTeamNotificationCommand(arg)
-    if not Notification then
-        Logger:Error("Commands", "错误", "Notification module not loaded");
-        return;
-    end
-    
-    if arg == "on" or arg == "enable" then
-        Notification:SetTeamNotificationEnabled(true);
-    elseif arg == "off" or arg == "disable" then
-        Notification:SetTeamNotificationEnabled(false);
     end
 end
 
@@ -227,16 +136,8 @@ function Commands:HandleAddonToggle(enable)
         if TeamCommListener then
             TeamCommListener.isInitialized = false;
             TeamCommListener.messagePatterns = {};
-            if TeamCommListener.chatFrame then
-                TeamCommListener.chatFrame:UnregisterAllEvents();
-                TeamCommListener.chatFrame:SetScript("OnEvent", nil);
-                TeamCommListener.chatFrame = nil;
-            end
         end
-        if ShoutDetector and ShoutDetector.eventFrame then
-            ShoutDetector.eventFrame:UnregisterAllEvents();
-            ShoutDetector.eventFrame:SetScript("OnEvent", nil);
-            ShoutDetector.eventFrame = nil;
+        if ShoutDetector then
             ShoutDetector.isInitialized = false;
         end
         if MainPanel and MainPanel.StopUpdateTimer then
@@ -247,8 +148,4 @@ function Commands:HandleAddonToggle(enable)
     if SettingsPanel and SettingsPanel.RefreshState then
         SettingsPanel:RefreshState();
     end
-end
-
-function Commands:ShowHelp()
-    return;
 end

@@ -13,7 +13,7 @@ ThemeConfig.criticalTime = 5 * 60
 
 ThemeConfig.minimapButtonPosition = 45
 ThemeConfig.minimapButtonHide = false
-ThemeConfig.minimapButtonIcon = "Interface\\AddOns\\CrateTrackerZK\\Interface\\Assets\\icon.tga"
+ThemeConfig.minimapButtonIcon = "Interface\\AddOns\\CrateTrackerZK\\Assets\\icon.tga"
 ThemeConfig.settingsTheme = ThemeConfig.settingsTheme or {
     background = {26, 38, 51, 0.90},
     titleBar = {0, 0, 0, 0.40},

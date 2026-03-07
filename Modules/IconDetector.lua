@@ -9,7 +9,6 @@ end
 
 local IconDetector = BuildEnv('IconDetector');
 local Data = BuildEnv("Data");
-local ExpansionConfig = BuildEnv("ExpansionConfig");
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 
@@ -23,10 +22,6 @@ local function IsTargetAirdropVignetteID(vignetteID)
     end
 
     if Data and Data.IsAirdropPlaneVignetteID and Data:IsAirdropPlaneVignetteID(vignetteID) then
-        return true;
-    end
-
-    if ExpansionConfig and ExpansionConfig.IsAirdropPlaneVignetteID and ExpansionConfig:IsAirdropPlaneVignetteID(vignetteID) then
         return true;
     end
 
@@ -112,4 +107,3 @@ IconDetector.ExtractSpawnUID = ExtractSpawnUID;
 IconDetector.ExtractPhaseID = ExtractPhaseID;
 
 return IconDetector;
-

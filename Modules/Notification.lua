@@ -11,7 +11,7 @@ Notification.teamNotificationEnabled = true;
 Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
-Notification.airdropAlertSoundFile = "Interface\\AddOns\\CrateTrackerZK\\Interface\\Assets\\Sounds\\ctk_airdrop_detected_v1.ogg";
+Notification.airdropAlertSoundFile = "Interface\\AddOns\\CrateTrackerZK\\Assets\\Sounds\\ctk_airdrop_detected_v1.ogg";
 -- 首次通知时间记录（用于30秒限制）
 Notification.firstNotificationTime = {};
 -- 玩家发送通知记录（防止重复发送）
@@ -468,4 +468,3 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive)
         Logger:Info("Notification", "通知", systemMessage);
     end
 end
-

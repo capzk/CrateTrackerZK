@@ -13,8 +13,6 @@ end
 
 local localeData = {};
 
--- 通用
-
 -- 浮動按鈕
 localeData["FloatingButtonTooltipLine3"] = "右鍵開啟設定";
 

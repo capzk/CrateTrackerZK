@@ -36,13 +36,54 @@ end
 function Localization:ValidateCompleteness()
     if self.suppressWarnings then
         return {
+            keys = {},
             mapNames = {}
         };
     end
+    local LocaleManager = BuildEnv("LocaleManager");
+    local localeRegistry = LocaleManager and LocaleManager.GetLocaleRegistry and LocaleManager.GetLocaleRegistry() or nil;
+    local enUS = localeRegistry and localeRegistry["enUS"] or nil;
+    local activeLocale = GetLocale();
+    local activeData = localeRegistry and localeRegistry[activeLocale] or nil;
+    if not activeData then
+        activeData = enUS;
+    end
+
     local missing = {
+        keys = {},
         mapNames = {}
     };
-    
+
+    if enUS and activeData then
+        for k, _ in pairs(enUS) do
+            if k ~= "MapNames" and k ~= "AirdropShouts" then
+                if activeData[k] == nil then
+                    table.insert(missing.keys, k);
+                end
+            end
+        end
+    end
+
+    local expectedMapIDs = {};
+    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
+        for _, mapCfg in ipairs(Data.MAP_CONFIG.current_maps) do
+            if mapCfg and mapCfg.mapID then
+                expectedMapIDs[mapCfg.mapID] = true;
+            end
+        end
+    end
+    local activeMapNames = activeData and activeData.MapNames;
+    for mapID, _ in pairs(expectedMapIDs) do
+        if type(activeMapNames) ~= "table" or activeMapNames[mapID] == nil then
+            table.insert(missing.mapNames, tostring(mapID));
+        end
+    end
+
+    table.sort(missing.keys);
+    table.sort(missing.mapNames, function(a, b)
+        return tonumber(a) < tonumber(b);
+    end);
+
     return missing;
 end
 
@@ -60,21 +101,13 @@ function Localization:LogMissingTranslation(key, category, critical)
     
     table.insert(self.missingTranslations, entry);
     
-    if self.missingLogEnabled then
-        local L = GetL();
-        if not L then
-            return;
-        end
-        local levelKey = critical and "LocalizationCritical" or "LocalizationWarning";
-        local level = L[levelKey];
-        local formatStr = L["LocalizationMissingTranslation"];
-        if not level or not formatStr then
-            return;
-        end
+    if self.missingLogEnabled and Logger then
+        local suffix = critical and " [critical]" or "";
+        local message = string.format("Missing %s translation: %s%s", category, key, suffix);
         if critical then
-            Logger:Error("Localization", "本地化", string.format(formatStr, level, category, key));
+            Logger:Error("Localization", "本地化", message);
         else
-            Logger:Warn("Localization", "本地化", string.format(formatStr, level, category, key));
+            Logger:Warn("Localization", "本地化", message);
         end
     end
 end
@@ -104,46 +137,31 @@ function Localization:ReportInitializationStatus()
     end
     
     local status = LocaleManager.GetLoadStatus();
-    local L = GetL();
     
     if status.activeLocale then
-        if status.activeLocale == GetLocale() then
-        elseif status.fallbackUsed then
-            if L and L["LocalizationFallbackWarning"] then
-                Logger:Warn("Localization", "本地化", string.format(
-                    L["LocalizationFallbackWarning"],
-                    GetLocale(),
-                    status.activeLocale
-                ));
-            end
+        if status.fallbackUsed and status.activeLocale ~= GetLocale() then
+            Logger:Warn("Localization", "本地化", string.format(
+                "Locale %s not found, fallback to %s.",
+                GetLocale(),
+                status.activeLocale
+            ));
         end
     else
-        if L and L["LocalizationNoLocaleError"] then
-            Logger:Error("Localization", "本地化", L["LocalizationNoLocaleError"]);
-        end
+        Logger:Error("Localization", "本地化", "No available locale data loaded.");
     end
     
     local missing = self:ValidateCompleteness();
-    local missingCount = #missing.mapNames;
+    local missingKeyCount = #(missing.keys or {});
+    local missingMapCount = #(missing.mapNames or {});
+    local missingCount = missingKeyCount + missingMapCount;
     
     if missingCount > 0 then
-        if not (L and L["MapNamesCount"] and L["LocalizationMissingTranslationsWarning"] and L["LocalizationMissingMapNames"]) then
-            return;
-        end
-        local missingList = {};
-        if #missing.mapNames > 0 then
-            table.insert(missingList, string.format(L["MapNamesCount"], #missing.mapNames));
-        end
-        
-        Logger:Warn("Localization", "本地化", string.format(
-            L["LocalizationMissingTranslationsWarning"],
-            missingCount,
-            table.concat(missingList, ", ")
+        Logger:Debug("Localization", "本地化", string.format(
+            "Missing locale data detected: keys=%d, mapNames=%d, total=%d",
+            missingKeyCount,
+            missingMapCount,
+            missingCount
         ));
-        
-        if #missing.mapNames > 0 then
-            Logger:Debug("Localization", "本地化", string.format(L["LocalizationMissingMapNames"], table.concat(missing.mapNames, ", ")));
-        end
     end
 end
 
@@ -226,4 +244,3 @@ end
 Localization:Initialize();
 
 return Localization;
-

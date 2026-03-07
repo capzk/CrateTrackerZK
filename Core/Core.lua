@@ -64,72 +64,66 @@ end
 local function OnLogin()
     DebugPrint("[核心] 玩家已登录，开始初始化");
     
-    if not CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB = {};
-    end
-    if type(CRATETRACKERZK_UI_DB) ~= "table" then
-        CRATETRACKERZK_UI_DB = {};
-    end
-    if not CRATETRACKERZK_DB then
-        CRATETRACKERZK_DB = {};
-    end
-    if type(CRATETRACKERZK_DB) ~= "table" then
-        CRATETRACKERZK_DB = {};
+    if RuntimeResetManager and RuntimeResetManager.EnsureSavedVariables then
+        RuntimeResetManager:EnsureSavedVariables();
+    else
+        if type(CRATETRACKERZK_UI_DB) ~= "table" then
+            CRATETRACKERZK_UI_DB = {};
+        end
+        if type(CRATETRACKERZK_DB) ~= "table" then
+            CRATETRACKERZK_DB = {};
+        end
     end
     
 
-    if Localization and not Localization.isInitialized then
+    if Localization and Localization.Initialize and not Localization.isInitialized then
         Localization:Initialize();
     end
 
     if Data then Data:Initialize() end
     
     -- 重置内存状态（防止跨角色污染）
-    if TimerManager then
-        TimerManager.detectionState = {};
-        Logger:Debug("Core", "重置", "已清除检测状态（2秒确认期的临时状态）");
-    end
-    
-    if MapTracker then
-        MapTracker:Initialize();
-        Logger:Debug("Core", "重置", "已重置地图追踪器状态");
-    end
-    
-    if Phase and Phase.Reset then
-        Phase:Reset();
-    end
-    
-    if Area then
-        Area.lastAreaValidState = nil;
-        Area.detectionPaused = false;
-    end
-    
-    if Data and Data.maps then
-        for _, mapData in ipairs(Data.maps) do
-            if mapData then
-                mapData.currentPhaseID = nil;
+    if RuntimeResetManager and RuntimeResetManager.ResetSharedRuntimeState then
+        RuntimeResetManager:ResetSharedRuntimeState();
+    else
+        if TimerManager then
+            TimerManager.detectionState = {};
+            Logger:Debug("Core", "重置", "已清除检测状态（2秒确认期的临时状态）");
+        end
+        if MapTracker then
+            MapTracker:Initialize();
+            Logger:Debug("Core", "重置", "已重置地图追踪器状态");
+        end
+        if Phase and Phase.Reset then
+            Phase:Reset();
+        end
+        if Area then
+            Area.lastAreaValidState = nil;
+            Area.detectionPaused = false;
+        end
+        if Data and Data.maps then
+            for _, mapData in ipairs(Data.maps) do
+                if mapData then
+                    mapData.currentPhaseID = nil;
+                end
             end
         end
-    end
-    
-    if Notification then
-        Notification.firstNotificationTime = {};
-        Notification.playerSentNotification = {};
-    end
-    
-    if CrateTrackerZK.phaseTimerTicker then
-        CrateTrackerZK.phaseTimerTicker:Cancel();
-        CrateTrackerZK.phaseTimerTicker = nil;
-    end
-    CrateTrackerZK.phaseTimerPaused = false;
-    CrateTrackerZK.phaseResumePending = false;
-    
-    if Logger and Logger.ClearMessageCache then
-        Logger:ClearMessageCache();
-    end
-    
-    if MainPanel then
-        MainPanel.lastNotifyClickTime = {};
+        if Notification then
+            Notification.firstNotificationTime = {};
+            Notification.playerSentNotification = {};
+        end
+        if CrateTrackerZK.phaseTimerTicker then
+            CrateTrackerZK.phaseTimerTicker:Cancel();
+            CrateTrackerZK.phaseTimerTicker = nil;
+        end
+        CrateTrackerZK.phaseTimerPaused = false;
+        CrateTrackerZK.phaseResumePending = false;
+        if Logger and Logger.ClearMessageCache then
+            Logger:ClearMessageCache();
+        end
+        if MainPanel then
+            MainPanel.lastNotifyClickTime = {};
+        end
     end
     
     if Notification then Notification:Initialize() end
@@ -429,18 +423,6 @@ function CrateTrackerZK:StopCleanupTicker()
         Logger:Debug("Core", "状态", "已停止临时数据清理定时器");
     end
 end
-
-local function HandleSlashCommand(msg)
-    if Commands then
-        Commands:HandleCommand(msg);
-    else
-        Logger:Error("Core", "错误", "Command module not loaded, please reload addon");
-    end
-end
-
-SLASH_CRATETRACKERZK1 = "/ctk"
-SLASH_CRATETRACKERZK2 = "/ct"
-SlashCmdList.CRATETRACKERZK = HandleSlashCommand;
 
 CrateTrackerZK.eventFrame = CreateFrame("Frame");
 CrateTrackerZK.eventFrame:SetScript("OnEvent", OnEvent);

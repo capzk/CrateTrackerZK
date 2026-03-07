@@ -14,8 +14,6 @@ end
 
 local localeData = {};
 
--- General
-
 -- Floating Button
 localeData["FloatingButtonTooltipLine3"] = "우클릭으로 설정 열기";
 

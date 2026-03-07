@@ -6,10 +6,10 @@
     <Script file="Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua"/>
 
     <!-- 基础工具（优先加载） -->
-    <Script file="Utils/Utils.lua"/>
-    <Script file="Utils/Logger.lua"/>
+    <Script file="Shared/Foundation/Utils.lua"/>
+    <Script file="Shared/Foundation/Logger.lua"/>
     <!-- 本地化管理模块（在本地化文件之前加载） -->
-    <Script file="Utils/Localization.lua"/>
+    <Script file="Shared/Foundation/Localization.lua"/>
     
     <!-- 本地化文件（在本地化管理模块之后） -->
     <!-- 注意：enUS.lua 放在最后作为默认回退，只有在其他语言文件都不匹配时才加载 -->
@@ -21,20 +21,22 @@
     <Script file="Locales/enUS.lua"/>
     
     <!-- 本地配置目录 -->
-    <Script file="Config/ExpansionConfig.lua"/>
-    <Script file="Config/ThemeConfig.lua"/>
-    <Script file="Config/Themes/Theme_001_Default.lua"/>
-    <Script file="Config/Themes/Theme_002_SeaGlass.lua"/>
-    <Script file="Config/Themes/Theme_003_LegacyGlass.lua"/>
+    <Script file="Shared/Configuration/ExpansionConfig.lua"/>
+    <Script file="Shared/Configuration/ThemeConfig.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_001_Default.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_002_SeaGlass.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_003_LegacyGlass.lua"/>
     
     <!-- 数据管理（代号系统配置优先） -->
         <Script file="Data/MapConfig.lua"/>
         <!-- 时间数据管理模块（在Data.lua之前加载） -->
         <Script file="Modules/UnifiedDataManager.lua"/>
+        <Script file="Modules/UnifiedDataManagerExtensions.lua"/>
         <Script file="Data/Data.lua"/>
     
     <!-- 功能模块 -->
     <Script file="Modules/Notification.lua"/>
+    <Script file="Modules/RuntimeResetManager.lua"/>
     <Script file="Modules/TeamCommListener.lua"/>
     <Script file="Modules/Commands.lua"/>
     <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
@@ -52,7 +54,9 @@
     <Script file="Interface/MainFrame/TableSystems.lua"/>
     <Script file="Interface/MainFrame/RowStateSystem.lua"/>
     <Script file="Interface/MainFrame/TableUI.lua"/>
+    <Script file="Interface/MainFrame/TableUIActions.lua"/>
     <Script file="Interface/MainFrame/MainFrame.lua"/>
+    <Script file="Interface/MainFrame/MainFrameTheme.lua"/>
     <Script file="Interface/Providers/TextProviders.lua"/>
     <Script file="Interface/Panels/SettingsPanelState.lua"/>
     <Script file="Interface/Panels/SettingsPanelLayout.lua"/>

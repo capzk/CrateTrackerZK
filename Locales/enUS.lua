@@ -13,17 +13,6 @@ end
 
 local localeData = {};
 
--- General
-localeData["LocalizationCritical"] = "Critical";
-localeData["LocalizationWarning"] = "Warning";
-localeData["LocalizationMissingTranslation"] = "[%s] Missing %s translation: %s";
-localeData["LocalizationFallbackWarning"] = "Locale %s not found, falling back to %s.";
-localeData["LocalizationNoLocaleError"] = "No available locale data loaded.";
-localeData["LocalizationMissingTranslationsWarning"] = "%d localization item(s) missing: %s";
-localeData["LocalizationMissingMapNames"] = "Missing map names: %s";
-localeData["MapNamesCount"] = "MapNames: %d";
-localeData["LocalizationFailedLocalesWarning"] = "Failed to load %d locale file(s).";
-
 -- Floating Button
 localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
 
