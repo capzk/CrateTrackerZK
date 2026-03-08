@@ -15,6 +15,7 @@ local ROW_STATE = {
 }
 
 RowStateSystem.mainFrame = nil
+RowStateSystem.contextMenuEnabled = true
 
 local function Clamp(value, minValue, maxValue)
     if value < minValue then
@@ -76,7 +77,26 @@ function RowStateSystem:GetRowButtons(rowId)
     return rowButtons[rowId]
 end
 
+function RowStateSystem:SetContextMenuEnabled(enabled)
+    local allow = enabled == true
+    if self.contextMenuEnabled == allow then
+        return
+    end
+    self.contextMenuEnabled = allow
+    if not allow then
+        self:OnGlobalLeftClick()
+        self:RemoveCancelListener()
+    end
+end
+
+function RowStateSystem:IsContextMenuEnabled()
+    return self.contextMenuEnabled == true
+end
+
 function RowStateSystem:OnRowRightClick(rowId)
+    if not self:IsContextMenuEnabled() then
+        return
+    end
     local state = self:GetRowState(rowId)
     if state.deleted then
         self:ShowRestoreButton(rowId)

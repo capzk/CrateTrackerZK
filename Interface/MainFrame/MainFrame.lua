@@ -10,14 +10,26 @@ local FRAME_CFG = {
     width = 600,
     height = 335,
     minScale = 0.6,
-    maxScale = 1.25,
-    minWidth = 360,
+    maxScale = 1.0,
+    minWidth = 140,
     minHeight = 201,
-    maxWidth = 750,
+    maxWidth = 600,
     maxHeight = 419,
 }
 
-local TABLE_PADDING_EXTRA = 4
+local RESIZE_LAYOUT_NOTIFY_INTERVAL = 0.016
+local RESIZE_LAYOUT_PIXEL_STEP = 1
+local COMPACT_FIXED_ROW_HEIGHT = 34
+local COMPACT_BASE_ROW_GAP = 2
+local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
+local FIXED_TITLE_HEIGHT = 22
+local FIXED_CONTENT_EDGE_GAP = 12
+
+local function GetFixedTableInsets()
+    local tableInset = FIXED_CONTENT_EDGE_GAP
+    local tableTopInset = FIXED_TITLE_HEIGHT + FIXED_CONTENT_EDGE_GAP
+    return tableInset, tableTopInset
+end
 
 local function EnsureUIState()
     if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
@@ -31,17 +43,27 @@ local function NotifyLayoutChanged(frame)
     end
 end
 
-local function NotifyLayoutChangedIfNeeded(frame)
+local function NotifyLayoutChangedIfNeeded(frame, force)
     if not frame then
         return
     end
-    local width = math.floor((frame:GetWidth() or 0) * 100 + 0.5)
-    local height = math.floor((frame:GetHeight() or 0) * 100 + 0.5)
-    if frame.lastLayoutWidth == width and frame.lastLayoutHeight == height then
+    local width = math.floor((frame:GetWidth() or 0) + 0.5)
+    local height = math.floor((frame:GetHeight() or 0) + 0.5)
+
+    local deltaW = math.abs((frame.lastLayoutWidth or width) - width)
+    local deltaH = math.abs((frame.lastLayoutHeight or height) - height)
+    local minPixelStep = frame.isSizing and RESIZE_LAYOUT_PIXEL_STEP or 1
+    if not force and deltaW < minPixelStep and deltaH < minPixelStep then
+        return
+    end
+
+    local now = GetTime and GetTime() or 0
+    if not force and frame.isSizing and frame.lastLayoutNotifyAt and (now - frame.lastLayoutNotifyAt) < RESIZE_LAYOUT_NOTIFY_INTERVAL then
         return
     end
     frame.lastLayoutWidth = width
     frame.lastLayoutHeight = height
+    frame.lastLayoutNotifyAt = now
     NotifyLayoutChanged(frame)
 end
 
@@ -71,6 +93,25 @@ local function GetConfiguredMapCount()
     return 7
 end
 
+local function GetCompactVisibleMapCount()
+    if Data and Data.GetAllMaps then
+        local maps = Data:GetAllMaps()
+        if maps and #maps > 0 then
+            local hiddenMaps = (Data.GetHiddenMaps and Data:GetHiddenMaps()) or {}
+            local visibleCount = 0
+            for _, mapData in ipairs(maps) do
+                if mapData and mapData.mapID and not hiddenMaps[mapData.mapID] then
+                    visibleCount = visibleCount + 1
+                end
+            end
+            if visibleCount > 0 then
+                return visibleCount
+            end
+        end
+    end
+    return math.max(1, GetConfiguredMapCount())
+end
+
 local function GetAdaptiveBaseHeight()
     local baseMapCount = 7
     local perMapHeight = 39
@@ -94,12 +135,54 @@ local function GetAdaptiveDefaultHeight()
     return Clamp(math.floor(baseHeight + 0.5), minHeight, maxHeight)
 end
 
+local function GetHeaderTransitionExtraHeight(width)
+    local safeWidth = width or FRAME_CFG.width
+    if safeWidth >= FRAME_CFG.width then
+        return COMPACT_FIXED_ROW_HEIGHT + COMPACT_BASE_ROW_GAP
+    end
+    local collapseRange = HEADER_COLLAPSE_TRANSITION_WIDTH
+    if collapseRange <= 0 then
+        return 0
+    end
+    local t = Clamp((FRAME_CFG.width - safeWidth) / collapseRange, 0, 1)
+    local eased = t * t * (3 - 2 * t)
+    local ratio = 1 - eased
+    local headerHeight = COMPACT_FIXED_ROW_HEIGHT * ratio
+    local headerGap = COMPACT_BASE_ROW_GAP * ratio
+    if headerHeight < 0.5 then
+        headerHeight = 0
+    end
+    if headerGap < 0.5 then
+        headerGap = 0
+    end
+    return headerHeight + headerGap
+end
+
+local function GetCompactFixedHeight(width)
+    local rowCount = GetCompactVisibleMapCount()
+    local fixedRowHeight = COMPACT_FIXED_ROW_HEIGHT
+    local rowGap = COMPACT_BASE_ROW_GAP
+
+    local tableInset, tableTopInset = GetFixedTableInsets()
+
+    local rowsHeight = rowCount * fixedRowHeight + math.max(0, rowCount - 1) * rowGap
+    local headerExtra = GetHeaderTransitionExtraHeight(width)
+    return rowsHeight + headerExtra + tableTopInset + tableInset
+end
+
 local function GetAdaptiveHeightForWidth(width)
     local baseHeight = GetAdaptiveBaseHeight()
     local minHeight, maxHeight = GetAdaptiveHeightBounds()
     local safeWidth = width or FRAME_CFG.width
     local scale = Clamp(safeWidth / FRAME_CFG.width, FRAME_CFG.minScale, FRAME_CFG.maxScale)
-    local targetHeight = math.floor(baseHeight * scale + 0.5)
+
+    local targetHeight = nil
+    if safeWidth < FRAME_CFG.width then
+        -- 缩小态高度按固定行高反推，并计入表头压缩过渡高度，避免底部行被临时裁掉
+        targetHeight = math.floor(GetCompactFixedHeight(safeWidth) + 0.5)
+    else
+        targetHeight = math.floor(baseHeight * scale + 0.5)
+    end
     return Clamp(targetHeight, minHeight, maxHeight), scale
 end
 
@@ -130,19 +213,43 @@ local function GetFrameScale(frame)
     return Clamp(width / FRAME_CFG.width, FRAME_CFG.minScale, FRAME_CFG.maxScale)
 end
 
+local function GetEffectiveMinWidth(frame)
+    local contentMin = frame and tonumber(frame.__ctkContentMinWidth) or nil
+    if contentMin then
+        return Clamp(math.floor(contentMin + 0.5), FRAME_CFG.minWidth, FRAME_CFG.maxWidth)
+    end
+    return FRAME_CFG.minWidth
+end
+
+local function IsAtMinimumWidth(frame)
+    if not frame or not frame.GetWidth then
+        return false
+    end
+    local width = frame:GetWidth() or FRAME_CFG.width
+    local minWidth = GetEffectiveMinWidth(frame)
+    return width <= (minWidth + 1)
+end
+
 function MainFrame:ApplyScaledChrome(frame, scale)
     if not frame then
         return
     end
     local scaled = scale or GetFrameScale(frame)
+    local fixedTitleHeight = FIXED_TITLE_HEIGHT
+    local fixedTitleButtonSize = 16
+    local fixedTitleInsetY = -3
+    local fixedSettingsInsetX = -35
+    local fixedCloseInsetX = -12
+    local fixedDotSize = 2
+    local fixedDotOffset = 3
+    local fixedCloseLineWidth = 8
+    local fixedCloseLineHeight = 1
     local handleSize = math.max(12, math.floor(16 * scaled + 0.5))
     local handleInset = math.max(1, math.floor(2 * scaled + 0.5))
-    local titleHeight = math.max(14, math.floor(22 * scaled + 0.5))
+    local titleHeight = fixedTitleHeight
     local sideWidth = math.max(14, math.floor(20 * scaled + 0.5))
     local bottomHeight = math.max(20, math.floor(30 * scaled + 0.5))
-    local extraInset = math.floor(TABLE_PADDING_EXTRA * scaled + 0.5)
-    local tableInset = math.max(6, math.floor(10 * scaled + 0.5) + extraInset)
-    local tableTopInset = math.max(22, math.floor(30 * scaled + 0.5) + extraInset)
+    local tableInset, tableTopInset = GetFixedTableInsets()
 
     if frame.titleDragArea then
         frame.titleDragArea:SetHeight(titleHeight)
@@ -170,41 +277,43 @@ function MainFrame:ApplyScaledChrome(frame, scale)
         frame.titleBg:SetHeight(titleHeight)
     end
     if frame.titleText then
-        ApplyFontScale(frame.titleText, scaled, 8, 16)
+        -- 标题字体保持固定，不随窗口缩放
+        ApplyFontScale(frame.titleText, 1, 8, 16)
+        if IsAtMinimumWidth(frame) then
+            frame.titleText:Hide()
+        else
+            frame.titleText:Show()
+        end
     end
 
     if frame.settingsButton then
-        local btnSize = math.max(12, math.floor(16 * scaled + 0.5))
-        frame.settingsButton:SetSize(btnSize, btnSize)
+        frame.settingsButton:SetSize(fixedTitleButtonSize, fixedTitleButtonSize)
         frame.settingsButton:ClearAllPoints()
-        frame.settingsButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -math.floor(35 * scaled + 0.5), -math.floor(3 * scaled + 0.5))
-        local dotSize = math.max(1, math.floor(2 * scaled + 0.5))
-        local dotOffset = math.max(1, math.floor(3 * scaled + 0.5))
+        frame.settingsButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", fixedSettingsInsetX, fixedTitleInsetY)
         if frame.settingsDot1 then
-            frame.settingsDot1:SetSize(dotSize, dotSize)
+            frame.settingsDot1:SetSize(fixedDotSize, fixedDotSize)
             frame.settingsDot1:ClearAllPoints()
-            frame.settingsDot1:SetPoint("CENTER", frame.settingsButton, "CENTER", -dotOffset, 0)
+            frame.settingsDot1:SetPoint("CENTER", frame.settingsButton, "CENTER", -fixedDotOffset, 0)
         end
         if frame.settingsDot2 then
-            frame.settingsDot2:SetSize(dotSize, dotSize)
+            frame.settingsDot2:SetSize(fixedDotSize, fixedDotSize)
             frame.settingsDot2:ClearAllPoints()
             frame.settingsDot2:SetPoint("CENTER", frame.settingsButton, "CENTER", 0, 0)
         end
         if frame.settingsDot3 then
-            frame.settingsDot3:SetSize(dotSize, dotSize)
+            frame.settingsDot3:SetSize(fixedDotSize, fixedDotSize)
             frame.settingsDot3:ClearAllPoints()
-            frame.settingsDot3:SetPoint("CENTER", frame.settingsButton, "CENTER", dotOffset, 0)
+            frame.settingsDot3:SetPoint("CENTER", frame.settingsButton, "CENTER", fixedDotOffset, 0)
         end
     end
 
     if frame.closeButton then
-        local btnSize = math.max(12, math.floor(16 * scaled + 0.5))
-        frame.closeButton:SetSize(btnSize, btnSize)
+        frame.closeButton:SetSize(fixedTitleButtonSize, fixedTitleButtonSize)
         frame.closeButton:ClearAllPoints()
-        frame.closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -math.floor(12 * scaled + 0.5), -math.floor(3 * scaled + 0.5))
+        frame.closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", fixedCloseInsetX, fixedTitleInsetY)
     end
     if frame.closeLine then
-        frame.closeLine:SetSize(math.max(5, math.floor(8 * scaled + 0.5)), math.max(1, math.floor(1 * scaled + 0.5)))
+        frame.closeLine:SetSize(fixedCloseLineWidth, fixedCloseLineHeight)
     end
 
     if frame.tableContainer then
@@ -241,15 +350,20 @@ function MainFrame:ApplyAdaptiveResizeBounds(frame)
         return
     end
     local minHeight, maxHeight = GetAdaptiveHeightBounds()
+    local minWidth = GetEffectiveMinWidth(frame)
     if frame.SetResizeBounds then
-        frame:SetResizeBounds(FRAME_CFG.minWidth, minHeight, FRAME_CFG.maxWidth, maxHeight)
+        frame:SetResizeBounds(minWidth, minHeight, FRAME_CFG.maxWidth, maxHeight)
     else
         if frame.SetMinResize then
-            frame:SetMinResize(FRAME_CFG.minWidth, minHeight)
+            frame:SetMinResize(minWidth, minHeight)
         end
         if frame.SetMaxResize then
             frame:SetMaxResize(FRAME_CFG.maxWidth, maxHeight)
         end
+    end
+    local currentWidth = frame:GetWidth() or FRAME_CFG.width
+    if currentWidth + 0.5 < minWidth then
+        frame:SetWidth(minWidth)
     end
 end
 
@@ -295,9 +409,8 @@ function MainFrame:Create()
         if not frame.isNormalizingSize then
             self:NormalizeSize(frame)
         end
-        if not frame.isSizing then
-            NotifyLayoutChangedIfNeeded(frame)
-        end
+        -- 拖拽中也立即参与布局同步，避免边框先变、内容晚一拍导致溢出
+        NotifyLayoutChangedIfNeeded(frame)
     end)
 
     if RowStateSystem and RowStateSystem.AddClickListenerToTableArea then
@@ -324,6 +437,7 @@ end
 function MainFrame:ApplySavedSize(frame)
     EnsureUIState()
     local size = CRATETRACKERZK_UI_DB.mainFrameSize
+    local minWidth = GetEffectiveMinWidth(frame)
     local minHeight, maxHeight = GetAdaptiveHeightBounds()
     if not size then
         frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
@@ -332,7 +446,7 @@ function MainFrame:ApplySavedSize(frame)
     end
     local width = tonumber(size.width) or FRAME_CFG.width
     local height = tonumber(size.height) or FRAME_CFG.height
-    width = math.max(FRAME_CFG.minWidth, math.min(FRAME_CFG.maxWidth, width))
+    width = math.max(minWidth, math.min(FRAME_CFG.maxWidth, width))
     height = math.max(minHeight, math.min(maxHeight, height))
     frame:SetSize(width, height)
     self:NormalizeSize(frame)
@@ -601,7 +715,7 @@ function MainFrame:CreateResizeHandle(frame)
         if frame.layoutRefreshTicker then
             return
         end
-        frame.layoutRefreshTicker = C_Timer.NewTicker(0.016, function()
+        frame.layoutRefreshTicker = C_Timer.NewTicker(RESIZE_LAYOUT_NOTIFY_INTERVAL, function()
             if not frame or not frame:IsShown() or not frame.isSizing then
                 return
             end
@@ -631,7 +745,7 @@ function MainFrame:CreateResizeHandle(frame)
         StopLayoutRefreshTicker()
         self:NormalizeSize(frame)
         SaveFrameSize(frame)
-        NotifyLayoutChangedIfNeeded(frame)
+        NotifyLayoutChangedIfNeeded(frame, true)
         CancelHideTimer()
         if ShouldShowResizeHandle() then
             SetResizeHandleVisible(true)
@@ -648,7 +762,7 @@ function MainFrame:CreateResizeHandle(frame)
         SetResizeHandleVisible(true)
         StartLayoutRefreshTicker()
         frame:StartSizing("BOTTOMRIGHT")
-        NotifyLayoutChangedIfNeeded(frame)
+        NotifyLayoutChangedIfNeeded(frame, true)
     end)
 
     resizeHandle:SetScript("OnMouseUp", function()

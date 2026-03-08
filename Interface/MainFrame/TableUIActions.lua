@@ -28,9 +28,17 @@ local function GetConfig()
 end
 
 function TableUI:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, scale)
+    local operationWidth = (colWidths and colWidths[5]) or 0;
+    if operationWidth <= 0 then
+        if rowFrame and rowFrame.notifyBtn then
+            rowFrame.notifyBtn:Hide();
+        end
+        return nil;
+    end
+
     local rowId = rowInfo.rowId;
     local operationColumnStart = colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4];
-    local columnCenter = operationColumnStart + colWidths[5] / 2;
+    local columnCenter = operationColumnStart + operationWidth / 2;
     rowFrame.operationColumnCenter = columnCenter;
     local notifyText = L["Notify"] or "通知";
 

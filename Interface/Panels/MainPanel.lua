@@ -21,6 +21,10 @@ local L = CrateTrackerZK.L
 MainPanel.lastNotifyClickTime = MainPanel.lastNotifyClickTime or {}
 MainPanel.NOTIFY_BUTTON_COOLDOWN = 0.5
 MainPanel.updateTimerActive = MainPanel.updateTimerActive or false
+MainPanel.layoutUpdatePending = MainPanel.layoutUpdatePending or false
+MainPanel.lastLayoutUpdateAt = MainPanel.lastLayoutUpdateAt or 0
+MainPanel.LAYOUT_UPDATE_INTERVAL = 0.016
+MainPanel.layoutUpdateTimer = MainPanel.layoutUpdateTimer or nil
 
 local function EnsureUIState()
     if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
@@ -238,7 +242,7 @@ function MainPanel:CreateMainFrame()
     end
 
     frame.OnLayoutChanged = function()
-        self:UpdateTable(true)
+        self:RequestLayoutUpdate()
     end
 
     if CRATETRACKERZK_UI_DB.position then
@@ -265,6 +269,43 @@ function MainPanel:CreateMainFrame()
     return frame
 end
 
+function MainPanel:RequestLayoutUpdate()
+    if not self.mainFrame then
+        return
+    end
+    if not self:IsMainFrameVisible() then
+        return
+    end
+
+    local now = GetTime and GetTime() or 0
+    local interval = self.LAYOUT_UPDATE_INTERVAL or 0.016
+    local elapsed = now - (self.lastLayoutUpdateAt or 0)
+    if elapsed >= interval then
+        self.lastLayoutUpdateAt = now
+        self:UpdateTable(true)
+        return
+    end
+
+    if self.layoutUpdatePending then
+        return
+    end
+
+    self.layoutUpdatePending = true
+    local delay = interval - elapsed
+    if delay < 0.005 then
+        delay = 0.005
+    end
+    self.layoutUpdateTimer = C_Timer.NewTimer(delay, function()
+        self.layoutUpdateTimer = nil
+        self.layoutUpdatePending = false
+        if not self.mainFrame or not self:IsMainFrameVisible() then
+            return
+        end
+        self.lastLayoutUpdateAt = GetTime and GetTime() or 0
+        self:UpdateTable(true)
+    end)
+end
+
 function MainPanel:StartUpdateTimer()
     if not self:IsMainFrameVisible() then
         self:StopUpdateTimer()
@@ -280,6 +321,11 @@ function MainPanel:StartUpdateTimer()
 end
 
 function MainPanel:StopUpdateTimer()
+    if self.layoutUpdateTimer then
+        self.layoutUpdateTimer:Cancel()
+        self.layoutUpdateTimer = nil
+    end
+    self.layoutUpdatePending = false
     if CountdownSystem and CountdownSystem.Stop then
         CountdownSystem:Stop()
     end
@@ -300,7 +346,7 @@ end
 
 function MainPanel:UpdateTable(skipVisibilityCheck)
     if not self.mainFrame or not TableUI then return end
-    if not skipVisibilityCheck and (not CrateTrackerZKFrame or not CrateTrackerZKFrame:IsShown()) then
+    if not self:IsMainFrameVisible() then
         return
     end
 

@@ -3,7 +3,8 @@
 local MainFrame = BuildEnv("MainFrame");
 local UIConfig = BuildEnv("ThemeConfig");
 
-local TABLE_PADDING_EXTRA = 4;
+local FIXED_TITLE_HEIGHT = 22;
+local FIXED_CONTENT_EDGE_GAP = 12;
 
 function MainFrame:ApplyThemeColors(frame)
     if not frame then
@@ -50,9 +51,12 @@ end
 
 function MainFrame:CreateTableContainer(frame)
     local tableContainer = CreateFrame("Frame", nil, frame);
-    tableContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 10 + TABLE_PADDING_EXTRA, -(30 + TABLE_PADDING_EXTRA));
-    tableContainer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(10 + TABLE_PADDING_EXTRA), 10 + TABLE_PADDING_EXTRA);
+    tableContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", FIXED_CONTENT_EDGE_GAP, -(FIXED_TITLE_HEIGHT + FIXED_CONTENT_EDGE_GAP));
+    tableContainer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -FIXED_CONTENT_EDGE_GAP, FIXED_CONTENT_EDGE_GAP);
     tableContainer:SetFrameLevel(frame:GetFrameLevel() + 5);
+    if tableContainer.SetClipsChildren then
+        tableContainer:SetClipsChildren(true);
+    end
     frame.tableContainer = tableContainer;
 end
 
