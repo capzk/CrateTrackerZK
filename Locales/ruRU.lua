@@ -16,7 +16,7 @@ end
 local localeData = {};
 
 -- Floating Button
-localeData["FloatingButtonTooltipLine3"] = "Правый клик — открыть настройки";
+localeData["FloatingButtonTooltipLine3"] = "ПКМ - открыть настройки";
 
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
