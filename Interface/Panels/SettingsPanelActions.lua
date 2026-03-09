@@ -67,7 +67,7 @@ function SettingsPanelActions:CycleTheme()
     if MainPanel and MainPanel.RefreshTheme then
         MainPanel:RefreshTheme()
     elseif MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable(true)
+        MainPanel:UpdateTable()
     end
 end
 

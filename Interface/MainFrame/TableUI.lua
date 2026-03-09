@@ -19,13 +19,26 @@ local FIXED_ROW_HEIGHT = 34
 local MIN_FRAME_SCALE = 0.6
 local MAX_FRAME_SCALE = 1.0
 local COMPACT_BASE_ROW_GAP = 2
-local BASE_MIN_FRAME_WIDTH = 140
+local BASE_MIN_FRAME_WIDTH = 100
 local COMPACT_FONT_TRANSITION_WIDTH = 80
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
+local MAP_COL_COMPACT_MIN_CHARS = 1
 local MAP_COL_FIXED_MIN_WIDTH = 120
 local MAP_COL_FIXED_MAX_WIDTH = 360
 local MAP_COL_BASE_PADDING = 24
 local MAP_COL_SAFETY_PADDING = 6
+local MAP_COL_MIN_TEXT_GUARD = 4
+local UTF8_CHAR_PATTERN = "[%z\1-\127\194-\244][\128-\191]*"
+local TEXT_WIDTH_CACHE_LIMIT = 1024
+local TRUNCATE_CACHE_LIMIT = 2048
+local textWidthCache = {}
+local textWidthCacheSize = 0
+local scaledTextWidthCache = {}
+local scaledTextWidthCacheSize = 0
+local referenceTextWidthCache = {}
+local referenceTextWidthCacheSize = 0
+local truncateCache = {}
+local truncateCacheSize = 0
 
 local function GetConfig()
     return UIConfig
@@ -46,10 +59,137 @@ local function GetMeasureText()
     return measureText
 end
 
+local function MakeFontSignatureFromValues(font, size, flags)
+    return table.concat({
+        tostring(font or ""),
+        tostring(size or 0),
+        tostring(flags or ""),
+    }, "|")
+end
+
+local function MakeFontSignature(fontString)
+    if not fontString or not fontString.GetFont then
+        return "default"
+    end
+    local font, size, flags = fontString:GetFont()
+    return MakeFontSignatureFromValues(font, size, flags)
+end
+
+local function PutCache(cacheName, key, value)
+    if cacheName == "textWidth" then
+        if textWidthCache[key] == nil then
+            if textWidthCacheSize >= TEXT_WIDTH_CACHE_LIMIT then
+                textWidthCache = {}
+                textWidthCacheSize = 0
+            end
+            textWidthCacheSize = textWidthCacheSize + 1
+        end
+        textWidthCache[key] = value
+        return
+    end
+    if cacheName == "scaledTextWidth" then
+        if scaledTextWidthCache[key] == nil then
+            if scaledTextWidthCacheSize >= TEXT_WIDTH_CACHE_LIMIT then
+                scaledTextWidthCache = {}
+                scaledTextWidthCacheSize = 0
+            end
+            scaledTextWidthCacheSize = scaledTextWidthCacheSize + 1
+        end
+        scaledTextWidthCache[key] = value
+        return
+    end
+    if cacheName == "referenceTextWidth" then
+        if referenceTextWidthCache[key] == nil then
+            if referenceTextWidthCacheSize >= TEXT_WIDTH_CACHE_LIMIT then
+                referenceTextWidthCache = {}
+                referenceTextWidthCacheSize = 0
+            end
+            referenceTextWidthCacheSize = referenceTextWidthCacheSize + 1
+        end
+        referenceTextWidthCache[key] = value
+        return
+    end
+    if cacheName == "truncate" then
+        if truncateCache[key] == nil then
+            if truncateCacheSize >= TRUNCATE_CACHE_LIMIT then
+                truncateCache = {}
+                truncateCacheSize = 0
+            end
+            truncateCacheSize = truncateCacheSize + 1
+        end
+        truncateCache[key] = value
+    end
+end
+
 local function GetTextWidth(text)
+    local normalizedText = text or ""
     local fontString = GetMeasureText()
-    fontString:SetText(text or "")
-    return fontString:GetStringWidth() or 0
+    local font, size, flags = GameFontNormal:GetFont()
+    local fontSignature = MakeFontSignatureFromValues(font, size, flags)
+    local cacheKey = fontSignature .. "|" .. normalizedText
+    local cached = textWidthCache[cacheKey]
+    if cached ~= nil then
+        return cached
+    end
+    if font then
+        fontString:SetFont(font, size or 12, flags)
+    end
+    fontString:SetText(normalizedText)
+    local width = fontString:GetStringWidth() or 0
+    PutCache("textWidth", cacheKey, width)
+    return width
+end
+
+local function GetReferenceTextWidth(referenceFontString, text)
+    local normalizedText = text or ""
+    local measure = GetMeasureText()
+    local fontSignature = "default"
+    if referenceFontString and referenceFontString.GetFont then
+        local font, size, flags = referenceFontString:GetFont()
+        fontSignature = MakeFontSignatureFromValues(font, size, flags)
+        if font then
+            measure:SetFont(font, size or 12, flags)
+        end
+    end
+    local cacheKey = fontSignature .. "|" .. normalizedText
+    local cached = referenceTextWidthCache[cacheKey]
+    if cached ~= nil then
+        return cached
+    end
+    measure:SetText(normalizedText)
+    local width = measure:GetStringWidth() or 0
+    PutCache("referenceTextWidth", cacheKey, width)
+    return width
+end
+
+local function GetScaledTextWidth(text, scale)
+    local normalizedText = text or ""
+    local normalizedScale = math.floor(((scale or 1) * 100) + 0.5) / 100
+    local measure = GetMeasureText()
+    local font, baseSize, flags = GameFontNormal:GetFont()
+    local fontSignature = MakeFontSignatureFromValues(font, baseSize, flags)
+    local cacheKey = table.concat({
+        fontSignature,
+        tostring(normalizedScale),
+        normalizedText,
+    }, "|")
+    local cached = scaledTextWidthCache[cacheKey]
+    if cached ~= nil then
+        return cached
+    end
+    if font then
+        local scaledSize = math.floor((baseSize or 12) * normalizedScale + 0.5)
+        if scaledSize < 8 then
+            scaledSize = 8
+        elseif scaledSize > 18 then
+            scaledSize = 18
+        end
+        measure:SetFont(font, scaledSize, flags)
+    end
+    measure:SetText(normalizedText)
+    local width = measure:GetStringWidth() or 0
+    PutCache("scaledTextWidth", cacheKey, width)
+    return width
 end
 
 local function Clamp(value, minValue, maxValue)
@@ -177,6 +317,13 @@ local function GetStringLength(text)
             return len
         end
     end
+    local count = 0
+    for _ in string.gmatch(text, UTF8_CHAR_PATTERN) do
+        count = count + 1
+    end
+    if count > 0 then
+        return count
+    end
     return #text
 end
 
@@ -187,10 +334,36 @@ local function SubString(text, startIndex, endIndex)
             return result
         end
     end
+
+    if type(text) ~= "string" or text == "" then
+        return ""
+    end
+
+    local startPos = tonumber(startIndex) or 1
+    local endPos = tonumber(endIndex) or math.huge
+    if endPos < startPos then
+        return ""
+    end
+
+    local chars = {}
+    local idx = 0
+    for char in string.gmatch(text, UTF8_CHAR_PATTERN) do
+        idx = idx + 1
+        if idx >= startPos and idx <= endPos then
+            chars[#chars + 1] = char
+        elseif idx > endPos then
+            break
+        end
+    end
+
+    if #chars > 0 then
+        return table.concat(chars)
+    end
+
     return string.sub(text, startIndex, endIndex)
 end
 
-local function ApplyEllipsis(fontString, text, maxWidth)
+local function ApplyTruncateNoEllipsis(fontString, text, maxWidth, minChars)
     if not fontString then
         return
     end
@@ -198,23 +371,47 @@ local function ApplyEllipsis(fontString, text, maxWidth)
         fontString:SetText("")
         return
     end
-    fontString:SetText(text)
-    if fontString:GetStringWidth() <= maxWidth then
+    if maxWidth <= 0 then
+        fontString:SetText("")
         return
     end
-    local ellipsis = "..."
+
+    if GetReferenceTextWidth(fontString, text) <= maxWidth then
+        fontString:SetText(text)
+        return
+    end
     local length = GetStringLength(text)
     if length <= 0 then
-        fontString:SetText(ellipsis)
+        fontString:SetText("")
         return
     end
-    local low, high = 1, length
-    local best = ellipsis
+
+    local minVisible = math.min(math.max(1, minChars or 1), length)
+    local normalizedWidth = math.max(0, math.floor(maxWidth + 0.5))
+    local truncateCacheKey = table.concat({
+        MakeFontSignature(fontString),
+        tostring(normalizedWidth),
+        tostring(minVisible),
+        text,
+    }, "|")
+    local cachedValue = truncateCache[truncateCacheKey]
+    if cachedValue ~= nil then
+        fontString:SetText(cachedValue)
+        return
+    end
+
+    local low, high = minVisible, length
+    local best = SubString(text, 1, minVisible)
+
+    if GetReferenceTextWidth(fontString, best) > maxWidth then
+        fontString:SetText(best)
+        return
+    end
+
     while low <= high do
         local mid = math.floor((low + high) / 2)
-        local candidate = SubString(text, 1, mid) .. ellipsis
-        fontString:SetText(candidate)
-        if fontString:GetStringWidth() <= maxWidth then
+        local candidate = SubString(text, 1, mid)
+        if GetReferenceTextWidth(fontString, candidate) <= maxWidth then
             best = candidate
             low = mid + 1
         else
@@ -222,6 +419,7 @@ local function ApplyEllipsis(fontString, text, maxWidth)
         end
     end
     fontString:SetText(best)
+    PutCache("truncate", truncateCacheKey, best)
 end
 
 local function ScaleWidths(baseWidths, targetTotal)
@@ -254,6 +452,31 @@ local function GetMaxWidth(texts)
             maxWidth = width
         end
     end
+    return maxWidth
+end
+
+local function GetScaledMapPrefixMaxWidth(rows, charCount, scale)
+    local maxWidth = 0
+    local requiredChars = math.max(1, charCount or 1)
+
+    for _, rowInfo in ipairs(rows or {}) do
+        local mapName = rowInfo and rowInfo.mapName
+        if type(mapName) == "string" and mapName ~= "" then
+            local length = GetStringLength(mapName)
+            if length > 0 then
+                local prefix = SubString(mapName, 1, math.min(requiredChars, length))
+                local width = GetScaledTextWidth(prefix, scale)
+                if width > maxWidth then
+                    maxWidth = width
+                end
+            end
+        end
+    end
+
+    if maxWidth <= 0 then
+        maxWidth = GetScaledTextWidth(string.rep("W", requiredChars), scale)
+    end
+
     return maxWidth
 end
 
@@ -324,9 +547,16 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         end
     end
 
-    -- 地图列宽固定为默认宽度，不参与缩放，避免缩小时地图名被截断
-    local mapDesiredWidth = math.floor(mapMax + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5)
-    mapDesiredWidth = Clamp(mapDesiredWidth, MAP_COL_FIXED_MIN_WIDTH, MAP_COL_FIXED_MAX_WIDTH)
+    -- 常规状态下地图列维持固定最小宽；压缩态再放开到“至少可显示1字”的动态下限
+    local mapNaturalWidth = math.floor(mapMax + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5)
+    mapNaturalWidth = Clamp(mapNaturalWidth, MAP_COL_FIXED_MIN_WIDTH, MAP_COL_FIXED_MAX_WIDTH)
+    local mapCellPadding = math.floor(24 * widthScale + 0.5) + 2
+    local mapCompactMinWidth = math.floor(GetScaledMapPrefixMaxWidth(rows, MAP_COL_COMPACT_MIN_CHARS, widthScale) + mapCellPadding + MAP_COL_MIN_TEXT_GUARD + 0.5)
+    mapCompactMinWidth = Clamp(math.max(1, mapCompactMinWidth), 1, mapNaturalWidth)
+    if profile then
+        profile.mapNaturalWidth = mapNaturalWidth
+        profile.mapCompactMinWidth = mapCompactMinWidth
+    end
 
     local phaseFullDesired = math.floor((GetMaxWidth({headers[2] or "", notAcquired, phaseFullText}) + 20) * widthScale + 0.5)
     local phaseShortDesired = math.floor((GetMaxWidth({headers[2] or "", notAcquired, phaseShortText}) + 20) * widthScale + 0.5)
@@ -341,7 +571,7 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
     local opNeed = math.floor((GetMaxWidth({notifyText}) + 10) * widthScale + 0.5)
 
     if profile and profile.showHeader == false then
-        local remaining = math.max(0, math.floor((totalWidth or 0) - mapDesiredWidth + 0.5))
+        local remaining = math.max(0, math.floor((totalWidth or 0) - mapNaturalWidth + 0.5))
         local showPhase = true
         local showLast = true
         local showOp = true
@@ -367,21 +597,21 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         profile.phaseShortMode = usePhaseShort
 
         local desired = {
-            mapDesiredWidth,
+            mapNaturalWidth,
             usePhaseShort and phaseShortDesired or phaseFullDesired,
             lastDesired,
             nextDesired,
             opDesired,
         }
         local minWidths = {
-            mapDesiredWidth,
+            mapCompactMinWidth,
             usePhaseShort and phaseShortNeed or phaseFullNeed,
             lastNeed,
             nextNeed,
             opNeed,
         }
         local maxWidths = {
-            mapDesiredWidth,
+            mapNaturalWidth,
             math.max(desired[2], minWidths[2]) + math.max(2, math.floor(6 * widthScale + 0.5)),
             math.max(desired[3], minWidths[3]) + math.max(2, math.floor(6 * widthScale + 0.5)),
             math.max(desired[4], minWidths[4]) + math.max(2, math.floor(6 * widthScale + 0.5)),
@@ -389,7 +619,6 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         }
 
         local result = {0, 0, 0, 0, 0}
-        result[1] = mapDesiredWidth
 
         local otherIndices = {}
         local otherDesired = {}
@@ -419,7 +648,15 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
             table.insert(otherMaxWidths, math.max(1, maxWidths[5]))
         end
 
-        local remainingWidth = math.max(1, math.floor((totalWidth or 1) - mapDesiredWidth + 0.5))
+        local otherMinTotal = 0
+        for _, width in ipairs(otherMinWidths) do
+            otherMinTotal = otherMinTotal + math.max(1, width or 0)
+        end
+        local mapWidth = math.floor((totalWidth or 1) - otherMinTotal + 0.5)
+        mapWidth = Clamp(mapWidth, mapCompactMinWidth, mapNaturalWidth)
+        result[1] = mapWidth
+
+        local remainingWidth = math.max(1, math.floor((totalWidth or 1) - mapWidth + 0.5))
         local distributedOthers = DistributeWidths(otherDesired, otherMinWidths, otherMaxWidths, remainingWidth)
         for i, colIndex in ipairs(otherIndices) do
             result[colIndex] = distributedOthers[i] or 0
@@ -427,28 +664,28 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
 
         -- 主框最小宽度只保底最终形态（地图 + 下次刷新），
         -- 避免在前序阶段被锁死导致后续隐藏条件无法触发
-        local minTableWidth = mapDesiredWidth + nextNeed
+        local minTableWidth = mapCompactMinWidth + nextNeed
         profile.minTableWidth = math.max(1, math.floor(minTableWidth + 0.5))
 
         return result
     end
 
     local desired = {
-        mapDesiredWidth,
+        mapNaturalWidth,
         phaseFullDesired,
         lastDesired,
         nextDesired,
         opDesired,
     }
     local minWidths = {
-        mapDesiredWidth,
+        mapNaturalWidth,
         math.floor(72 * widthScale + 0.5),
         math.floor(88 * widthScale + 0.5),
         math.floor(92 * widthScale + 0.5),
         math.floor(72 * widthScale + 0.5),
     }
     local maxWidths = {
-        mapDesiredWidth,
+        mapNaturalWidth,
         math.floor(170 * widthScale + 0.5),
         math.floor(190 * widthScale + 0.5),
         math.floor(210 * widthScale + 0.5),
@@ -614,6 +851,14 @@ function TableUI:RebuildUI(frame, headerLabels)
 
     local layout = CalculateTableLayout(frame, visibilityProfile)
     local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale, visibilityProfile)
+    local mapNaturalWidth = visibilityProfile.mapNaturalWidth or (colWidths[1] or 0)
+    local mapCompressed = ((colWidths[1] or 0) + 0.5) < mapNaturalWidth
+    if frame.__ctkMapColumnCompressed ~= mapCompressed then
+        frame.__ctkMapColumnCompressed = mapCompressed
+        if MainFrame and MainFrame.ApplyScaledChrome then
+            MainFrame:ApplyScaledChrome(frame)
+        end
+    end
     layout.showPhaseColumn = visibilityProfile.showPhaseColumn == true
     layout.showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true
     layout.showOperationColumn = visibilityProfile.showOperationColumn == true
@@ -981,7 +1226,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
             if cellText.SetMaxLines then
                 cellText:SetMaxLines(1)
             end
-            ApplyEllipsis(cellText, textValue, maxWidth)
+            ApplyTruncateNoEllipsis(cellText, textValue, maxWidth, MAP_COL_COMPACT_MIN_CHARS)
         else
             cellText:SetText(textValue)
         end

@@ -11,7 +11,7 @@ local FRAME_CFG = {
     height = 335,
     minScale = 0.6,
     maxScale = 1.0,
-    minWidth = 140,
+    minWidth = 100,
     minHeight = 201,
     maxWidth = 600,
     maxHeight = 419,
@@ -279,7 +279,7 @@ function MainFrame:ApplyScaledChrome(frame, scale)
     if frame.titleText then
         -- 标题字体保持固定，不随窗口缩放
         ApplyFontScale(frame.titleText, 1, 8, 16)
-        if IsAtMinimumWidth(frame) then
+        if IsAtMinimumWidth(frame) or frame.__ctkMapColumnCompressed == true then
             frame.titleText:Hide()
         else
             frame.titleText:Show()

@@ -303,6 +303,74 @@ local function GetCountdownColor(rowId, seconds, isHidden)
     return normal[1], normal[2], normal[3], normal[4]
 end
 
+local function IsPairOrdered(a, b, ascending, context, remainingCache)
+    if not a or not b then
+        return true
+    end
+
+    if a.isHidden and not b.isHidden then
+        return false
+    elseif not a.isHidden and b.isHidden then
+        return true
+    elseif a.isHidden and b.isHidden then
+        return true
+    end
+
+    local function GetCachedRemaining(rowInfo)
+        local rowId = rowInfo and rowInfo.rowId
+        if rowId == nil then
+            return nil
+        end
+        local cache = remainingCache[rowId]
+        if cache ~= nil then
+            return cache.value
+        end
+        local remaining = GetRemaining(rowId, context)
+        remainingCache[rowId] = { value = remaining }
+        return remaining
+    end
+
+    local aValue = GetCachedRemaining(a)
+    local bValue = GetCachedRemaining(b)
+
+    if aValue == nil and bValue == nil then
+        return true
+    elseif aValue == nil then
+        return false
+    elseif bValue == nil then
+        return true
+    end
+
+    if ascending then
+        return aValue <= bValue
+    end
+    return aValue >= bValue
+end
+
+local function IsCurrentSortOrderValid(context)
+    if not SortingRef or not SortingRef.GetSortState or not SortingRef.GetCurrentRows then
+        return true
+    end
+    local sortState = SortingRef:GetSortState()
+    if sortState == "default" then
+        return true
+    end
+
+    local rows = SortingRef:GetCurrentRows() or {}
+    if #rows < 2 then
+        return true
+    end
+
+    local ascending = sortState == "asc"
+    local remainingCache = {}
+    for i = 1, (#rows - 1) do
+        if not IsPairOrdered(rows[i], rows[i + 1], ascending, context, remainingCache) then
+            return false
+        end
+    end
+    return true
+end
+
 function CountdownSystem:SetSortRefreshCallback(callback)
     sortRefreshCallback = callback
 end
@@ -350,7 +418,7 @@ local function RefreshCountdownUI(now)
         local currentTime = GetTime()
         local lastTime = SortingRef:GetLastSortTime()
         if not lastTime or currentTime - lastTime >= 10 then
-            if sortRefreshCallback then
+            if sortRefreshCallback and not IsCurrentSortOrderValid(context) then
                 sortRefreshCallback()
             end
             SortingRef:SetLastSortTime(currentTime)

@@ -120,6 +120,8 @@ function Phase:UpdatePhaseInfo(currentMapID)
         local shouldUpdate = false;
         local isPhaseChanged = false;  -- 区分真正的位面变化和首次检测
         local currentPhaseID = nil;
+        local uiNeedsRefresh = false;
+        local previousPhaseID = targetMapData.currentPhaseID;
         
         if detectedPhaseID then
             if cachedPhaseID ~= detectedPhaseID then
@@ -146,9 +148,13 @@ function Phase:UpdatePhaseInfo(currentMapID)
             
             -- 保留原有的currentPhaseID设置以保持向后兼容
             targetMapData.currentPhaseID = currentPhaseID;
+            if previousPhaseID ~= currentPhaseID then
+                uiNeedsRefresh = true;
+            end
             
             -- 消息发送逻辑：使用 targetMapData.mapID 作为key，避免子地图和主地图重复发送
             if shouldUpdate then
+                uiNeedsRefresh = true;
                 local mapPhaseKey = cacheKey .. "-" .. currentPhaseID;
                 local lastReportedKey = self.lastReportedMapPhaseKey;
                 
@@ -194,7 +200,7 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 end
             end
             
-            if MainPanel and MainPanel.UpdateTable then
+            if uiNeedsRefresh and MainPanel and MainPanel.UpdateTable then
                 MainPanel:UpdateTable();
             end
         end

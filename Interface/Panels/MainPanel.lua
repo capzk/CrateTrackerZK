@@ -279,10 +279,14 @@ function MainPanel:RequestLayoutUpdate()
 
     local now = GetTime and GetTime() or 0
     local interval = self.LAYOUT_UPDATE_INTERVAL or 0.016
+    if self.mainFrame and self.mainFrame.isSizing then
+        -- 拖拽缩放期间降低布局刷新频率，减少重建压力
+        interval = math.max(interval, 0.033)
+    end
     local elapsed = now - (self.lastLayoutUpdateAt or 0)
     if elapsed >= interval then
         self.lastLayoutUpdateAt = now
-        self:UpdateTable(true)
+        self:UpdateLayoutOnly()
         return
     end
 
@@ -302,7 +306,7 @@ function MainPanel:RequestLayoutUpdate()
             return
         end
         self.lastLayoutUpdateAt = GetTime and GetTime() or 0
-        self:UpdateTable(true)
+        self:UpdateLayoutOnly()
     end)
 end
 
@@ -346,7 +350,8 @@ end
 
 function MainPanel:UpdateTable(skipVisibilityCheck)
     if not self.mainFrame or not TableUI then return end
-    if not skipVisibilityCheck and not self:IsMainFrameVisible() then
+    -- 主界面隐藏时不执行任何表格重建，避免隐藏态 UI 资源占用
+    if not self:IsMainFrameVisible() then
         return
     end
 
@@ -361,11 +366,20 @@ function MainPanel:UpdateTable(skipVisibilityCheck)
     TableUI:RebuildUI(self.mainFrame, headers)
 end
 
+function MainPanel:UpdateLayoutOnly()
+    if not self.mainFrame or not TableUI or not SortingSystem then return end
+    if not self:IsMainFrameVisible() then
+        return
+    end
+    local headers = self:BuildHeaderLabels()
+    TableUI:RebuildUI(self.mainFrame, headers)
+end
+
 function MainPanel:RefreshTheme()
     if self.mainFrame and MainFrame and MainFrame.ApplyThemeColors then
         MainFrame:ApplyThemeColors(self.mainFrame)
     end
-    self:UpdateTable(true)
+    self:UpdateTable()
 end
 
 function MainPanel:NotifyMapById(mapId)
