@@ -637,9 +637,17 @@ function TableUI:RebuildUI(frame, headerLabels)
         if MainFrame and MainFrame.ApplyAdaptiveResizeBounds then
             MainFrame:ApplyAdaptiveResizeBounds(frame)
         end
+        -- 最小宽度阈值变化后，立即同步标题栏显隐状态；
+        -- 否则登录/重载时可能因未触发 OnSizeChanged 而残留旧状态。
+        if MainFrame and MainFrame.ApplyScaledChrome then
+            MainFrame:ApplyScaledChrome(frame)
+        end
     end
     if frameWidth + 0.5 < requiredMinFrameWidth then
         frame:SetWidth(requiredMinFrameWidth)
+        if MainFrame and MainFrame.PersistFrameSize then
+            MainFrame:PersistFrameSize(frame)
+        end
         return
     end
 

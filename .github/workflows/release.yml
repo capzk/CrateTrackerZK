@@ -2,12 +2,15 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -19,11 +22,24 @@ jobs:
       with:
         fetch-depth: 0
     
-    - name: Extract version
+    - name: Resolve and Validate Version
       id: get_version
       run: |
-        VERSION=$(grep -E "^## Version:" CrateTrackerZK.toc | sed 's/## Version: //' | tr -d ' ')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        TAG_VERSION="${GITHUB_REF_NAME}"
+        TOC_VERSION=$(grep -E "^## Version:" CrateTrackerZK.toc | sed 's/## Version: //' | tr -d ' ')
+
+        if [ -z "${TAG_VERSION}" ]; then
+          echo "Tag version is empty."
+          exit 1
+        fi
+
+        if [ "${TAG_VERSION}" != "${TOC_VERSION}" ]; then
+          echo "Version mismatch: tag=${TAG_VERSION}, toc=${TOC_VERSION}"
+          exit 1
+        fi
+
+        echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Validated version: ${TAG_VERSION}"
 
     - name: Cleanup workspace
       run: |
@@ -31,39 +47,27 @@ jobs:
         rm -f "CrateTrackerZK.zip"
         rm -f "CrateTrackerZK-"*.zip
 
-    - name: Cleanup existing release and tag
+    - name: Ensure Release Does Not Already Exist
       uses: actions/github-script@v7
       with:
         script: |
           const owner = context.repo.owner;
           const repo = context.repo.repo;
           const tag = '${{ steps.get_version.outputs.version }}';
-          const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag })
+          const existingRelease = await github.rest.repos.getReleaseByTag({ owner, repo, tag })
             .then(res => res.data)
             .catch(err => {
               if (err.status !== 404) throw err;
               return null;
             });
-          if (release) {
-            await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
-            core.info(`Deleted release for ${tag}`);
-          } else {
-            core.info(`No release for ${tag}`);
+
+          if (existingRelease) {
+            core.setFailed(`Release already exists for tag ${tag}. Refusing to overwrite immutable release.`);
+            return;
           }
 
-          const ref = await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` })
-            .then(res => res.data)
-            .catch(err => {
-              if (err.status !== 404) throw err;
-              return null;
-            });
-          if (ref) {
-            await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
-            core.info(`Deleted tag ${tag}`);
-          } else {
-            core.info(`No tag ${tag}`);
-          }
-    
+          core.info(`Release for ${tag} does not exist. Safe to publish.`);
+
     - name: Build package
       run: |
         mkdir -p release_temp/CrateTrackerZK
@@ -77,21 +81,18 @@ jobs:
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
         mv CrateTrackerZK.zip "CrateTrackerZK-${VERSION}.zip"
-    
-    - name: Create tag
+
+    - name: Generate SHA256
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        TAG_NAME="${VERSION}"
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git tag -d "${TAG_NAME}" >/dev/null 2>&1 || true
-        git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
-        git push origin "${TAG_NAME}"
+        sha256sum "CrateTrackerZK-${VERSION}.zip" > "CrateTrackerZK-${VERSION}.zip.sha256"
     
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip
+        files: |
+          CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip
+          CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip.sha256
         tag_name: ${{ steps.get_version.outputs.version }}
         name: Release ${{ steps.get_version.outputs.version }}
         body: |
@@ -102,7 +103,11 @@ jobs:
           2. Extract the zip file
           3. Copy the `CrateTrackerZK` folder to your `World of Warcraft/_retail_/Interface/AddOns/` directory
           4. Restart the game or use `/reload` command
+          
+          ### Integrity
+          Verify package checksum using:
+          `sha256sum -c CrateTrackerZK-${{ steps.get_version.outputs.version }}.zip.sha256`
         draft: false
         prerelease: false
-        overwrite: true
+        overwrite: false
         make_latest: true

@@ -346,7 +346,7 @@ end
 
 function MainPanel:UpdateTable(skipVisibilityCheck)
     if not self.mainFrame or not TableUI then return end
-    if not self:IsMainFrameVisible() then
+    if not skipVisibilityCheck and not self:IsMainFrameVisible() then
         return
     end
 

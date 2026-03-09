@@ -364,6 +364,9 @@ function MainFrame:ApplyAdaptiveResizeBounds(frame)
     local currentWidth = frame:GetWidth() or FRAME_CFG.width
     if currentWidth + 0.5 < minWidth then
         frame:SetWidth(minWidth)
+        if self and self.PersistFrameSize then
+            self:PersistFrameSize(frame)
+        end
     end
 end
 
@@ -432,6 +435,13 @@ local function SaveFrameSize(frame)
         width = frame:GetWidth(),
         height = frame:GetHeight(),
     }
+end
+
+function MainFrame:PersistFrameSize(frame)
+    if not frame then
+        return
+    end
+    SaveFrameSize(frame)
 end
 
 function MainFrame:ApplySavedSize(frame)
@@ -744,7 +754,7 @@ function MainFrame:CreateResizeHandle(frame)
         frame:StopMovingOrSizing()
         StopLayoutRefreshTicker()
         self:NormalizeSize(frame)
-        SaveFrameSize(frame)
+        self:PersistFrameSize(frame)
         NotifyLayoutChangedIfNeeded(frame, true)
         CancelHideTimer()
         if ShouldShowResizeHandle() then

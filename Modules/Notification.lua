@@ -307,7 +307,13 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local message = string.format(L["AirdropDetected"], mapName);
 
-    self:PlayAirdropAlertSound();
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1, function()
+            self:PlayAirdropAlertSound();
+        end);
+    else
+        self:PlayAirdropAlertSound();
+    end
     
     Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
     
