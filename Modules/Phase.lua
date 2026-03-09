@@ -21,11 +21,11 @@ local function SafeSplitGuid(guid)
     if not guid or type(guid) ~= "string" then
         return nil;
     end
-    local ok, unitType, _, shardID, instancePart = pcall(strsplit, "-", guid);
+    local ok, unitType, _, serverID, _, zoneUID = pcall(strsplit, "-", guid);
     if not ok then
         return nil;
     end
-    return unitType, shardID, instancePart;
+    return unitType, serverID, zoneUID;
 end
 
 local function ResolveTargetMapData(currentMapID)
@@ -77,10 +77,10 @@ function Phase:GetLayerFromNPC()
     end
     
     if guid then
-        -- 位面ID = 分片ID-实例ID（GUID第3-4部分）
-        local unitType, shardID, instancePart = SafeSplitGuid(guid);
-        if (unitType == "Creature" or unitType == "Vehicle") and shardID and instancePart then
-            return shardID .. "-" .. instancePart;
+        -- 位面ID = ServerID-ZoneUID（GUID第3和第5部分）
+        local unitType, serverID, zoneUID = SafeSplitGuid(guid);
+        if (unitType == "Creature" or unitType == "Vehicle") and serverID and zoneUID then
+            return serverID .. "-" .. zoneUID;
         end
     end
     return nil;

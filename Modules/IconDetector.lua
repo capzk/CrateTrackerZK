@@ -42,18 +42,18 @@ local function ExtractSpawnUID(objectGUID)
     return nil;
 end
 
--- 提取位面ID（GUID 第3-4部分：分片ID-实例ID）
+-- 提取位面ID（GUID 第3和第5部分：ServerID-ZoneUID）
 local function ExtractPhaseID(objectGUID)
     if not objectGUID or type(objectGUID) ~= "string" then 
         return nil;
     end
     
     local parts = {strsplit("-", objectGUID)};
-    if #parts >= 4 then
-        local shardID = parts[3];
-        local instancePart = parts[4];
-        if shardID and instancePart then
-            return shardID .. "-" .. instancePart;
+    if #parts >= 5 then
+        local serverID = parts[3];
+        local zoneUID = parts[5];
+        if serverID and zoneUID then
+            return serverID .. "-" .. zoneUID;
         end
     end
     
