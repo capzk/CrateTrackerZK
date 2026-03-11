@@ -52,9 +52,7 @@
     
     <!-- 现代化界面模块 -->
     <Script file="Interface/MainFrame/TableSystems.lua"/>
-    <Script file="Interface/MainFrame/RowStateSystem.lua"/>
     <Script file="Interface/MainFrame/TableUI.lua"/>
-    <Script file="Interface/MainFrame/TableUIActions.lua"/>
     <Script file="Interface/MainFrame/MainFrame.lua"/>
     <Script file="Interface/MainFrame/MainFrameTheme.lua"/>
     <Script file="Interface/Providers/TextProviders.lua"/>

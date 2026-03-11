@@ -1,664 +1,798 @@
--- SettingsPanel.lua - 设置面板
-
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local ThemeConfig = BuildEnv("ThemeConfig")
 local HelpTextProvider = BuildEnv("HelpTextProvider")
 local AboutTextProvider = BuildEnv("AboutTextProvider")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
 local MainPanel = BuildEnv("MainPanel")
-local L = CrateTrackerZK.L
+local Data = BuildEnv("Data")
+local ExpansionConfig = BuildEnv("ExpansionConfig")
+local Localization = BuildEnv("Localization")
+local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
+local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
+local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
+local ThemeConfig = BuildEnv("ThemeConfig")
 
+local ADDON_TITLE = "CrateTrackerZK"
 local TAB_SETTINGS = "settings"
 local TAB_HELP = "help"
 local TAB_ABOUT = "about"
+local PAGE_MAIN = "main"
+local PAGE_NOTIFICATIONS = "notifications"
+local PAGE_APPEARANCE = "appearance"
+local PAGE_DATA = "data"
+local PAGE_HELP = "help"
+local PAGE_ABOUT = "about"
+
+local category = nil
 local settingsFrame = nil
-local currentTab = TAB_SETTINGS
-local tabButtons = {}
-local settingControls = {}
-local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
-local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
-local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
+local navButtons = {}
+local pages = {}
+local controls = {}
+local currentPage = PAGE_MAIN
+local isRegistered = false
+
+local pageOrder = {
+    PAGE_MAIN,
+    PAGE_NOTIFICATIONS,
+    PAGE_APPEARANCE,
+    PAGE_DATA,
+    PAGE_HELP,
+    PAGE_ABOUT,
+}
 
 local function LT(key, fallback)
-    if SettingsPanelState and SettingsPanelState.LT then
-        return SettingsPanelState:LT(key, fallback)
-    end
+    local L = CrateTrackerZK and CrateTrackerZK.L
     if L and L[key] then
         return L[key]
     end
     return fallback
 end
 
-local function GetTabLabel(key)
-    if SettingsPanelState and SettingsPanelState.GetTabLabel then
-        return SettingsPanelState:GetTabLabel(key)
+local function GetPageLabel(pageKey)
+    if pageKey == PAGE_MAIN then
+        return "主要设置"
     end
-    return tostring(key)
+    if pageKey == PAGE_NOTIFICATIONS then
+        return LT("SettingsTeamNotify", "通知")
+    end
+    if pageKey == PAGE_APPEARANCE then
+        return LT("SettingsSectionUI", "界面")
+    end
+    if pageKey == PAGE_DATA then
+        return LT("SettingsSectionData", "数据")
+    end
+    if pageKey == PAGE_HELP then
+        return LT("MenuHelp", "帮助")
+    end
+    if pageKey == PAGE_ABOUT then
+        return LT("MenuAbout", "关于")
+    end
+    return tostring(pageKey)
 end
 
-local function ResolveTabKey(tabName)
-    if SettingsPanelState and SettingsPanelState.ResolveTabKey then
-        return SettingsPanelState:ResolveTabKey(tabName)
+local function ResolvePageKey(tabName)
+    if not tabName or tabName == TAB_SETTINGS then
+        return PAGE_MAIN
     end
-    return nil
+    if tabName == PAGE_MAIN or tabName == PAGE_NOTIFICATIONS or tabName == PAGE_APPEARANCE or tabName == PAGE_DATA or tabName == PAGE_HELP or tabName == PAGE_ABOUT then
+        return tabName
+    end
+    if tabName == TAB_HELP or tabName == LT("MenuHelp", "帮助") then
+        return PAGE_HELP
+    end
+    if tabName == TAB_ABOUT or tabName == LT("MenuAbout", "关于") then
+        return PAGE_ABOUT
+    end
+    return PAGE_MAIN
 end
 
-local function GetTheme()
-    if SettingsPanelLayout and SettingsPanelLayout.GetTheme then
-        return SettingsPanelLayout:GetTheme()
+local function CreateDivider(parent, anchor, offsetY)
+    local divider = parent:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY or -8)
+    divider:SetSize(640, 1)
+    divider:SetColorTexture(1, 1, 1, 0.12)
+    return divider
+end
+
+local function SetTextEnabled(fontString, enabled)
+    if not fontString then
+        return
     end
+    if enabled then
+        fontString:SetTextColor(1, 1, 1, 1)
+    else
+        fontString:SetTextColor(0.5, 0.5, 0.5, 1)
+    end
+end
+
+local function SetValueEnabled(fontString, enabled)
+    if not fontString then
+        return
+    end
+    if enabled then
+        fontString:SetTextColor(1, 0.82, 0, 1)
+    else
+        fontString:SetTextColor(0.5, 0.5, 0.5, 1)
+    end
+end
+
+local function GetNavColor(colorType, fallback)
+    if ThemeConfig and ThemeConfig.GetSettingsColor then
+        return ThemeConfig.GetSettingsColor(colorType)
+    end
+    return fallback
+end
+
+local function ApplyNavButtonVisualState(button, active, hovered)
+    if not button then
+        return
+    end
+
+    local indicator = GetNavColor("navIndicator", {1, 1, 1, 0.85})
+    local textColor = {1, 0.82, 0, 1}
+
+    if active then
+        button.label:SetTextColor(textColor[1], textColor[2], textColor[3], 1)
+        button.indicator:SetColorTexture(indicator[1], indicator[2], indicator[3], 0.9)
+        button.indicator:Show()
+    else
+        button.label:SetTextColor(textColor[1], textColor[2], textColor[3], hovered and 0.92 or 0.72)
+        button.indicator:Hide()
+    end
+end
+
+local function CreateNavButton(parent, text, width, onClick)
+    local button = CreateFrame("Button", nil, parent)
+    button:EnableMouse(true)
+
+    local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("CENTER", button, "CENTER", 0, 0)
+    label:SetText(text or "")
+    button.label = label
+
+    local textWidth = math.ceil((label.GetStringWidth and label:GetStringWidth() or 40) + 12)
+    button:SetSize(math.max(textWidth, width or 40), 22)
+
+    local indicator = button:CreateTexture(nil, "OVERLAY")
+    indicator:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+    indicator:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    indicator:SetHeight(1)
+    button.indicator = indicator
+
+    button:SetScript("OnEnter", function(self)
+        ApplyNavButtonVisualState(self, self.pageKey == currentPage, true)
+    end)
+    button:SetScript("OnLeave", function(self)
+        ApplyNavButtonVisualState(self, self.pageKey == currentPage, false)
+    end)
+    button:SetScript("OnClick", function(self)
+        if self.pageKey == currentPage then
+            return
+        end
+        if onClick then
+            onClick()
+        end
+    end)
+
+    ApplyNavButtonVisualState(button, false, false)
+    return button
+end
+
+local function UpdateNavButtonStates()
+    for pageKey, button in pairs(navButtons) do
+        ApplyNavButtonVisualState(button, pageKey == currentPage, button:IsMouseOver())
+    end
+end
+
+local function CreatePageFrame(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    page:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+    page.topAnchor = CreateFrame("Frame", nil, page)
+    page.topAnchor:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    page.topAnchor:SetSize(1, 1)
+    page:Hide()
+    return page
+end
+
+local function CreateCheckbox(parent, anchor, labelText, onClick)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -14)
+
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT", check, "RIGHT", 4, 1)
+    label:SetJustifyH("LEFT")
+    label:SetText(labelText or "")
+
+    check.label = label
+    check:SetScript("OnClick", function(self)
+        if onClick then
+            onClick(self:GetChecked() == true)
+        end
+    end)
+
+    return check
+end
+
+local function CreateActionButton(parent, text, width, onClick)
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetSize(width or 120, 24)
+    button:SetText(text or "")
+    button:SetScript("OnClick", function()
+        if onClick then
+            onClick()
+        end
+    end)
+    return button
+end
+
+local function CreateValueRow(parent, anchor, labelText, buttonText, buttonWidth, onClick)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
+    label:SetJustifyH("LEFT")
+    label:SetText(labelText or "")
+
+    local value = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    value:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
+    value:SetJustifyH("LEFT")
+    value:SetText("")
+
+    local button = CreateActionButton(parent, buttonText, buttonWidth, onClick)
+    button:SetPoint("LEFT", value, "RIGHT", 16, 0)
+
     return {
-        background = ThemeConfig.GetSettingsColor("background"),
-        titleBar = ThemeConfig.GetSettingsColor("titleBar"),
-        panel = ThemeConfig.GetSettingsColor("panel"),
-        navBg = ThemeConfig.GetSettingsColor("navBg"),
-        navItem = ThemeConfig.GetSettingsColor("navItem"),
-        navItemActive = ThemeConfig.GetSettingsColor("navItemActive"),
-        navIndicator = ThemeConfig.GetSettingsColor("navIndicator"),
-        button = ThemeConfig.GetSettingsColor("button"),
-        buttonHover = ThemeConfig.GetSettingsColor("buttonHover"),
-        text = ThemeConfig.GetSettingsColor("text"),
+        label = label,
+        value = value,
+        button = button,
     }
 end
 
-local function CreateNoShadowText(parent, template, text)
-    if SettingsPanelLayout and SettingsPanelLayout.CreateNoShadowText then
-        return SettingsPanelLayout:CreateNoShadowText(parent, template, text)
-    end
-    local fontString = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
-    fontString:SetText(text or "")
-    return fontString
+local function CreateSectionLabel(parent, anchor, text)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -18)
+    label:SetJustifyH("LEFT")
+    label:SetText(text or "")
+    return label
 end
 
-local function CreateScrollableText(parent, text, enableWrap)
+local function CreateDescription(parent, anchor, text, width)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -10)
+    label:SetWidth(width or 520)
+    label:SetJustifyH("LEFT")
+    label:SetJustifyV("TOP")
+    label:SetText(text or "")
+    return label
+end
+
+local function CreateIntervalRow(parent, anchor)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 26, -14)
+    label:SetJustifyH("LEFT")
+    label:SetText(LT("SettingsAutoReportInterval", "通知频率（秒）"))
+
+    local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    editBox:SetSize(64, 24)
+    editBox:SetPoint("LEFT", label, "RIGHT", 12, 0)
+    editBox:SetAutoFocus(false)
+    editBox:SetNumeric(true)
+    editBox:SetMaxLetters(4)
+
+    editBox:SetScript("OnEnterPressed", function(self)
+        if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
+            SettingsPanelActions:ApplyAutoTeamReportInterval(self)
+        end
+        self:ClearFocus()
+        SettingsPanel:RefreshState()
+    end)
+
+    editBox:SetScript("OnEditFocusLost", function(self)
+        if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
+            SettingsPanelActions:ApplyAutoTeamReportInterval(self)
+        end
+        SettingsPanel:RefreshState()
+    end)
+
+    return label, editBox
+end
+
+local function CreateScrollableContent(parent, text)
     if SettingsPanelLayout and SettingsPanelLayout.CreateScrollableText then
-        return SettingsPanelLayout:CreateScrollableText(parent, text, enableWrap)
+        return SettingsPanelLayout:CreateScrollableText(parent, text or "", true)
+    end
+
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    label:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    label:SetJustifyH("LEFT")
+    label:SetJustifyV("TOP")
+    label:SetText(text or "")
+    return label
+end
+
+local function GetCurrentExpansionID()
+    if Data and Data.GetCurrentExpansionID then
+        local expansionID = Data:GetCurrentExpansionID()
+        if expansionID then
+            return expansionID
+        end
+    end
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        return ExpansionConfig:GetCurrentExpansionID()
     end
     return nil
 end
 
-local function IsAddonEnabled()
-    if SettingsPanelState and SettingsPanelState.IsAddonEnabled then
-        return SettingsPanelState:IsAddonEnabled()
+local function GetAvailableExpansions()
+    if ExpansionConfig and ExpansionConfig.GetAvailableExpansions then
+        return ExpansionConfig:GetAvailableExpansions() or {}
     end
-    return true
+    return {}
 end
 
-local function IsTeamNotificationEnabled()
-    if SettingsPanelState and SettingsPanelState.IsTeamNotificationEnabled then
-        return SettingsPanelState:IsTeamNotificationEnabled()
+local function GetExpansionMapIDs(expansionID)
+    local result = {}
+    local expansion = ExpansionConfig and ExpansionConfig.expansions and ExpansionConfig.expansions[expansionID]
+    if not expansion then
+        return result
     end
-    return true
-end
 
-local function IsSoundAlertEnabled()
-    if SettingsPanelState and SettingsPanelState.IsSoundAlertEnabled then
-        return SettingsPanelState:IsSoundAlertEnabled()
-    end
-    return true
-end
-
-local function IsAutoTeamReportEnabled()
-    if SettingsPanelState and SettingsPanelState.IsAutoTeamReportEnabled then
-        return SettingsPanelState:IsAutoTeamReportEnabled()
-    end
-    return false
-end
-
-local function GetAutoTeamReportInterval()
-    if SettingsPanelState and SettingsPanelState.GetAutoTeamReportInterval then
-        return SettingsPanelState:GetAutoTeamReportInterval()
-    end
-    return 60
-end
-
-local function IsExpansionSwitchEnabled()
-    if SettingsPanelState and SettingsPanelState.IsExpansionSwitchEnabled then
-        return SettingsPanelState:IsExpansionSwitchEnabled()
-    end
-    return false
-end
-
-local function GetCurrentExpansionButtonText()
-    if SettingsPanelState and SettingsPanelState.GetCurrentExpansionButtonText then
-        return SettingsPanelState:GetCurrentExpansionButtonText()
-    end
-    return "N/A"
-end
-
-local function CycleExpansionVersion()
-    if SettingsPanelActions and SettingsPanelActions.CycleExpansionVersion then
-        SettingsPanelActions:CycleExpansionVersion()
-    end
-end
-
-local function IsThemeSwitchEnabled()
-    if SettingsPanelState and SettingsPanelState.IsThemeSwitchEnabled then
-        return SettingsPanelState:IsThemeSwitchEnabled()
-    end
-    return false
-end
-
-local function GetCurrentThemeButtonText()
-    if SettingsPanelState and SettingsPanelState.GetCurrentThemeButtonText then
-        return SettingsPanelState:GetCurrentThemeButtonText()
-    end
-    return "N/A"
-end
-
-local function CycleTheme()
-    if SettingsPanelActions and SettingsPanelActions.CycleTheme then
-        SettingsPanelActions:CycleTheme()
-    end
-end
-
-local function EnsureClearDialog()
-    if SettingsPanelActions and SettingsPanelActions.EnsureClearDialog then
-        SettingsPanelActions:EnsureClearDialog()
-    end
-end
-
-local function ApplyAutoTeamReportInterval(editBox)
-    if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
-        SettingsPanelActions:ApplyAutoTeamReportInterval(editBox)
-    end
-end
-
-local function UpdateToggleButtonState(control, enabled)
-    if not control or not control.text then return end
-    control.text:SetText(enabled and control.onText or control.offText)
-end
-
-local function SetControlEnabled(control, enabled)
-    if not control then return end
-    local theme = GetTheme()
-    if control.button then
-        if control.button.SetEnabled then
-            control.button:SetEnabled(enabled)
-        end
-        control.button:EnableMouse(enabled)
-        if control.button.bg then
-            local bgAlpha = enabled and theme.button[4] or math.min(theme.button[4], 0.2)
-            control.button.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
-        end
-    end
-    local textAlpha = enabled and theme.text[4] or 0.5
-    if control.text then
-        control.text:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-    end
-    if control.label then
-        control.label:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-    end
-    if control.desc then
-        control.desc:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-    end
-end
-
-local function UpdateSettingsState()
-    local addonEnabled = IsAddonEnabled()
-    local teamEnabled = addonEnabled and IsTeamNotificationEnabled()
-    local soundEnabled = addonEnabled and IsSoundAlertEnabled()
-    local autoEnabled = addonEnabled and teamEnabled and IsAutoTeamReportEnabled()
-    UpdateToggleButtonState(settingControls.addon, addonEnabled)
-    UpdateToggleButtonState(settingControls.teamNotify, teamEnabled)
-    UpdateToggleButtonState(settingControls.soundAlert, soundEnabled)
-    UpdateToggleButtonState(settingControls.autoReport, autoEnabled)
-    SetControlEnabled(settingControls.teamNotify, addonEnabled)
-    SetControlEnabled(settingControls.soundAlert, addonEnabled)
-    SetControlEnabled(settingControls.autoReport, addonEnabled and teamEnabled)
-    SetControlEnabled(settingControls.expansionSwitch, addonEnabled and IsExpansionSwitchEnabled())
-    SetControlEnabled(settingControls.themeSwitch, IsThemeSwitchEnabled())
-    SetControlEnabled(settingControls.clearData, addonEnabled)
-    local autoControl = settingControls.autoReport
-    if autoControl and autoControl.button and autoControl.text then
-        local theme = GetTheme()
-        if autoControl.button.SetEnabled then
-            autoControl.button:SetEnabled(addonEnabled and teamEnabled)
-        end
-        autoControl.button:EnableMouse(addonEnabled and teamEnabled)
-        if autoControl.button.bg then
-            local bgAlpha = (addonEnabled and teamEnabled) and theme.button[4] or math.min(theme.button[4], 0.2)
-            autoControl.button.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
-        end
-        local textAlpha = (addonEnabled and teamEnabled) and theme.text[4] or 0.5
-        autoControl.text:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-    end
-    local control = settingControls.autoReportInterval
-    if control and control.editBox then
-        local theme = GetTheme()
-        local enabled = addonEnabled and autoEnabled
-        if control.editBox.SetEnabled then
-            control.editBox:SetEnabled(enabled)
-        end
-        control.editBox:EnableMouse(enabled)
-        local textAlpha = enabled and theme.text[4] or 0.5
-        control.editBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-        if control.bg then
-            local bgAlpha = enabled and theme.button[4] or math.min(theme.button[4], 0.3)
-            control.bg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], bgAlpha)
-        end
-        if control.label then
-            control.label:SetTextColor(theme.text[1], theme.text[2], theme.text[3], textAlpha)
-        end
-        if not control.editBox:HasFocus() then
-            control.editBox:SetText(tostring(GetAutoTeamReportInterval()))
+    for _, mapID in ipairs(expansion.mapIDs or {}) do
+        if type(mapID) == "number" and not (ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(mapID)) then
+            table.insert(result, mapID)
         end
     end
 
-    if settingControls.expansionSwitch and settingControls.expansionSwitch.text then
-        settingControls.expansionSwitch.text:SetText(GetCurrentExpansionButtonText())
+    return result
+end
+
+local function GetMapDisplayName(mapID)
+    if Localization and Localization.GetMapName then
+        return Localization:GetMapName(mapID)
     end
-    if settingControls.themeSwitch and settingControls.themeSwitch.text then
-        settingControls.themeSwitch.text:SetText(GetCurrentThemeButtonText())
+    return "Map " .. tostring(mapID)
+end
+
+local function GetHiddenMaps(expansionID)
+    if Data and Data.GetHiddenMaps then
+        return Data:GetHiddenMaps(expansionID)
+    end
+    return {}
+end
+
+local function GetHiddenRemaining(expansionID)
+    if Data and Data.GetHiddenRemaining then
+        return Data:GetHiddenRemaining(expansionID)
+    end
+    return {}
+end
+
+local function SetExpansionVersion(expansionID)
+    if not expansionID or expansionID == GetCurrentExpansionID() then
+        return
+    end
+    if Data and Data.SwitchExpansion then
+        Data:SwitchExpansion(expansionID)
+    elseif ExpansionConfig and ExpansionConfig.SetCurrentExpansionID then
+        ExpansionConfig:SetCurrentExpansionID(expansionID)
+    end
+    if CrateTrackerZK and CrateTrackerZK.Reinitialize then
+        CrateTrackerZK:Reinitialize()
     end
 end
 
-local function CreateSettingButton(parent, text)
-    if SettingsPanelLayout and SettingsPanelLayout.CreateSettingButton then
-        return SettingsPanelLayout:CreateSettingButton(parent, text)
+local function SetMapVisibleForExpansion(expansionID, mapID, visible)
+    if not expansionID or type(mapID) ~= "number" then
+        return
     end
-    local button = CreateFrame("Button", nil, parent)
-    button:SetSize(90, 22)
-    local label = CreateNoShadowText(button, "GameFontNormal", text or "")
-    label:SetPoint("CENTER", button, "CENTER", 0, 0)
-    return button, label
-end
 
-local function UpdateTabStyles(activeName)
-    local theme = GetTheme()
-    for _, info in ipairs(tabButtons) do
-        if info.name == activeName then
-            info.bg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
-            if info.indicator then
-                info.indicator:Show()
+    local currentExpansionID = GetCurrentExpansionID()
+    if currentExpansionID == expansionID and Data and Data.GetMapByMapID then
+        local mapData = Data:GetMapByMapID(mapID)
+        if mapData and mapData.id then
+            if visible then
+                if MainPanel and MainPanel.RestoreMap then
+                    MainPanel:RestoreMap(mapData.id)
+                end
+            else
+                if MainPanel and MainPanel.HideMap then
+                    MainPanel:HideMap(mapData.id)
+                end
             end
+            return
+        end
+    end
+
+    local hiddenMaps = GetHiddenMaps(expansionID)
+    local hiddenRemaining = GetHiddenRemaining(expansionID)
+    if visible then
+        hiddenMaps[mapID] = nil
+        hiddenRemaining[mapID] = nil
+    else
+        hiddenMaps[mapID] = true
+    end
+
+    if currentExpansionID == expansionID and MainPanel and MainPanel.UpdateTable then
+        MainPanel:UpdateTable(true)
+    end
+end
+
+local function RefreshExpansionSelectors()
+    local selectorGroup = controls.expansionSelectors
+    if not selectorGroup then
+        return
+    end
+
+    local options = GetAvailableExpansions()
+    local currentExpansionID = GetCurrentExpansionID()
+    local previous = nil
+
+    for index, option in ipairs(options) do
+        local checkbox = selectorGroup.checkboxes[index]
+        if not checkbox then
+            checkbox = CreateFrame("CheckButton", nil, selectorGroup, "UICheckButtonTemplate")
+            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
+            label:SetJustifyH("LEFT")
+            checkbox.label = label
+            checkbox:SetScript("OnClick", function(self)
+                if self:GetChecked() ~= true then
+                    self:SetChecked(true)
+                    return
+                end
+                SetExpansionVersion(self.expansionID)
+                SettingsPanel:RefreshState()
+            end)
+            selectorGroup.checkboxes[index] = checkbox
+        end
+
+        checkbox:ClearAllPoints()
+        checkbox:SetPoint("TOPLEFT", previous or selectorGroup.anchor, previous and "BOTTOMLEFT" or "BOTTOMLEFT", 0, previous and -8 or -12)
+        checkbox.expansionID = option.id
+        checkbox.label:SetText(option.label or option.id)
+        checkbox:SetChecked(option.id == currentExpansionID)
+        checkbox:Show()
+        previous = checkbox
+    end
+
+    for index = #options + 1, #selectorGroup.checkboxes do
+        selectorGroup.checkboxes[index]:Hide()
+    end
+end
+
+local function RefreshVersionMapList()
+    local mapList = controls.versionMapList
+    if not mapList then
+        return
+    end
+
+    local expansionID = GetCurrentExpansionID()
+    mapList.expansionID = expansionID
+    local mapIDs = GetExpansionMapIDs(expansionID)
+    local hiddenMaps = GetHiddenMaps(expansionID)
+    local previous = nil
+
+    for index, checkbox in ipairs(mapList.checkboxes) do
+        checkbox:Hide()
+    end
+
+    for index, mapID in ipairs(mapIDs) do
+        local checkbox = mapList.checkboxes[index]
+        if not checkbox then
+            checkbox = CreateFrame("CheckButton", nil, mapList, "UICheckButtonTemplate")
+            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
+            label:SetJustifyH("LEFT")
+            checkbox.label = label
+            checkbox:SetScript("OnClick", function(self)
+                SetMapVisibleForExpansion(mapList.expansionID, self.mapID, self:GetChecked() == true)
+                SettingsPanel:RefreshState()
+            end)
+            mapList.checkboxes[index] = checkbox
+        end
+
+        checkbox:ClearAllPoints()
+        checkbox:SetPoint("TOPLEFT", previous or mapList.anchor, previous and "BOTTOMLEFT" or "BOTTOMLEFT", 0, previous and -8 or -12)
+        checkbox.mapID = mapID
+        checkbox.label:SetText(GetMapDisplayName(mapID))
+        checkbox:SetChecked(hiddenMaps[mapID] ~= true)
+        checkbox:Show()
+        previous = checkbox
+    end
+
+    if mapList.emptyText then
+        if #mapIDs == 0 then
+            mapList.emptyText:Show()
         else
-            info.bg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
-            if info.indicator then
-                info.indicator:Hide()
-            end
+            mapList.emptyText:Hide()
         end
     end
 end
 
-function SettingsPanel:CreateFrame()
-    if settingsFrame then return settingsFrame end
-
-    local theme = GetTheme()
-    local frame = CreateFrame("Frame", "CrateTrackerZKSettingsFrame", UIParent)
-    frame:SetSize(760, 500)
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetFrameLevel(100)
-
-    local bg = frame:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(frame)
-    bg:SetColorTexture(theme.background[1], theme.background[2], theme.background[3], theme.background[4])
-
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-
-    local titleBg = frame:CreateTexture(nil, "ARTWORK")
-    titleBg:SetSize(758, 22)
-    titleBg:SetPoint("TOP", frame, "TOP", 0, -1)
-    titleBg:SetColorTexture(theme.titleBar[1], theme.titleBar[2], theme.titleBar[3], theme.titleBar[4])
-
-    local title = CreateNoShadowText(frame, "GameFontNormal", LT("SettingsPanelTitle", "CrateTrackerZK - 设置"))
-    title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
-
-    local closeButton = CreateFrame("Button", nil, frame)
-    closeButton:SetSize(16, 16)
-    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -12, -3)
-
-    local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
-    closeBg:SetAllPoints(closeButton)
-    closeBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-
-    local closeText = CreateNoShadowText(closeButton, "GameFontNormal", "X")
-    closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
-
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
-    closeButton:SetScript("OnEnter", function()
-        closeBg:SetColorTexture(theme.buttonHover[1], theme.buttonHover[2], theme.buttonHover[3], theme.buttonHover[4])
-    end)
-    closeButton:SetScript("OnLeave", function()
-        closeBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-    end)
-
-    local contentFrame = CreateFrame("Frame", nil, frame)
-    contentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -30)
-    contentFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
-
-    local tabs = {TAB_SETTINGS, TAB_HELP, TAB_ABOUT}
-    tabButtons = {}
-    local navWidth = 110
-    local navPadding = 6
-    local navButtonHeight = 30
-    local navSpacing = 8
-
-    local navFrame = CreateFrame("Frame", nil, contentFrame)
-    navFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 6, -6)
-    navFrame:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 6, 6)
-    navFrame:SetWidth(navWidth)
-
-    local contentPanel = CreateFrame("Frame", nil, contentFrame)
-    contentPanel:SetPoint("TOPLEFT", navFrame, "TOPRIGHT", 10, 0)
-    contentPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -6, 6)
-
-    for i, tabKey in ipairs(tabs) do
-        local tabLabel = GetTabLabel(tabKey)
-        local tabBtn = CreateFrame("Button", nil, navFrame)
-        tabBtn:SetHeight(navButtonHeight)
-        local yPos = -navPadding - (i - 1) * (navButtonHeight + navSpacing)
-        tabBtn:SetPoint("TOPLEFT", navFrame, "TOPLEFT", navPadding, yPos)
-        tabBtn:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", -navPadding, yPos)
-
-        local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND")
-        tabBg:SetAllPoints(tabBtn)
-        tabBg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
-
-        local tabText = CreateNoShadowText(tabBtn, "GameFontNormal", tabLabel)
-        tabText:SetPoint("LEFT", tabBtn, "LEFT", 12, 0)
-
-        local tabIndicator = tabBtn:CreateTexture(nil, "ARTWORK")
-        tabIndicator:SetWidth(3)
-        tabIndicator:SetPoint("TOPLEFT", tabBtn, "TOPLEFT", 0, 0)
-        tabIndicator:SetPoint("BOTTOMLEFT", tabBtn, "BOTTOMLEFT", 0, 0)
-        tabIndicator:SetColorTexture(theme.navIndicator[1], theme.navIndicator[2], theme.navIndicator[3], theme.navIndicator[4])
-        tabIndicator:Hide()
-
-        local contentArea = CreateFrame("Frame", nil, contentPanel)
-        contentArea:SetPoint("TOPLEFT", contentPanel, "TOPLEFT", 8, -8)
-        contentArea:SetPoint("BOTTOMRIGHT", contentPanel, "BOTTOMRIGHT", -8, 8)
-        contentArea:Hide()
-
-        if tabKey == TAB_SETTINGS then
-            local SECTION_X = 10
-            local ITEM_X = 24
-            local NOTE_X = 36
-
-            local function IndentText(level, text)
-                local depth = tonumber(level) or 0
-                if depth < 0 then
-                    depth = 0
-                end
-                return string.rep("  ", depth) .. (text or "")
-            end
-
-            local function AddToggleRow(label, controlKey, onClick, yOffset)
-                local rowLabel = CreateNoShadowText(contentArea, "GameFontNormal", label)
-                rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, yOffset)
-
-                local button, text = CreateSettingButton(contentArea, "")
-                button:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, yOffset + 2)
-                button:SetScript("OnClick", function()
-                    onClick()
-                    UpdateSettingsState()
-                end)
-
-                settingControls[controlKey] = {
-                    button = button,
-                    text = text,
-                    label = rowLabel,
-                    onText = LT("SettingsToggleOn", "已开启"),
-                    offText = LT("SettingsToggleOff", "已关闭"),
-                }
-            end
-
-            local function AddCycleRow(label, controlKey, onClick, yOffset)
-                local rowLabel = CreateNoShadowText(contentArea, "GameFontNormal", label)
-                rowLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, yOffset)
-
-                local button, text = CreateSettingButton(contentArea, "")
-                button:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, yOffset + 2)
-                button:SetScript("OnClick", function()
-                    onClick()
-                    UpdateSettingsState()
-                end)
-
-                settingControls[controlKey] = {
-                    button = button,
-                    text = text,
-                    label = rowLabel,
-                }
-            end
-
-            local y = -10
-            local expansionTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionExpansion", "版本设置"))
-            expansionTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
-
-            y = y - 30
-            AddCycleRow(IndentText(1, LT("SettingsExpansionVersion", "游戏版本")), "expansionSwitch", function()
-                CycleExpansionVersion()
-            end, y)
-
-            y = y - 40
-            local controlTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionControl", "插件控制"))
-            controlTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
-
-            y = y - 30
-            AddToggleRow(IndentText(1, LT("SettingsAddonToggle", "插件开关")), "addon", function()
-                if Commands and Commands.HandleAddonToggle then
-                    Commands:HandleAddonToggle(not IsAddonEnabled())
-                end
-            end, y)
-
-            y = y - 28
-            AddToggleRow(IndentText(1, LT("SettingsTeamNotify", "团队通知")), "teamNotify", function()
-                if Notification and Notification.SetTeamNotificationEnabled then
-                    Notification:SetTeamNotificationEnabled(not IsTeamNotificationEnabled())
-                end
-            end, y)
-
-            y = y - 28
-            AddToggleRow(IndentText(1, LT("SettingsSoundAlert", "声音提示")), "soundAlert", function()
-                if Notification and Notification.SetSoundAlertEnabled then
-                    Notification:SetSoundAlertEnabled(not IsSoundAlertEnabled())
-                end
-            end, y)
-
-            y = y - 28
-            AddToggleRow(IndentText(1, LT("SettingsAutoReport", "自动通知")), "autoReport", function()
-                if Notification and Notification.SetAutoTeamReportEnabled then
-                    Notification:SetAutoTeamReportEnabled(not IsAutoTeamReportEnabled())
-                end
-            end, y)
-
-            y = y - 28
-            local intervalLabel = CreateNoShadowText(contentArea, "GameFontNormal", IndentText(1, LT("SettingsAutoReportInterval", "通知频率（秒）")))
-            intervalLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, y)
-
-            local intervalBox = CreateFrame("EditBox", nil, contentArea)
-            intervalBox:SetSize(70, 22)
-            intervalBox:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
-            intervalBox:SetAutoFocus(false)
-            intervalBox:SetFontObject("GameFontNormal")
-            intervalBox:SetJustifyH("CENTER")
-            intervalBox:SetNumeric(true)
-            intervalBox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], theme.text[4])
-            intervalBox:SetShadowOffset(0, 0)
-
-            local intervalBg = intervalBox:CreateTexture(nil, "BACKGROUND")
-            intervalBg:SetAllPoints(intervalBox)
-            intervalBg:SetColorTexture(theme.button[1], theme.button[2], theme.button[3], theme.button[4])
-
-            intervalBox:SetScript("OnEscapePressed", function(self)
-                self:ClearFocus()
-                self:SetText(tostring(GetAutoTeamReportInterval()))
-            end)
-            intervalBox:SetScript("OnEnterPressed", function(self)
-                ApplyAutoTeamReportInterval(self)
-                self:ClearFocus()
-            end)
-            intervalBox:SetScript("OnEditFocusLost", function(self)
-                ApplyAutoTeamReportInterval(self)
-            end)
-
-            settingControls.autoReportInterval = {
-                editBox = intervalBox,
-                bg = intervalBg,
-                label = intervalLabel,
-            }
-
-            y = y - 40
-            local dataTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionData", "数据管理"))
-            dataTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
-
-            y = y - 30
-            local clearLabel = CreateNoShadowText(contentArea, "GameFontNormal", IndentText(1, LT("SettingsClearAllData", "清除所有数据")))
-            clearLabel:SetPoint("TOPLEFT", contentArea, "TOPLEFT", ITEM_X, y)
-
-            local clearBtn, clearText = CreateSettingButton(contentArea, LT("SettingsClearButton", "清除"))
-            clearBtn:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -10, y + 2)
-            clearBtn:SetScript("OnClick", function()
-                EnsureClearDialog()
-                if StaticPopup_Show then
-                    StaticPopup_Show("CRATETRACKERZK_CLEAR_DATA")
-                end
-            end)
-            clearText:SetTextColor(1, 0.6, 0.6, 1)
-            settingControls.clearData = {
-                button = clearBtn,
-                text = clearText,
-                label = clearLabel,
-            }
-
-            y = y - 24
-            local clearDesc = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsClearDesc", "• 会清空所有空投时间与位面记录"))
-            clearDesc:SetPoint("TOPLEFT", contentArea, "TOPLEFT", NOTE_X, y)
-            if settingControls.clearData then
-                settingControls.clearData.desc = clearDesc
-            end
-
-            y = y - 40
-            local settingsTitle = CreateNoShadowText(contentArea, "GameFontNormal", LT("SettingsSectionUI", "界面设置"))
-            settingsTitle:SetPoint("TOPLEFT", contentArea, "TOPLEFT", SECTION_X, y)
-
-            y = y - 30
-            AddCycleRow(IndentText(1, LT("SettingsThemeSwitch", "界面主题")), "themeSwitch", function()
-                CycleTheme()
-            end, y)
-
-            UpdateSettingsState()
-        elseif tabKey == TAB_HELP then
-            local helpText = HelpTextProvider and HelpTextProvider.GetHelpText and HelpTextProvider:GetHelpText() or ""
-            CreateScrollableText(contentArea, helpText, true)
-        elseif tabKey == TAB_ABOUT then
-            local aboutText = AboutTextProvider and AboutTextProvider.GetAboutText and AboutTextProvider:GetAboutText() or ""
-            CreateScrollableText(contentArea, aboutText, false)
-        end
-
-        tabBtn:SetScript("OnClick", function()
-            for _, info in ipairs(tabButtons) do
-                info.contentArea:Hide()
-            end
-            contentArea:Show()
-            currentTab = tabKey
-            UpdateTabStyles(tabKey)
-            if tabKey == TAB_SETTINGS then
-                UpdateSettingsState()
-            end
-        end)
-
-        tabBtn:SetScript("OnEnter", function()
-            if currentTab ~= tabKey then
-                tabBg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
-            end
-        end)
-        tabBtn:SetScript("OnLeave", function()
-            if currentTab ~= tabKey then
-                tabBg:SetColorTexture(theme.navItem[1], theme.navItem[2], theme.navItem[3], theme.navItem[4])
-            end
-        end)
-
-        table.insert(tabButtons, {
-            button = tabBtn,
-            bg = tabBg,
-            indicator = tabIndicator,
-            contentArea = contentArea,
-            name = tabKey,
-            label = tabLabel,
-        })
-    end
-
-    if tabButtons[1] then
-        tabButtons[1].contentArea:Show()
-        tabButtons[1].bg:SetColorTexture(theme.navItemActive[1], theme.navItemActive[2], theme.navItemActive[3], theme.navItemActive[4])
-        if tabButtons[1].indicator then
-            tabButtons[1].indicator:Show()
+local function SelectPage(pageKey)
+    currentPage = ResolvePageKey(pageKey)
+    for key, page in pairs(pages) do
+        if key == currentPage then
+            page:Show()
+        else
+            page:Hide()
         end
     end
+    UpdateNavButtonStates()
+end
 
+local function BuildMainPage(parent)
+    local page = CreatePageFrame(parent)
+    pages[PAGE_MAIN] = page
+
+    controls.addonToggle = CreateCheckbox(page, page.topAnchor, LT("SettingsAddonToggle", "插件开关"), function(enabled)
+        if Commands and Commands.HandleAddonToggle then
+            Commands:HandleAddonToggle(enabled)
+        end
+        SettingsPanel:RefreshState()
+    end)
+
+    controls.expansionLabel = CreateSectionLabel(page, controls.addonToggle, LT("SettingsExpansionVersion", "游戏版本"))
+
+    local selectorGroup = CreateFrame("Frame", nil, page)
+    selectorGroup:SetPoint("TOPLEFT", controls.expansionLabel, "BOTTOMLEFT", 0, 0)
+    selectorGroup:SetSize(320, 100)
+    selectorGroup.anchor = controls.expansionLabel
+    selectorGroup.checkboxes = {}
+    controls.expansionSelectors = selectorGroup
+
+    controls.versionMapListLabel = CreateSectionLabel(page, selectorGroup, "地图列表")
+
+    local mapList = CreateFrame("Frame", nil, page)
+    mapList:SetPoint("TOPLEFT", controls.versionMapListLabel, "BOTTOMLEFT", 0, 0)
+    mapList:SetSize(520, 260)
+    mapList.checkboxes = {}
+    mapList.anchor = controls.versionMapListLabel
+    controls.versionMapList = mapList
+
+    local emptyText = mapList:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    emptyText:SetPoint("TOPLEFT", mapList, "TOPLEFT", 0, -12)
+    emptyText:SetText("-")
+    mapList.emptyText = emptyText
+
+    return page
+end
+
+local function BuildNotificationsPage(parent)
+    local page = CreatePageFrame(parent)
+    pages[PAGE_NOTIFICATIONS] = page
+
+    controls.teamNotification = CreateCheckbox(page, page.topAnchor, LT("SettingsTeamNotify", "团队通知"), function(enabled)
+        if Notification and Notification.SetTeamNotificationEnabled then
+            Notification:SetTeamNotificationEnabled(enabled)
+        end
+        SettingsPanel:RefreshState()
+    end)
+
+    controls.soundAlert = CreateCheckbox(page, controls.teamNotification, LT("SettingsSoundAlert", "声音提示"), function(enabled)
+        if Notification and Notification.SetSoundAlertEnabled then
+            Notification:SetSoundAlertEnabled(enabled)
+        end
+        SettingsPanel:RefreshState()
+    end)
+
+    controls.autoReport = CreateCheckbox(page, controls.soundAlert, LT("SettingsAutoReport", "自动通知"), function(enabled)
+        if Notification and Notification.SetAutoTeamReportEnabled then
+            Notification:SetAutoTeamReportEnabled(enabled)
+        end
+        SettingsPanel:RefreshState()
+    end)
+
+    controls.intervalLabel, controls.intervalEditBox = CreateIntervalRow(page, controls.autoReport)
+    return page
+end
+
+local function BuildAppearancePage(parent)
+    local page = CreatePageFrame(parent)
+    pages[PAGE_APPEARANCE] = page
+
+    controls.theme = CreateValueRow(
+        page,
+        page.topAnchor,
+        LT("SettingsThemeSwitch", "界面主题"),
+        LT("SettingsThemeSwitch", "界面主题"),
+        140,
+        function()
+            if SettingsPanelActions and SettingsPanelActions.CycleTheme then
+                SettingsPanelActions:CycleTheme()
+            end
+            SettingsPanel:RefreshState()
+        end
+    )
+
+    return page
+end
+
+local function BuildDataPage(parent)
+    local page = CreatePageFrame(parent)
+    pages[PAGE_DATA] = page
+
+    controls.clearButton = CreateActionButton(page, LT("SettingsClearButton", "清除"), 120, function()
+        if SettingsPanelActions and SettingsPanelActions.EnsureClearDialog then
+            SettingsPanelActions:EnsureClearDialog()
+        end
+        StaticPopup_Show("CRATETRACKERZK_CLEAR_DATA")
+    end)
+    controls.clearButton:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+
+    return page
+end
+
+local function BuildTextPage(parent, pageKey, providerText)
+    local page = CreatePageFrame(parent)
+    pages[pageKey] = page
+
+    local contentHost = CreateFrame("Frame", nil, page)
+    contentHost:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    contentHost:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
+    CreateScrollableContent(contentHost, providerText)
+    return page
+end
+
+local function BuildSettingsFrame()
+    if settingsFrame then
+        return settingsFrame
+    end
+
+    local frame = CreateFrame("Frame", "CrateTrackerZKSystemSettingsPanel", UIParent)
     settingsFrame = frame
+
+    local navHost = CreateFrame("Frame", nil, frame)
+    navHost:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -16)
+    navHost:SetSize(720, 22)
+
+    local lastButton = nil
+    for _, pageKey in ipairs(pageOrder) do
+        local button = CreateNavButton(navHost, GetPageLabel(pageKey), nil, function()
+            SelectPage(pageKey)
+        end)
+        button.pageKey = pageKey
+        if lastButton then
+            button:SetPoint("LEFT", lastButton, "RIGHT", 14, 0)
+        else
+            button:SetPoint("LEFT", navHost, "LEFT", 0, 0)
+        end
+        navButtons[pageKey] = button
+        lastButton = button
+    end
+
+    local contentDivider = CreateDivider(frame, navHost, -8)
+    local contentHost = CreateFrame("Frame", nil, frame)
+    contentHost:SetPoint("TOPLEFT", contentDivider, "BOTTOMLEFT", 0, -14)
+    contentHost:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -24, 16)
+
+    BuildMainPage(contentHost)
+    BuildNotificationsPage(contentHost)
+    BuildAppearancePage(contentHost)
+    BuildDataPage(contentHost)
+    BuildTextPage(contentHost, PAGE_HELP, HelpTextProvider and HelpTextProvider.GetHelpText and HelpTextProvider:GetHelpText() or "")
+    BuildTextPage(contentHost, PAGE_ABOUT, AboutTextProvider and AboutTextProvider.GetAboutText and AboutTextProvider:GetAboutText() or "")
+
+    frame:SetScript("OnShow", function()
+        SettingsPanel:RefreshState()
+        SelectPage(currentPage or PAGE_MAIN)
+    end)
+
     return frame
 end
 
+local function EnsureRegistered()
+    if isRegistered then
+        return
+    end
+
+    local frame = BuildSettingsFrame()
+    if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
+        category = Settings.RegisterCanvasLayoutCategory(frame, ADDON_TITLE, ADDON_TITLE)
+        Settings.RegisterAddOnCategory(category)
+        isRegistered = true
+        return
+    end
+
+    error("CrateTrackerZK settings require the modern Blizzard Settings API")
+end
+
+function SettingsPanel:RefreshState()
+    local addonEnabled = true
+    if SettingsPanelState and SettingsPanelState.IsAddonEnabled then
+        addonEnabled = SettingsPanelState:IsAddonEnabled()
+    end
+
+    local teamEnabled = false
+    if SettingsPanelState and SettingsPanelState.IsTeamNotificationEnabled then
+        teamEnabled = addonEnabled and SettingsPanelState:IsTeamNotificationEnabled()
+    end
+
+    local soundEnabled = false
+    if SettingsPanelState and SettingsPanelState.IsSoundAlertEnabled then
+        soundEnabled = addonEnabled and SettingsPanelState:IsSoundAlertEnabled()
+    end
+
+    local autoEnabled = false
+    if SettingsPanelState and SettingsPanelState.IsAutoTeamReportEnabled then
+        autoEnabled = addonEnabled and teamEnabled and SettingsPanelState:IsAutoTeamReportEnabled()
+    end
+
+    if controls.addonToggle then
+        controls.addonToggle:SetChecked(addonEnabled)
+        SetTextEnabled(controls.addonToggle.label, true)
+    end
+
+    if controls.teamNotification then
+        controls.teamNotification:SetChecked(teamEnabled)
+        controls.teamNotification:SetEnabled(addonEnabled)
+        SetTextEnabled(controls.teamNotification.label, addonEnabled)
+    end
+
+    if controls.soundAlert then
+        controls.soundAlert:SetChecked(soundEnabled)
+        controls.soundAlert:SetEnabled(addonEnabled)
+        SetTextEnabled(controls.soundAlert.label, addonEnabled)
+    end
+
+    if controls.autoReport then
+        local autoAvailable = addonEnabled and teamEnabled
+        controls.autoReport:SetChecked(autoEnabled)
+        controls.autoReport:SetEnabled(autoAvailable)
+        SetTextEnabled(controls.autoReport.label, autoAvailable)
+    end
+
+    if controls.intervalEditBox and controls.intervalLabel then
+        local intervalEnabled = addonEnabled and teamEnabled and autoEnabled
+        controls.intervalEditBox:SetEnabled(intervalEnabled)
+        controls.intervalEditBox:SetText(tostring(SettingsPanelState and SettingsPanelState.GetAutoTeamReportInterval and SettingsPanelState:GetAutoTeamReportInterval() or 60))
+        SetTextEnabled(controls.intervalLabel, intervalEnabled)
+    end
+
+    if controls.theme then
+        local themeEnabled = SettingsPanelState and SettingsPanelState.IsThemeSwitchEnabled and SettingsPanelState:IsThemeSwitchEnabled() or false
+        local themeText = SettingsPanelState and SettingsPanelState.GetCurrentThemeButtonText and SettingsPanelState:GetCurrentThemeButtonText() or "N/A"
+        controls.theme.value:SetText(themeText)
+        controls.theme.button:SetEnabled(themeEnabled)
+        SetValueEnabled(controls.theme.value, themeEnabled)
+        SetTextEnabled(controls.theme.label, true)
+    end
+
+    RefreshExpansionSelectors()
+    RefreshVersionMapList()
+end
+
 function SettingsPanel:Show()
-    if not settingsFrame then
-        self:CreateFrame()
-    end
-    settingsFrame:Show()
-    settingsFrame:Raise()
-    if currentTab == TAB_SETTINGS then
-        UpdateSettingsState()
-    end
+    self:ShowTab(PAGE_MAIN)
 end
 
 function SettingsPanel:Hide()
-    if settingsFrame then
+    if settingsFrame and settingsFrame:IsShown() then
         settingsFrame:Hide()
     end
 end
 
 function SettingsPanel:IsShown()
-    return settingsFrame and settingsFrame:IsShown()
+    return settingsFrame and settingsFrame:IsShown() or false
 end
 
 function SettingsPanel:Toggle()
-    if not settingsFrame then
-        self:CreateFrame()
-    end
-    if settingsFrame:IsShown() then
-        settingsFrame:Hide()
+    if self:IsShown() then
+        self:Hide()
     else
-        settingsFrame:Show()
-        if currentTab == TAB_SETTINGS then
-            UpdateSettingsState()
-        end
+        self:Show()
     end
 end
 
 function SettingsPanel:ShowTab(tabName)
-    if not settingsFrame then
-        self:CreateFrame()
-    end
-    self:Show()
+    EnsureRegistered()
+    currentPage = ResolvePageKey(tabName)
+    SelectPage(currentPage)
 
-    local targetTab = ResolveTabKey(tabName) or TAB_SETTINGS
-    for _, info in ipairs(tabButtons) do
-        if info.name == targetTab then
-            info.contentArea:Show()
-            currentTab = targetTab
-        else
-            info.contentArea:Hide()
-        end
-    end
-    UpdateTabStyles(targetTab)
-    if targetTab == TAB_SETTINGS then
-        UpdateSettingsState()
-    end
-end
-
-function SettingsPanel:RefreshState()
-    if settingsFrame and settingsFrame:IsShown() and currentTab == TAB_SETTINGS then
-        UpdateSettingsState()
+    if category and Settings and Settings.OpenToCategory then
+        local categoryID = category.GetID and category:GetID() or category.ID or category
+        Settings.OpenToCategory(categoryID)
     end
 end
 

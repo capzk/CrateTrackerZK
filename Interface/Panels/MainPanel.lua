@@ -192,7 +192,6 @@ function MainPanel:BuildHeaderLabels()
         L["PhaseID"] or "当前位面",
         L["LastRefresh"] or "Last",
         L["NextRefresh"] or "Next",
-        L["Operation"] or "Ops",
     }
 end
 

@@ -3,7 +3,6 @@
 local MainFrame = BuildEnv("MainFrame")
 local UIConfig = BuildEnv("ThemeConfig")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
-local RowStateSystem = BuildEnv("RowStateSystem")
 local Data = BuildEnv("Data")
 
 local FRAME_CFG = {
@@ -12,10 +11,12 @@ local FRAME_CFG = {
     minScale = 0.6,
     maxScale = 1.0,
     minWidth = 100,
-    minHeight = 201,
+    minHeight = 80,
     maxWidth = 600,
     maxHeight = 419,
 }
+local WIDTH_PROFILE_VERSION = 4
+local UI_STATE_MIGRATION_VERSION = 1
 
 local RESIZE_LAYOUT_NOTIFY_INTERVAL = 0.016
 local RESIZE_LAYOUT_PIXEL_STEP = 1
@@ -31,10 +32,64 @@ local function GetFixedTableInsets()
     return tableInset, tableTopInset
 end
 
+local function IsFiniteNumber(value)
+    return type(value) == "number" and value == value and value > -math.huge and value < math.huge
+end
+
+local function MigrateUIState(db)
+    if not db or type(db) ~= "table" then
+        return
+    end
+
+    local migratedVersion = tonumber(db.uiStateMigrationVersion) or 0
+    if migratedVersion >= UI_STATE_MIGRATION_VERSION then
+        return
+    end
+
+    local size = db.mainFrameSize
+    if size ~= nil and type(size) ~= "table" then
+        db.mainFrameSize = nil
+    elseif type(size) == "table" then
+        local savedWidth = tonumber(size.width)
+        local savedHeight = tonumber(size.height)
+        local savedProfileVersion = tonumber(size.widthProfileVersion) or 0
+
+        local invalidWidth = not IsFiniteNumber(savedWidth)
+        local invalidHeight = not IsFiniteNumber(savedHeight)
+        local invalidProfile = savedProfileVersion ~= WIDTH_PROFILE_VERSION
+
+        if invalidWidth or invalidHeight or invalidProfile then
+            -- 历史尺寸配置（含旧版 profile）统一丢弃，避免继续污染新布局逻辑
+            db.mainFrameSize = nil
+        else
+            size.width = math.max(FRAME_CFG.minWidth, math.min(FRAME_CFG.maxWidth, savedWidth))
+            size.height = math.max(FRAME_CFG.minHeight, math.min(FRAME_CFG.maxHeight, savedHeight))
+            size.userControlledWidth = size.userControlledWidth == true
+            size.userControlledHeight = size.userControlledHeight == true
+            size.widthProfileVersion = WIDTH_PROFILE_VERSION
+        end
+    end
+
+    local position = db.position
+    if position ~= nil and type(position) ~= "table" then
+        db.position = nil
+    elseif type(position) == "table" then
+        local point = type(position.point) == "string" and position.point or "CENTER"
+        local x = tonumber(position.x) or 0
+        local y = tonumber(position.y) or 0
+        if not IsFiniteNumber(x) then x = 0 end
+        if not IsFiniteNumber(y) then y = 0 end
+        db.position = { point = point, x = x, y = y }
+    end
+
+    db.uiStateMigrationVersion = UI_STATE_MIGRATION_VERSION
+end
+
 local function EnsureUIState()
     if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
         CRATETRACKERZK_UI_DB = {}
     end
+    MigrateUIState(CRATETRACKERZK_UI_DB)
 end
 
 local function NotifyLayoutChanged(frame)
@@ -121,7 +176,7 @@ end
 
 local function GetAdaptiveHeightBounds()
     local baseHeight = GetAdaptiveBaseHeight()
-    local minHeight = math.floor(baseHeight * FRAME_CFG.minScale + 0.5)
+    local minHeight = FRAME_CFG.minHeight
     local maxHeight = math.floor(baseHeight * FRAME_CFG.maxScale + 0.5)
     if minHeight > maxHeight then
         minHeight, maxHeight = maxHeight, minHeight
@@ -219,6 +274,36 @@ local function GetEffectiveMinWidth(frame)
         return Clamp(math.floor(contentMin + 0.5), FRAME_CFG.minWidth, FRAME_CFG.maxWidth)
     end
     return FRAME_CFG.minWidth
+end
+
+local function GetEffectiveMaxWidth(frame, minWidth)
+    local resolvedMinWidth = minWidth or GetEffectiveMinWidth(frame)
+    local contentMax = frame and tonumber(frame.__ctkContentMaxWidth) or nil
+    if contentMax then
+        local clamped = Clamp(math.floor(contentMax + 0.5), FRAME_CFG.minWidth, FRAME_CFG.maxWidth)
+        return math.max(resolvedMinWidth, clamped)
+    end
+    return FRAME_CFG.maxWidth
+end
+
+local function GetEffectiveMinHeight(frame)
+    local _, adaptiveMax = GetAdaptiveHeightBounds()
+    local contentMin = frame and tonumber(frame.__ctkContentMinHeight) or nil
+    if contentMin then
+        return Clamp(math.floor(contentMin + 0.5), FRAME_CFG.minHeight, adaptiveMax)
+    end
+    return FRAME_CFG.minHeight
+end
+
+local function GetEffectiveMaxHeight(frame, minHeight)
+    local _, adaptiveMax = GetAdaptiveHeightBounds()
+    local resolvedMinHeight = minHeight or GetEffectiveMinHeight(frame)
+    local contentMax = frame and tonumber(frame.__ctkContentMaxHeight) or nil
+    if contentMax then
+        local clamped = Clamp(math.floor(contentMax + 0.5), FRAME_CFG.minHeight, adaptiveMax)
+        return math.max(resolvedMinHeight, clamped)
+    end
+    return math.max(resolvedMinHeight, adaptiveMax)
 end
 
 local function IsAtMinimumWidth(frame)
@@ -334,8 +419,17 @@ function MainFrame:NormalizeSize(frame)
         return
     end
     local currentWidth = frame:GetWidth() or FRAME_CFG.width
-    local targetHeight, scale = GetAdaptiveHeightForWidth(currentWidth)
-    local currentHeight = frame:GetHeight() or targetHeight
+    local _, scale = GetAdaptiveHeightForWidth(currentWidth)
+    local minHeight = GetEffectiveMinHeight(frame)
+    local maxHeight = GetEffectiveMaxHeight(frame, minHeight)
+    local currentHeight = frame:GetHeight() or maxHeight
+    local targetHeight = currentHeight
+
+    if not frame.isSizing and frame.__ctkHeightControlledByUser ~= true then
+        targetHeight = maxHeight
+    else
+        targetHeight = Clamp(currentHeight, minHeight, maxHeight)
+    end
 
     if math.abs(currentHeight - targetHeight) > 0.5 then
         frame.isNormalizingSize = true
@@ -349,21 +443,40 @@ function MainFrame:ApplyAdaptiveResizeBounds(frame)
     if not frame then
         return
     end
-    local minHeight, maxHeight = GetAdaptiveHeightBounds()
     local minWidth = GetEffectiveMinWidth(frame)
+    local maxWidth = GetEffectiveMaxWidth(frame, minWidth)
+    local minHeight = GetEffectiveMinHeight(frame)
+    local maxHeight = GetEffectiveMaxHeight(frame, minHeight)
     if frame.SetResizeBounds then
-        frame:SetResizeBounds(minWidth, minHeight, FRAME_CFG.maxWidth, maxHeight)
+        frame:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight)
     else
         if frame.SetMinResize then
             frame:SetMinResize(minWidth, minHeight)
         end
         if frame.SetMaxResize then
-            frame:SetMaxResize(FRAME_CFG.maxWidth, maxHeight)
+            frame:SetMaxResize(maxWidth, maxHeight)
         end
     end
     local currentWidth = frame:GetWidth() or FRAME_CFG.width
+    local currentHeight = frame:GetHeight() or maxHeight
     if currentWidth + 0.5 < minWidth then
         frame:SetWidth(minWidth)
+        if self and self.PersistFrameSize then
+            self:PersistFrameSize(frame)
+        end
+    elseif currentWidth - 0.5 > maxWidth then
+        frame:SetWidth(maxWidth)
+        if self and self.PersistFrameSize then
+            self:PersistFrameSize(frame)
+        end
+    end
+    if currentHeight + 0.5 < minHeight then
+        frame:SetHeight(minHeight)
+        if self and self.PersistFrameSize then
+            self:PersistFrameSize(frame)
+        end
+    elseif currentHeight - 0.5 > maxHeight then
+        frame:SetHeight(maxHeight)
         if self and self.PersistFrameSize then
             self:PersistFrameSize(frame)
         end
@@ -375,21 +488,14 @@ function MainFrame:ApplyAdaptiveHeight(frame)
         return
     end
     self:ApplyAdaptiveResizeBounds(frame)
-    local currentWidth = frame:GetWidth() or FRAME_CFG.width
-    local targetHeight, scale = GetAdaptiveHeightForWidth(currentWidth)
-    local currentHeight = frame:GetHeight() or targetHeight
-
-    if math.abs(currentHeight - targetHeight) > 0.5 then
-        frame.isNormalizingSize = true
-        frame:SetHeight(targetHeight)
-        frame.isNormalizingSize = nil
-    end
-    self:ApplyScaledChrome(frame, scale)
+    self:NormalizeSize(frame)
     NotifyLayoutChangedIfNeeded(frame)
 end
 
 function MainFrame:Create()
     local frame = CreateFrame("Frame", "CrateTrackerZKFrame", UIParent)
+    frame.__ctkWidthControlledByUser = false
+    frame.__ctkHeightControlledByUser = false
     frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("HIGH")
@@ -416,10 +522,6 @@ function MainFrame:Create()
         NotifyLayoutChangedIfNeeded(frame)
     end)
 
-    if RowStateSystem and RowStateSystem.AddClickListenerToTableArea then
-        RowStateSystem:AddClickListenerToTableArea(frame)
-    end
-
     return frame
 end
 
@@ -434,6 +536,9 @@ local function SaveFrameSize(frame)
     CRATETRACKERZK_UI_DB.mainFrameSize = {
         width = frame:GetWidth(),
         height = frame:GetHeight(),
+        userControlledWidth = frame and frame.__ctkWidthControlledByUser == true,
+        userControlledHeight = frame and frame.__ctkHeightControlledByUser == true,
+        widthProfileVersion = WIDTH_PROFILE_VERSION,
     }
 end
 
@@ -448,15 +553,34 @@ function MainFrame:ApplySavedSize(frame)
     EnsureUIState()
     local size = CRATETRACKERZK_UI_DB.mainFrameSize
     local minWidth = GetEffectiveMinWidth(frame)
-    local minHeight, maxHeight = GetAdaptiveHeightBounds()
-    if not size then
-        frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
+    local maxWidth = GetEffectiveMaxWidth(frame, minWidth)
+    local minHeight = GetEffectiveMinHeight(frame)
+    local maxHeight = GetEffectiveMaxHeight(frame, minHeight)
+    local savedWidth = size and tonumber(size.width) or nil
+    local savedHeight = size and tonumber(size.height) or nil
+    local profileVersion = size and tonumber(size.widthProfileVersion) or 0
+    local hasUserControlledWidth = profileVersion == WIDTH_PROFILE_VERSION and size and size.userControlledWidth == true and savedWidth and (savedWidth + 0.5) < maxWidth
+    local hasUserControlledHeight = profileVersion == WIDTH_PROFILE_VERSION and size and size.userControlledHeight == true and savedHeight and (savedHeight + 0.5) < maxHeight
+
+    if not hasUserControlledWidth and not hasUserControlledHeight then
+        frame.__ctkWidthControlledByUser = false
+        frame.__ctkHeightControlledByUser = false
+        frame:SetSize(FRAME_CFG.width, maxHeight)
         self:NormalizeSize(frame)
         return
     end
-    local width = tonumber(size.width) or FRAME_CFG.width
-    local height = tonumber(size.height) or FRAME_CFG.height
-    width = math.max(minWidth, math.min(FRAME_CFG.maxWidth, width))
+
+    local width = savedWidth or FRAME_CFG.width
+    local height = savedHeight or maxHeight
+    frame.__ctkWidthControlledByUser = hasUserControlledWidth == true
+    frame.__ctkHeightControlledByUser = hasUserControlledHeight == true
+    if not hasUserControlledWidth then
+        width = FRAME_CFG.width
+    end
+    if not hasUserControlledHeight then
+        height = maxHeight
+    end
+    width = math.max(minWidth, math.min(maxWidth, width))
     height = math.max(minHeight, math.min(maxHeight, height))
     frame:SetSize(width, height)
     self:NormalizeSize(frame)
@@ -751,6 +875,14 @@ function MainFrame:CreateResizeHandle(frame)
             return
         end
         frame.isSizing = false
+        local finalWidth = frame:GetWidth() or FRAME_CFG.width
+        local finalHeight = frame:GetHeight() or FRAME_CFG.height
+        local maxWidth = tonumber(frame.__ctkContentMaxWidth) or FRAME_CFG.width
+        local minHeight = GetEffectiveMinHeight(frame)
+        local maxHeight = GetEffectiveMaxHeight(frame, minHeight)
+        maxWidth = Clamp(math.floor(maxWidth + 0.5), FRAME_CFG.minWidth, FRAME_CFG.maxWidth)
+        frame.__ctkWidthControlledByUser = (finalWidth + 0.5) < maxWidth
+        frame.__ctkHeightControlledByUser = (finalHeight + 0.5) < maxHeight
         frame:StopMovingOrSizing()
         StopLayoutRefreshTicker()
         self:NormalizeSize(frame)

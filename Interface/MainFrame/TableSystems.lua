@@ -13,6 +13,8 @@ local currentRows = {}
 local headerButton = nil
 local lastSortTime = nil
 local rebuildCallback = nil
+local compactAutoSortEnabled = false
+local compactAutoSortPreviousState = nil
 
 local function GetSortingConfig()
     return UIConfig
@@ -24,6 +26,10 @@ end
 
 function SortingSystem:GetSortState()
     return sortState
+end
+
+function SortingSystem:IsCompactAutoSortEnabled()
+    return compactAutoSortEnabled == true
 end
 
 function SortingSystem:SetHeaderButton(button)
@@ -163,6 +169,31 @@ function SortingSystem:RefreshSorting()
     end
 end
 
+function SortingSystem:SetCompactAutoSortEnabled(enabled)
+    local shouldEnable = enabled == true
+    if shouldEnable == compactAutoSortEnabled then
+        return false
+    end
+
+    if shouldEnable then
+        compactAutoSortPreviousState = sortState
+        sortState = "asc"
+        compactAutoSortEnabled = true
+    else
+        if compactAutoSortPreviousState ~= nil then
+            sortState = compactAutoSortPreviousState
+        else
+            sortState = "default"
+        end
+        compactAutoSortPreviousState = nil
+        compactAutoSortEnabled = false
+    end
+
+    self:SortRows()
+    self:UpdateHeaderVisual()
+    return true
+end
+
 -- ========================================
 -- 倒计时系统
 -- ========================================
@@ -175,6 +206,7 @@ local L = CrateTrackerZK.L
 
 local textByRowId = {}
 local rowDisplayCache = {}
+local hoveredRowIds = {}
 local updateDriver = nil
 local updateElapsed = 0
 local sortRefreshCallback = nil
@@ -271,10 +303,13 @@ local function GetRemaining(rowId, context)
     return nil, false
 end
 
-local function GetCountdownColor(rowId, seconds, isHidden)
+local function GetCountdownColor(rowId, seconds, isHidden, isHovered)
     local cfg = GetCountdownConfig()
     if isHidden then
         return 0.5, 0.5, 0.5, 0.8
+    end
+    if isHovered then
+        return 1.0, 0.82, 0.20, 1.0
     end
     if UnifiedDataManager and UnifiedDataManager.ComparePhases then
         local compare = UnifiedDataManager:ComparePhases(rowId)
@@ -380,7 +415,8 @@ function CountdownSystem:RegisterText(rowId, textObject)
     local context = BuildTickContext(time())
     local remaining, isHidden = GetRemaining(rowId, context)
     local text = FormatRemaining(remaining)
-    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden)
+    local isHovered = hoveredRowIds[rowId] == true
+    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
     textObject:SetText(text)
     textObject:SetTextColor(r, g, b, a)
     rowDisplayCache[rowId] = {
@@ -392,6 +428,7 @@ end
 function CountdownSystem:ClearTexts()
     textByRowId = {}
     rowDisplayCache = {}
+    hoveredRowIds = {}
 end
 
 local function RefreshCountdownUI(now)
@@ -401,7 +438,8 @@ local function RefreshCountdownUI(now)
         if ShouldRealtimeUpdate(rowId, context) then
             local remaining, isHidden = GetRemaining(rowId, context)
             local text = FormatRemaining(remaining)
-            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden)
+            local isHovered = hoveredRowIds[rowId] == true
+            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
             local cache = rowDisplayCache[rowId]
             if not cache or cache.text ~= text or cache.r ~= r or cache.g ~= g or cache.b ~= b or cache.a ~= a then
                 textObject:SetText(text)
@@ -424,6 +462,36 @@ local function RefreshCountdownUI(now)
             SortingRef:SetLastSortTime(currentTime)
         end
     end
+end
+
+function CountdownSystem:SetRowHover(rowId, hovered)
+    if rowId == nil then
+        return
+    end
+
+    if hovered == true then
+        hoveredRowIds[rowId] = true
+    else
+        hoveredRowIds[rowId] = nil
+    end
+
+    local textObject = textByRowId[rowId]
+    if not textObject then
+        return
+    end
+
+    local context = BuildTickContext(time())
+    local remaining, isHidden = GetRemaining(rowId, context)
+    local text = FormatRemaining(remaining)
+    local isHovered = hoveredRowIds[rowId] == true
+    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
+
+    textObject:SetText(text)
+    textObject:SetTextColor(r, g, b, a)
+    rowDisplayCache[rowId] = {
+        text = text,
+        r = r, g = g, b = b, a = a,
+    }
 end
 
 function CountdownSystem:Start()

@@ -5,7 +5,6 @@ local UIConfig = BuildEnv("ThemeConfig")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local SortingSystem = BuildEnv("SortingSystem")
 local CountdownSystem = BuildEnv("CountdownSystem")
-local RowStateSystem = BuildEnv("RowStateSystem")
 local MainFrame = BuildEnv("MainFrame")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local L = CrateTrackerZK.L
@@ -20,14 +19,13 @@ local MIN_FRAME_SCALE = 0.6
 local MAX_FRAME_SCALE = 1.0
 local COMPACT_BASE_ROW_GAP = 2
 local BASE_MIN_FRAME_WIDTH = 100
+local FRAME_HORIZONTAL_PADDING = 24
+local FRAME_VERTICAL_PADDING = 46
 local COMPACT_FONT_TRANSITION_WIDTH = 80
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
 local MAP_COL_COMPACT_MIN_CHARS = 1
-local MAP_COL_FIXED_MIN_WIDTH = 120
-local MAP_COL_FIXED_MAX_WIDTH = 360
 local MAP_COL_BASE_PADDING = 24
 local MAP_COL_SAFETY_PADDING = 6
-local MAP_COL_MIN_TEXT_GUARD = 4
 local UTF8_CHAR_PATTERN = "[%z\1-\127\194-\244][\128-\191]*"
 local TEXT_WIDTH_CACHE_LIMIT = 1024
 local TRUNCATE_CACHE_LIMIT = 2048
@@ -39,9 +37,62 @@ local referenceTextWidthCache = {}
 local referenceTextWidthCacheSize = 0
 local truncateCache = {}
 local truncateCacheSize = 0
+local RESIZE_DEBUG_ENABLED = false
 
 local function GetConfig()
     return UIConfig
+end
+
+local function EmitResizeDebug(frame, stage, payload)
+    if not RESIZE_DEBUG_ENABLED then
+        return
+    end
+    if not frame then
+        return
+    end
+    local signature = table.concat({
+        tostring(stage or ""),
+        tostring(payload and payload.frameWidth or ""),
+        tostring(payload and payload.minWidth or ""),
+        tostring(payload and payload.maxWidth or ""),
+        tostring(payload and payload.desiredWidth or ""),
+        tostring(payload and payload.activeTableWidth or ""),
+        tostring(payload and payload.defaultTableWidth or ""),
+        tostring(payload and payload.userControlled or ""),
+        tostring(payload and payload.showHeader or ""),
+        tostring(payload and payload.isSizing or ""),
+    }, "|")
+    if frame.__ctkLastResizeDebugSignature == signature then
+        return
+    end
+    frame.__ctkLastResizeDebugSignature = signature
+
+    local msg = string.format(
+        "CTK Resize[%s] cur=%s min=%s max=%s desired=%s active=%s default=%s user=%s header=%s sizing=%s",
+        tostring(stage or "state"),
+        tostring(payload and payload.frameWidth or "nil"),
+        tostring(payload and payload.minWidth or "nil"),
+        tostring(payload and payload.maxWidth or "nil"),
+        tostring(payload and payload.desiredWidth or "nil"),
+        tostring(payload and payload.activeTableWidth or "nil"),
+        tostring(payload and payload.defaultTableWidth or "nil"),
+        tostring(payload and payload.userControlled or "nil"),
+        tostring(payload and payload.showHeader or "nil"),
+        tostring(payload and payload.isSizing or "nil")
+    )
+
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(msg)
+    elseif print then
+        print(msg)
+    end
+end
+
+local function IsAddonEnabled()
+    if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
+        return true
+    end
+    return CRATETRACKERZK_UI_DB.addonEnabled == true
 end
 
 local function GetTableParent(frame)
@@ -202,12 +253,24 @@ local function Clamp(value, minValue, maxValue)
     return value
 end
 
+local function GetBaselineFrameWidth(frame)
+    local contentMax = frame and tonumber(frame.__ctkContentMaxWidth) or nil
+    if contentMax then
+        return Clamp(math.floor(contentMax + 0.5), BASE_MIN_FRAME_WIDTH, BASE_FRAME_WIDTH)
+    end
+    return BASE_FRAME_WIDTH
+end
+
 local function GetScaleFactor(frame)
     if not frame then
         return 1
     end
+    local baselineWidth = GetBaselineFrameWidth(frame)
     local width = frame:GetWidth() or BASE_FRAME_WIDTH
-    local widthScale = width / BASE_FRAME_WIDTH
+    if not frame.isSizing and frame.__ctkWidthControlledByUser ~= true then
+        width = math.max(width, baselineWidth)
+    end
+    local widthScale = width / math.max(1, baselineWidth)
     return Clamp(widthScale, MIN_FRAME_SCALE, MAX_FRAME_SCALE)
 end
 
@@ -218,40 +281,50 @@ local function GetFrameWidth(frame)
     return frame:GetWidth() or BASE_FRAME_WIDTH
 end
 
+local function GetFrameHeight(frame)
+    if not frame or not frame.GetHeight then
+        return 0
+    end
+    return frame:GetHeight() or 0
+end
+
 local function GetVisibilityProfile(frame)
     local width = GetFrameWidth(frame)
-    local headerFullyHiddenWidth = BASE_FRAME_WIDTH - HEADER_COLLAPSE_TRANSITION_WIDTH
+    local baselineWidth = GetBaselineFrameWidth(frame)
+    local headerFullyHiddenWidth = baselineWidth - HEADER_COLLAPSE_TRANSITION_WIDTH
     local profile = {
         showHeader = true,
         showPhaseColumn = true,
         showLastRefreshColumn = true,
-        showOperationColumn = true,
         phaseShortMode = false,
-        showDeletedRows = true,
-        contextMenuEnabled = true,
+        showDeletedRows = false,
         isFullInfo = true,
+        compactByWidth = false,
     }
 
-    if width < headerFullyHiddenWidth then
+    profile.compactByWidth = width < headerFullyHiddenWidth
+    if profile.compactByWidth then
         profile.showHeader = false
     end
-    if width < BASE_FRAME_WIDTH then
+    if width < baselineWidth then
         profile.isFullInfo = false
     end
 
     if not profile.isFullInfo then
         profile.showDeletedRows = false
-        profile.contextMenuEnabled = false
     end
 
     return profile
 end
 
-local function GetHeaderCollapseState(frame)
+local function GetHeaderCollapseState(frame, profile)
     local width = GetFrameWidth(frame)
-    local t = Clamp((BASE_FRAME_WIDTH - width) / HEADER_COLLAPSE_TRANSITION_WIDTH, 0, 1)
+    local baselineWidth = GetBaselineFrameWidth(frame)
+    local t = Clamp((baselineWidth - width) / HEADER_COLLAPSE_TRANSITION_WIDTH, 0, 1)
     local eased = t * t * (3 - 2 * t)
-    local ratio = 1 - eased
+    local widthRatio = 1 - eased
+    local heightRatio = Clamp((profile and profile.headerAlphaByHeight) or 1, 0, 1)
+    local ratio = math.min(widthRatio, heightRatio)
     local headerHeight = FIXED_ROW_HEIGHT * ratio
     local headerGap = COMPACT_BASE_ROW_GAP * ratio
     if headerHeight < 0.5 then
@@ -274,7 +347,8 @@ local function GetSmoothCompactFontScale(frame, baseScale, profile)
     end
 
     local frameWidth = GetFrameWidth(frame)
-    local t = Clamp((BASE_FRAME_WIDTH - frameWidth) / COMPACT_FONT_TRANSITION_WIDTH, 0, 1)
+    local baselineWidth = GetBaselineFrameWidth(frame)
+    local t = Clamp((baselineWidth - frameWidth) / COMPACT_FONT_TRANSITION_WIDTH, 0, 1)
     -- smoothstep: 消除阶段切换时字体缩放突兀跳变
     t = t * t * (3 - 2 * t)
 
@@ -455,29 +529,29 @@ local function GetMaxWidth(texts)
     return maxWidth
 end
 
-local function GetScaledMapPrefixMaxWidth(rows, charCount, scale)
-    local maxWidth = 0
-    local requiredChars = math.max(1, charCount or 1)
+local function BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
+    local fullSamples = {}
+    local shortSamples = {}
+    local fullCap = math.max(1, fullMaxLength or 10)
+    local shortCap = math.max(1, shortMaxLength or 4)
 
     for _, rowInfo in ipairs(rows or {}) do
-        local mapName = rowInfo and rowInfo.mapName
-        if type(mapName) == "string" and mapName ~= "" then
-            local length = GetStringLength(mapName)
-            if length > 0 then
-                local prefix = SubString(mapName, 1, math.min(requiredChars, length))
-                local width = GetScaledTextWidth(prefix, scale)
-                if width > maxWidth then
-                    maxWidth = width
-                end
+        local phaseValue = nil
+        if rowInfo then
+            if rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= "" then
+                phaseValue = tostring(rowInfo.currentPhaseID)
+            elseif rowInfo.lastRefreshPhase and rowInfo.lastRefreshPhase ~= "" then
+                phaseValue = tostring(rowInfo.lastRefreshPhase)
             end
+        end
+
+        if phaseValue and phaseValue ~= "" then
+            table.insert(fullSamples, string.sub(phaseValue, 1, fullCap))
+            table.insert(shortSamples, string.sub(phaseValue, 1, shortCap))
         end
     end
 
-    if maxWidth <= 0 then
-        maxWidth = GetScaledTextWidth(string.rep("W", requiredChars), scale)
-    end
-
-    return maxWidth
+    return fullSamples, shortSamples
 end
 
 local function DistributeWidths(desired, minWidths, maxWidths, total)
@@ -522,7 +596,7 @@ end
 
 local function SumColumnWidths(widths)
     local sum = 0
-    for i = 1, 5 do
+    for i = 1, 4 do
         sum = sum + math.max(0, widths and widths[i] or 0)
     end
     return math.max(1, math.floor(sum + 0.5))
@@ -530,11 +604,8 @@ end
 
 local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile)
     local headers = headerLabels or {}
-    local notifyText = L["Notify"] or "通知"
     local noRecord = L["NoRecord"] or "--:--"
     local notAcquired = L["NotAcquired"] or "---:---"
-    local phaseFullText = "0000-0000"
-    local phaseShortText = "0000"
     local widthScale = scale or 1
 
     local mapMax = GetTextWidth(headers[1] or "")
@@ -547,53 +618,57 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         end
     end
 
-    -- 常规状态下地图列维持固定最小宽；压缩态再放开到“至少可显示1字”的动态下限
-    local mapNaturalWidth = math.floor(mapMax + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5)
-    mapNaturalWidth = Clamp(mapNaturalWidth, MAP_COL_FIXED_MIN_WIDTH, MAP_COL_FIXED_MAX_WIDTH)
-    local mapCellPadding = math.floor(24 * widthScale + 0.5) + 2
-    local mapCompactMinWidth = math.floor(GetScaledMapPrefixMaxWidth(rows, MAP_COL_COMPACT_MIN_CHARS, widthScale) + mapCellPadding + MAP_COL_MIN_TEXT_GUARD + 0.5)
-    mapCompactMinWidth = Clamp(math.max(1, mapCompactMinWidth), 1, mapNaturalWidth)
+    -- 地图名列固定为内容自然宽度，不参与压缩；
+    -- 缩窗时优先通过隐藏其他列来适配。
+    local mapNaturalWidth = math.max(1, math.floor(mapMax + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5))
+    local mapCompactMinWidth = mapNaturalWidth
     if profile then
         profile.mapNaturalWidth = mapNaturalWidth
         profile.mapCompactMinWidth = mapCompactMinWidth
     end
 
-    local phaseFullDesired = math.floor((GetMaxWidth({headers[2] or "", notAcquired, phaseFullText}) + 20) * widthScale + 0.5)
-    local phaseShortDesired = math.floor((GetMaxWidth({headers[2] or "", notAcquired, phaseShortText}) + 20) * widthScale + 0.5)
+    local phaseFullSamples, phaseShortSamples = BuildPhaseWidthSamples(rows, 10, 4)
+    local phaseFullDesiredSamples = {headers[2] or "", notAcquired}
+    local phaseShortDesiredSamples = {headers[2] or "", notAcquired}
+    local phaseFullNeedSamples = {notAcquired}
+    local phaseShortNeedSamples = {notAcquired}
+    for _, text in ipairs(phaseFullSamples) do
+        table.insert(phaseFullDesiredSamples, text)
+        table.insert(phaseFullNeedSamples, text)
+    end
+    for _, text in ipairs(phaseShortSamples) do
+        table.insert(phaseShortDesiredSamples, text)
+        table.insert(phaseShortNeedSamples, text)
+    end
+
+    local phaseFullDesired = math.floor((GetMaxWidth(phaseFullDesiredSamples) + 20) * widthScale + 0.5)
+    local phaseShortDesired = math.floor((GetMaxWidth(phaseShortDesiredSamples) + 20) * widthScale + 0.5)
     local lastDesired = math.floor((GetMaxWidth({headers[3] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5)
     local nextDesired = math.floor((GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5)
-    local opDesired = math.floor((GetMaxWidth({headers[5] or "", notifyText}) + 20) * widthScale + 0.5)
-
-    local phaseFullNeed = math.floor((GetMaxWidth({notAcquired, phaseFullText}) + 10) * widthScale + 0.5)
-    local phaseShortNeed = math.floor((GetMaxWidth({notAcquired, phaseShortText}) + 10) * widthScale + 0.5)
+    local phaseFullNeed = math.floor((GetMaxWidth(phaseFullNeedSamples) + 10) * widthScale + 0.5)
+    local phaseShortNeed = math.floor((GetMaxWidth(phaseShortNeedSamples) + 10) * widthScale + 0.5)
     local lastNeed = math.floor((GetMaxWidth({noRecord, "00:00:00"}) + 10) * widthScale + 0.5)
     local nextNeed = math.floor((GetMaxWidth({noRecord, "00:00:00"}) + 10) * widthScale + 0.5)
-    local opNeed = math.floor((GetMaxWidth({notifyText}) + 10) * widthScale + 0.5)
 
-    if profile and profile.showHeader == false then
+    if profile and profile.compactByWidth == true then
         local remaining = math.max(0, math.floor((totalWidth or 0) - mapNaturalWidth + 0.5))
         local showPhase = true
         local showLast = true
-        local showOp = true
         local usePhaseShort = false
 
-        if remaining < (phaseFullNeed + lastNeed + nextNeed + opNeed) then
+        if remaining < (phaseFullNeed + lastNeed + nextNeed) then
             showLast = false
-            if remaining < (phaseFullNeed + nextNeed + opNeed) then
+            if remaining < (phaseFullNeed + nextNeed) then
                 usePhaseShort = true
-                if remaining < (phaseShortNeed + nextNeed + opNeed) then
+                if remaining < (phaseShortNeed + nextNeed) then
                     showPhase = false
                     usePhaseShort = false
-                    if remaining < (nextNeed + opNeed) then
-                        showOp = false
-                    end
                 end
             end
         end
 
         profile.showPhaseColumn = showPhase
         profile.showLastRefreshColumn = showLast
-        profile.showOperationColumn = showOp
         profile.phaseShortMode = usePhaseShort
 
         local desired = {
@@ -601,24 +676,21 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
             usePhaseShort and phaseShortDesired or phaseFullDesired,
             lastDesired,
             nextDesired,
-            opDesired,
         }
         local minWidths = {
             mapCompactMinWidth,
             usePhaseShort and phaseShortNeed or phaseFullNeed,
             lastNeed,
             nextNeed,
-            opNeed,
         }
         local maxWidths = {
             mapNaturalWidth,
             math.max(desired[2], minWidths[2]) + math.max(2, math.floor(6 * widthScale + 0.5)),
             math.max(desired[3], minWidths[3]) + math.max(2, math.floor(6 * widthScale + 0.5)),
             math.max(desired[4], minWidths[4]) + math.max(2, math.floor(6 * widthScale + 0.5)),
-            math.max(desired[5], minWidths[5]) + math.max(2, math.floor(6 * widthScale + 0.5)),
         }
 
-        local result = {0, 0, 0, 0, 0}
+        local result = {0, 0, 0, 0}
 
         local otherIndices = {}
         local otherDesired = {}
@@ -641,12 +713,6 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         table.insert(otherDesired, desired[4])
         table.insert(otherMinWidths, math.max(1, minWidths[4]))
         table.insert(otherMaxWidths, math.max(1, maxWidths[4]))
-        if showOp then
-            table.insert(otherIndices, 5)
-            table.insert(otherDesired, desired[5])
-            table.insert(otherMinWidths, math.max(1, minWidths[5]))
-            table.insert(otherMaxWidths, math.max(1, maxWidths[5]))
-        end
 
         local otherMinTotal = 0
         for _, width in ipairs(otherMinWidths) do
@@ -662,77 +728,73 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
             result[colIndex] = distributedOthers[i] or 0
         end
 
-        -- 主框最小宽度只保底最终形态（地图 + 下次刷新），
-        -- 避免在前序阶段被锁死导致后续隐藏条件无法触发
-        local minTableWidth = mapCompactMinWidth + nextNeed
+        -- 主框最小宽度保底最终形态（地图 + 下次刷新），
+        -- 地图列不压缩，因此使用 mapNaturalWidth 作为硬下限。
+        local minTableWidth = mapNaturalWidth + nextNeed
         profile.minTableWidth = math.max(1, math.floor(minTableWidth + 0.5))
 
         return result
     end
 
-    local desired = {
-        mapNaturalWidth,
-        phaseFullDesired,
-        lastDesired,
-        nextDesired,
-        opDesired,
-    }
-    local minWidths = {
-        mapNaturalWidth,
-        math.floor(72 * widthScale + 0.5),
-        math.floor(88 * widthScale + 0.5),
-        math.floor(92 * widthScale + 0.5),
-        math.floor(72 * widthScale + 0.5),
-    }
-    local maxWidths = {
-        mapNaturalWidth,
-        math.floor(170 * widthScale + 0.5),
-        math.floor(190 * widthScale + 0.5),
-        math.floor(210 * widthScale + 0.5),
-        math.floor(150 * widthScale + 0.5),
-    }
+    local result = {0, 0, 0, 0}
 
-    local visible = {
-        true,
-        profile and profile.showPhaseColumn == true or false,
-        profile and profile.showLastRefreshColumn == true or false,
-        true,
-        profile and profile.showOperationColumn == true or false,
-    }
+    local showPhase = profile and profile.showPhaseColumn == true or false
+    local showLast = profile and profile.showLastRefreshColumn == true or false
+    local showNext = true
 
-    local activeIndices = {}
-    local activeDesired = {}
-    local activeMinWidths = {}
-    local activeMaxWidths = {}
-
-    for colIndex = 1, 5 do
-        if visible[colIndex] then
-            table.insert(activeIndices, colIndex)
-            table.insert(activeDesired, desired[colIndex])
-            table.insert(activeMinWidths, math.max(1, minWidths[colIndex]))
-            table.insert(activeMaxWidths, math.max(1, maxWidths[colIndex]))
-        end
+    -- 默认状态按内容自适应：列宽只容纳自身内容，不额外分配空白空间
+    result[1] = math.max(mapCompactMinWidth, mapNaturalWidth)
+    if showPhase then
+        result[2] = math.max(phaseFullNeed, phaseFullDesired)
+    end
+    if showLast then
+        result[3] = math.max(lastNeed, lastDesired)
+    end
+    if showNext then
+        result[4] = math.max(nextNeed, nextDesired)
     end
 
-    if #activeIndices == 0 then
-        if profile then
-            profile.minTableWidth = 1
+    local availableWidth = math.max(1, math.floor((totalWidth or 0) + 0.5))
+    local naturalTotal = SumColumnWidths(result)
+    if naturalTotal > availableWidth then
+        local activeIndices = {}
+        local activeDesired = {}
+        local activeMinWidths = {}
+        local activeMaxWidths = {}
+
+        table.insert(activeIndices, 1)
+        table.insert(activeDesired, result[1])
+        table.insert(activeMinWidths, math.max(1, mapCompactMinWidth))
+        table.insert(activeMaxWidths, math.max(1, result[1]))
+
+        if showPhase then
+            table.insert(activeIndices, 2)
+            table.insert(activeDesired, result[2])
+            table.insert(activeMinWidths, math.max(1, phaseFullNeed))
+            table.insert(activeMaxWidths, math.max(1, result[2]))
         end
-        return {0, 0, 0, 0, 0}
+        if showLast then
+            table.insert(activeIndices, 3)
+            table.insert(activeDesired, result[3])
+            table.insert(activeMinWidths, math.max(1, lastNeed))
+            table.insert(activeMaxWidths, math.max(1, result[3]))
+        end
+        if showNext then
+            table.insert(activeIndices, 4)
+            table.insert(activeDesired, result[4])
+            table.insert(activeMinWidths, math.max(1, nextNeed))
+            table.insert(activeMaxWidths, math.max(1, result[4]))
+        end
+
+        local distributed = DistributeWidths(activeDesired, activeMinWidths, activeMaxWidths, availableWidth)
+        result = {0, 0, 0, 0}
+        for index, colIndex in ipairs(activeIndices) do
+            result[colIndex] = distributed[index] or 0
+        end
     end
 
     if profile then
-        local minTotal = 0
-        for _, minWidth in ipairs(activeMinWidths) do
-            minTotal = minTotal + math.max(1, minWidth)
-        end
-        profile.minTableWidth = math.max(1, math.floor(minTotal + 0.5))
-    end
-
-    local distributed = DistributeWidths(activeDesired, activeMinWidths, activeMaxWidths, totalWidth)
-    local result = {0, 0, 0, 0, 0}
-    for idx, colIndex in ipairs(activeIndices) do
-        result[colIndex] = distributed[idx] or 0
+        profile.minTableWidth = SumColumnWidths(result)
     end
 
     return result
@@ -744,13 +806,13 @@ local function CalculateTableLayout(frame, profile)
 
     if contentWidth <= 1 then
         local frameWidth = frame and frame:GetWidth() or BASE_FRAME_WIDTH
-        contentWidth = math.max(1, math.floor(frameWidth - 20))
+        contentWidth = math.max(1, math.floor(frameWidth - FRAME_HORIZONTAL_PADDING + 0.5))
     end
 
     local scale = GetScaleFactor(frame)
     local visibilityProfile = profile or GetVisibilityProfile(frame)
     local fontScale = GetSmoothCompactFontScale(frame, scale, visibilityProfile)
-    local headerState = GetHeaderCollapseState(frame)
+    local headerState = GetHeaderCollapseState(frame, visibilityProfile)
 
     local rowHeight = FIXED_ROW_HEIGHT
     local rowGap = COMPACT_BASE_ROW_GAP
@@ -768,10 +830,71 @@ local function CalculateTableLayout(frame, profile)
         startY = 0,
         showPhaseColumn = visibilityProfile.showPhaseColumn == true,
         showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true,
-        showOperationColumn = visibilityProfile.showOperationColumn == true,
         phaseShortMode = visibilityProfile.phaseShortMode == true,
-        contextMenuEnabled = visibilityProfile.contextMenuEnabled == true,
         showHeader = headerState.shown,
+    }
+end
+
+local function GetRowsBlockHeight(rowCount, rowHeight, rowGap)
+    if (rowCount or 0) <= 0 then
+        return 0
+    end
+    return (rowCount * rowHeight) + math.max(0, rowCount - 1) * rowGap
+end
+
+local function GetContentHeight(frame, tableParent)
+    local contentHeight = tableParent and tableParent:GetHeight() or 0
+    if contentHeight and contentHeight > 1 then
+        return contentHeight
+    end
+    local frameHeight = GetFrameHeight(frame)
+    return math.max(0, math.floor(frameHeight - FRAME_VERTICAL_PADDING + 0.5))
+end
+
+local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tableParent, allowHeaderSpace)
+    local safeRowCount = math.max(0, rowCount or 0)
+    local safeRowHeight = rowHeight or FIXED_ROW_HEIGHT
+    local safeRowGap = rowGap or COMPACT_BASE_ROW_GAP
+    local contentHeight = GetContentHeight(frame, tableParent)
+    local fullRowsHeight = GetRowsBlockHeight(safeRowCount, safeRowHeight, safeRowGap)
+    local headerTransitionHeight = (allowHeaderSpace == true) and (safeRowHeight + safeRowGap) or 0
+    local headerAlphaByHeight = 1
+    local visibleRowCount = safeRowCount
+
+    if safeRowCount <= 0 then
+        headerAlphaByHeight = 0
+        visibleRowCount = 0
+    else
+        if headerTransitionHeight <= 0 then
+            headerAlphaByHeight = 0
+            local rowUnit = safeRowHeight + safeRowGap
+            local fittedRows = math.floor((contentHeight + safeRowGap) / math.max(1, rowUnit))
+            visibleRowCount = Clamp(fittedRows, 1, safeRowCount)
+        elseif contentHeight <= (fullRowsHeight + 0.5) then
+            headerAlphaByHeight = 0
+            local rowUnit = safeRowHeight + safeRowGap
+            local fittedRows = math.floor((contentHeight + safeRowGap) / math.max(1, rowUnit))
+            visibleRowCount = Clamp(fittedRows, 1, safeRowCount)
+        else
+            local t = Clamp((fullRowsHeight + headerTransitionHeight - contentHeight) / math.max(1, headerTransitionHeight), 0, 1)
+            t = t * t * (3 - 2 * t)
+            headerAlphaByHeight = 1 - t
+            visibleRowCount = safeRowCount
+        end
+    end
+
+    local minTableHeight = safeRowCount > 0 and safeRowHeight or 0
+    local maxTableHeight = fullRowsHeight + headerTransitionHeight
+    local shouldAutoCompactSort = safeRowCount > 1 and headerAlphaByHeight <= 0.001 and contentHeight <= (fullRowsHeight + 0.5)
+
+    return {
+        contentHeight = contentHeight,
+        fullRowsHeight = fullRowsHeight,
+        headerAlphaByHeight = headerAlphaByHeight,
+        visibleRowCount = visibleRowCount,
+        minTableHeight = minTableHeight,
+        maxTableHeight = maxTableHeight,
+        shouldAutoCompactSort = shouldAutoCompactSort,
     }
 end
 
@@ -799,24 +922,6 @@ local function AcquireRowFrame(parent, index)
     rowFrame.rowBg:SetAllPoints(rowFrame)
     rowFrame.cellTexts = {}
 
-    rowFrame:SetScript("OnMouseDown", function(self, button)
-        local rowId = self.rowId
-        if not rowId then
-            return
-        end
-        if button == "RightButton" and RowStateSystem and self.__ctkContextMenuEnabled ~= false and (not RowStateSystem.IsContextMenuEnabled or RowStateSystem:IsContextMenuEnabled()) then
-            local currentState = RowStateSystem:GetRowState(rowId)
-            if currentState.rightClicked then
-                RowStateSystem:OnGlobalLeftClick()
-            else
-                RowStateSystem:OnGlobalLeftClick()
-                RowStateSystem:OnRowRightClick(rowId)
-            end
-        elseif button == "LeftButton" and RowStateSystem then
-            RowStateSystem:OnGlobalLeftClick()
-        end
-    end)
-
     rowFramePool[index] = rowFrame
     return rowFrame
 end
@@ -826,28 +931,44 @@ function TableUI:RebuildUI(frame, headerLabels)
     if not SortingSystem then return end
 
     local visibilityProfile = GetVisibilityProfile(frame)
-    local rows = {}
-    for _, rowInfo in ipairs(SortingSystem:GetCurrentRows() or {}) do
-        if visibilityProfile.showDeletedRows or not rowInfo.isHidden then
-            table.insert(rows, rowInfo)
+    local rebuildDepth = frame.__ctkResizeRebuildDepth or 0
+    local tableParent = GetTableParent(frame)
+
+    local function BuildVisibleRows()
+        local visibleRows = {}
+        for _, rowInfo in ipairs(SortingSystem:GetCurrentRows() or {}) do
+            if visibilityProfile.showDeletedRows or not rowInfo.isHidden then
+                table.insert(visibleRows, rowInfo)
+            end
+        end
+        return visibleRows
+    end
+
+    local rows = BuildVisibleRows()
+    local verticalMetrics = BuildVerticalMetrics(
+        frame,
+        #rows,
+        FIXED_ROW_HEIGHT,
+        COMPACT_BASE_ROW_GAP,
+        tableParent,
+        visibilityProfile.showHeader == true
+    )
+    local shouldAutoCompactSort = (frame.__ctkHeightControlledByUser == true or frame.isSizing == true) and verticalMetrics.shouldAutoCompactSort
+    if SortingSystem and SortingSystem.SetCompactAutoSortEnabled then
+        local sortChanged = SortingSystem:SetCompactAutoSortEnabled(shouldAutoCompactSort)
+        if sortChanged then
+            rows = BuildVisibleRows()
+            verticalMetrics = BuildVerticalMetrics(
+                frame,
+                #rows,
+                FIXED_ROW_HEIGHT,
+                COMPACT_BASE_ROW_GAP,
+                tableParent,
+                visibilityProfile.showHeader == true
+            )
         end
     end
-    HideVisibleFrames()
-
-    if CountdownSystem then
-        CountdownSystem:ClearTexts()
-    end
-
-    if SortingSystem and SortingSystem.SetHeaderButton then
-        SortingSystem:SetHeaderButton(nil)
-    end
-
-    if RowStateSystem then
-        RowStateSystem:ClearRowRefs()
-        if RowStateSystem.SetContextMenuEnabled then
-            RowStateSystem:SetContextMenuEnabled(visibilityProfile.contextMenuEnabled == true)
-        end
-    end
+    visibilityProfile.headerAlphaByHeight = verticalMetrics.headerAlphaByHeight
 
     local layout = CalculateTableLayout(frame, visibilityProfile)
     local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale, visibilityProfile)
@@ -861,24 +982,63 @@ function TableUI:RebuildUI(frame, headerLabels)
     end
     layout.showPhaseColumn = visibilityProfile.showPhaseColumn == true
     layout.showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true
-    layout.showOperationColumn = visibilityProfile.showOperationColumn == true
     layout.phaseShortMode = visibilityProfile.phaseShortMode == true
     layout.activeTableWidth = SumColumnWidths(colWidths)
+    local userControlledWidth = frame.__ctkWidthControlledByUser == true
+    local userControlledHeight = frame.__ctkHeightControlledByUser == true
 
     local frameWidth = frame:GetWidth() or BASE_FRAME_WIDTH
+    local frameHeight = GetFrameHeight(frame)
+    local horizontalPadding = FRAME_HORIZONTAL_PADDING
+    local defaultProfile = {
+        showHeader = true,
+        showPhaseColumn = true,
+        showLastRefreshColumn = true,
+        phaseShortMode = false,
+        showDeletedRows = false,
+        isFullInfo = true,
+    }
+    local defaultTableWidthHint = math.max(1, math.floor((BASE_FRAME_WIDTH - FRAME_HORIZONTAL_PADDING) + 0.5))
+    local defaultColWidths = CalculateColumnWidths(rows, headerLabels, defaultTableWidthHint, 1, defaultProfile)
+    local defaultTableWidth = SumColumnWidths(defaultColWidths)
+    local desiredFrameWidth = math.floor(defaultTableWidth + horizontalPadding + 0.5)
+    desiredFrameWidth = Clamp(desiredFrameWidth, BASE_MIN_FRAME_WIDTH, BASE_FRAME_WIDTH)
+
     local requiredMinFrameWidth = BASE_MIN_FRAME_WIDTH
-    if visibilityProfile.showHeader == false then
-        local horizontalPadding = frameWidth - (layout.tableWidth or 0)
-        if horizontalPadding < 0 then
-            horizontalPadding = 0
-        end
+    if visibilityProfile.compactByWidth == true then
         local minTableWidth = math.max(1, visibilityProfile.minTableWidth or 1)
         requiredMinFrameWidth = math.floor(minTableWidth + horizontalPadding + 0.5)
         requiredMinFrameWidth = Clamp(requiredMinFrameWidth, BASE_MIN_FRAME_WIDTH, BASE_FRAME_WIDTH - 1)
     end
 
-    if frame.__ctkContentMinWidth ~= requiredMinFrameWidth then
+    local requiredMaxFrameWidth = Clamp(desiredFrameWidth, requiredMinFrameWidth, BASE_FRAME_WIDTH)
+    local requiredMinFrameHeight = math.max(1, math.floor((verticalMetrics.minTableHeight + FRAME_VERTICAL_PADDING) + 0.5))
+    local requiredMaxFrameHeight = math.max(requiredMinFrameHeight, math.floor((verticalMetrics.maxTableHeight + FRAME_VERTICAL_PADDING) + 0.5))
+    local debugPayload = {
+        frameWidth = math.floor(frameWidth + 0.5),
+        frameHeight = math.floor(frameHeight + 0.5),
+        minWidth = requiredMinFrameWidth,
+        minHeight = requiredMinFrameHeight,
+        maxWidth = requiredMaxFrameWidth,
+        maxHeight = requiredMaxFrameHeight,
+        desiredWidth = desiredFrameWidth,
+        desiredHeight = requiredMaxFrameHeight,
+        activeTableWidth = layout.activeTableWidth,
+        defaultTableWidth = defaultTableWidth,
+        userControlled = userControlledWidth,
+        userControlledHeight = userControlledHeight,
+        showHeader = visibilityProfile.showHeader == true,
+        isSizing = frame.isSizing == true,
+        visibleRows = verticalMetrics.visibleRowCount,
+    }
+    if frame.__ctkContentMinWidth ~= requiredMinFrameWidth
+        or frame.__ctkContentMaxWidth ~= requiredMaxFrameWidth
+        or frame.__ctkContentMinHeight ~= requiredMinFrameHeight
+        or frame.__ctkContentMaxHeight ~= requiredMaxFrameHeight then
         frame.__ctkContentMinWidth = requiredMinFrameWidth
+        frame.__ctkContentMaxWidth = requiredMaxFrameWidth
+        frame.__ctkContentMinHeight = requiredMinFrameHeight
+        frame.__ctkContentMaxHeight = requiredMaxFrameHeight
         if MainFrame and MainFrame.ApplyAdaptiveResizeBounds then
             MainFrame:ApplyAdaptiveResizeBounds(frame)
         end
@@ -888,12 +1048,97 @@ function TableUI:RebuildUI(frame, headerLabels)
             MainFrame:ApplyScaledChrome(frame)
         end
     end
-    if frameWidth + 0.5 < requiredMinFrameWidth then
-        frame:SetWidth(requiredMinFrameWidth)
+
+    if userControlledWidth and not frame.isSizing and frameWidth + 0.5 >= requiredMaxFrameWidth then
+        frame.__ctkWidthControlledByUser = false
+        userControlledWidth = false
         if MainFrame and MainFrame.PersistFrameSize then
             MainFrame:PersistFrameSize(frame)
         end
-        return
+        EmitResizeDebug(frame, "exit-user", debugPayload)
+    end
+    if userControlledHeight and not frame.isSizing and frameHeight + 0.5 >= requiredMaxFrameHeight then
+        frame.__ctkHeightControlledByUser = false
+        userControlledHeight = false
+        if MainFrame and MainFrame.PersistFrameSize then
+            MainFrame:PersistFrameSize(frame)
+        end
+    end
+
+    local targetWidth = frameWidth
+    local targetHeight = frameHeight
+    local resizeStage = "stable"
+
+    if not userControlledWidth and not frame.isSizing and math.abs(targetWidth - desiredFrameWidth) > 0.5 then
+        targetWidth = desiredFrameWidth
+        resizeStage = "snap-default-width"
+    end
+    if not userControlledHeight and not frame.isSizing and math.abs(targetHeight - requiredMaxFrameHeight) > 0.5 then
+        targetHeight = requiredMaxFrameHeight
+        if resizeStage == "stable" then
+            resizeStage = "snap-default-height"
+        end
+    end
+
+    if targetWidth + 0.5 < requiredMinFrameWidth then
+        targetWidth = requiredMinFrameWidth
+        if resizeStage == "stable" then
+            resizeStage = "clamp-min-width"
+        end
+    elseif targetWidth - 0.5 > requiredMaxFrameWidth then
+        targetWidth = requiredMaxFrameWidth
+        if resizeStage == "stable" then
+            resizeStage = "clamp-max-width"
+        end
+    end
+
+    if targetHeight + 0.5 < requiredMinFrameHeight then
+        targetHeight = requiredMinFrameHeight
+        if resizeStage == "stable" then
+            resizeStage = "clamp-min-height"
+        end
+    elseif targetHeight - 0.5 > requiredMaxFrameHeight then
+        targetHeight = requiredMaxFrameHeight
+        if resizeStage == "stable" then
+            resizeStage = "clamp-max-height"
+        end
+    end
+
+    local resized = math.abs(targetWidth - frameWidth) > 0.5 or math.abs(targetHeight - frameHeight) > 0.5
+    if resized then
+        EmitResizeDebug(frame, resizeStage, debugPayload)
+        frame:SetSize(targetWidth, targetHeight)
+        if MainFrame and MainFrame.PersistFrameSize then
+            MainFrame:PersistFrameSize(frame)
+        end
+        if rebuildDepth < 3 then
+            frame.__ctkResizeRebuildDepth = rebuildDepth + 1
+            self:RebuildUI(frame, headerLabels)
+            frame.__ctkResizeRebuildDepth = rebuildDepth
+            return
+        end
+        -- 兜底：达到递归上限时仍继续渲染，避免出现“仅拖拽中可见，松手后空白”。
+    end
+
+    EmitResizeDebug(frame, "stable", debugPayload)
+
+    local rowsToRender = rows
+    local visibleRowCount = math.max(0, math.min(verticalMetrics.visibleRowCount or #rows, #rows))
+    if visibleRowCount < #rows then
+        rowsToRender = {}
+        for idx = 1, visibleRowCount do
+            rowsToRender[#rowsToRender + 1] = rows[idx]
+        end
+    end
+
+    HideVisibleFrames()
+
+    if CountdownSystem then
+        CountdownSystem:ClearTexts()
+    end
+
+    if SortingSystem and SortingSystem.SetHeaderButton then
+        SortingSystem:SetHeaderButton(nil)
     end
 
     if layout.showHeader then
@@ -902,11 +1147,11 @@ function TableUI:RebuildUI(frame, headerLabels)
         headerRowFrame:Hide()
     end
 
-    for displayIndex, rowInfo in ipairs(rows) do
+    for displayIndex, rowInfo in ipairs(rowsToRender) do
         self:CreateDataRow(layout.parent, rowInfo, displayIndex, colWidths, layout)
     end
 
-    for idx = #rows + 1, #rowFramePool do
+    for idx = #rowsToRender + 1, #rowFramePool do
         local extraFrame = rowFramePool[idx]
         if extraFrame then
             extraFrame:Hide()
@@ -952,7 +1197,7 @@ function TableUI:CreateHeaderRow(parent, headerLabels, colWidths, layout)
 
     local currentX = 0
     for colIndex, label in ipairs(headerLabels) do
-        if colIndex <= 5 and (colWidths[colIndex] or 0) > 0 then
+        if colIndex <= 4 and (colWidths[colIndex] or 0) > 0 then
             if colIndex == 4 then
                 local sortHeaderButton = self:CreateSortHeaderButton(
                     headerRowFrame,
@@ -1086,18 +1331,10 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     rowFrame:Show()
     rowFrame.uiScale = layout.scale
     rowFrame.uiRowHeight = layout.rowHeight
-    rowFrame.__ctkContextMenuEnabled = layout.contextMenuEnabled == true
     rowFrame.rowId = rowId
 
     local rowBg = rowFrame.rowBg
     rowBg:SetAllPoints(rowFrame)
-
-    if rowFrame.__ctkDeleteBtn then
-        rowFrame.__ctkDeleteBtn:Hide()
-    end
-    if rowFrame.__ctkRestoreBtn then
-        rowFrame.__ctkRestoreBtn:Hide()
-    end
 
     local rowColor = UIConfig.GetDataRowColor(displayIndex)
     if rowInfo.isHidden then
@@ -1107,22 +1344,7 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
         rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
     end
 
-    if RowStateSystem then
-        RowStateSystem:RegisterRowFrame(rowId, rowFrame)
-        RowStateSystem:SyncRowState(rowId, rowInfo.isHidden)
-    end
-
     self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale, layout)
-
-    local notifyBtn = nil
-    if layout.showOperationColumn then
-        notifyBtn = self:CreateActionButtons(rowFrame, rowInfo, colWidths, rowBg, layout.scale)
-    elseif rowFrame.notifyBtn then
-        rowFrame.notifyBtn:Hide()
-    end
-    if RowStateSystem then
-        RowStateSystem:RegisterRowButtons(rowId, notifyBtn)
-    end
 
     table.insert(tableRows, rowFrame)
 end
@@ -1243,6 +1465,55 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
 
         if colData.isCountdown and CountdownSystem then
             CountdownSystem:RegisterText(rowInfo.rowId, cellText)
+
+            local hitArea = rowFrame.countdownHitArea
+            if not hitArea then
+                hitArea = CreateFrame("Button", nil, rowFrame)
+                hitArea:RegisterForClicks("LeftButtonUp")
+                if hitArea.SetPropagateMouseClicks then
+                    hitArea:SetPropagateMouseClicks(true)
+                end
+                if hitArea.SetPropagateMouseMotion then
+                    hitArea:SetPropagateMouseMotion(true)
+                end
+                hitArea:SetScript("OnEnter", function(self)
+                    if self.__ctkIsHidden then
+                        return
+                    end
+                    if CountdownSystem and CountdownSystem.SetRowHover then
+                        CountdownSystem:SetRowHover(self.__ctkRowId, true)
+                    end
+                end)
+                hitArea:SetScript("OnLeave", function(self)
+                    if CountdownSystem and CountdownSystem.SetRowHover then
+                        CountdownSystem:SetRowHover(self.__ctkRowId, false)
+                    end
+                end)
+                hitArea:SetScript("OnClick", function(self, button)
+                    if button ~= "LeftButton" then
+                        return
+                    end
+                    if self.__ctkIsHidden or not IsAddonEnabled() then
+                        return
+                    end
+                    if MainPanel and MainPanel.NotifyMapById then
+                        MainPanel:NotifyMapById(self.__ctkRowId)
+                    end
+                end)
+                rowFrame.countdownHitArea = hitArea
+            end
+
+            hitArea.__ctkRowId = rowInfo.rowId
+            hitArea.__ctkIsHidden = rowInfo.isHidden == true
+            hitArea:SetFrameLevel(rowFrame:GetFrameLevel() + 2)
+            hitArea:SetSize(colWidths[colIndex], rowFrame.uiRowHeight or FIXED_ROW_HEIGHT)
+            hitArea:ClearAllPoints()
+            hitArea:SetPoint("CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
+            hitArea:Show()
+        elseif colData.isCountdown then
+            if rowFrame.countdownHitArea then
+                rowFrame.countdownHitArea:Hide()
+            end
         end
 
         currentX = currentX + colWidths[colIndex]
