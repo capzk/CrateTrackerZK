@@ -59,6 +59,7 @@
     <Script file="Interface/Panels/SettingsPanelState.lua"/>
     <Script file="Interface/Panels/SettingsPanelLayout.lua"/>
     <Script file="Interface/Panels/SettingsPanelActions.lua"/>
+    <Script file="Interface/Panels/SettingsPanelView.lua"/>
     <Script file="Interface/Panels/SettingsPanel.lua"/>
     <Script file="Interface/Panels/MainPanel.lua"/>
     <Script file="Interface/Widgets/MinimapButton.lua"/>

@@ -29,6 +29,7 @@ local MAP_COL_SAFETY_PADDING = 6
 local UTF8_CHAR_PATTERN = "[%z\1-\127\194-\244][\128-\191]*"
 local TEXT_WIDTH_CACHE_LIMIT = 1024
 local TRUNCATE_CACHE_LIMIT = 2048
+local PHASE_DISPLAY_MAX_LENGTH = 4
 local textWidthCache = {}
 local textWidthCacheSize = 0
 local scaledTextWidthCache = {}
@@ -253,6 +254,18 @@ local function Clamp(value, minValue, maxValue)
     return value
 end
 
+local function SmoothStep(t)
+    local value = Clamp(t or 0, 0, 1)
+    return value * value * (3 - 2 * value)
+end
+
+local function ComputeRowsBlockHeight(rowCount, rowHeight, rowGap)
+    if (rowCount or 0) <= 0 then
+        return 0
+    end
+    return (rowCount * rowHeight) + math.max(0, rowCount - 1) * rowGap
+end
+
 local function GetBaselineFrameWidth(frame)
     local contentMax = frame and tonumber(frame.__ctkContentMaxWidth) or nil
     if contentMax then
@@ -261,17 +274,30 @@ local function GetBaselineFrameWidth(frame)
     return BASE_FRAME_WIDTH
 end
 
-local function GetScaleFactor(frame)
-    if not frame then
-        return 1
+local function GetScaledChromeMetrics(scale)
+    return {
+        scale = 1,
+        edgeGap = 12,
+        titleHeight = 22,
+        horizontalPadding = FRAME_HORIZONTAL_PADDING,
+        verticalPadding = FRAME_VERTICAL_PADDING,
+    }
+end
+
+local function GetScaledRowMetrics(scale)
+    return FIXED_ROW_HEIGHT, COMPACT_BASE_ROW_GAP
+end
+
+local function GetDefaultFrameHeightForRowCount(rowCount, allowHeaderSpace)
+    local headerTransitionHeight = (allowHeaderSpace == true) and (FIXED_ROW_HEIGHT + COMPACT_BASE_ROW_GAP) or 0
+    return ComputeRowsBlockHeight(math.max(0, rowCount or 0), FIXED_ROW_HEIGHT, COMPACT_BASE_ROW_GAP) + headerTransitionHeight + FRAME_VERTICAL_PADDING
+end
+
+local function GetScaleFactor(frame, rowCount, allowHeaderSpace)
+    if frame and rowCount ~= nil then
+        frame.__ctkBaselineFrameHeight = GetDefaultFrameHeightForRowCount(rowCount, allowHeaderSpace)
     end
-    local baselineWidth = GetBaselineFrameWidth(frame)
-    local width = frame:GetWidth() or BASE_FRAME_WIDTH
-    if not frame.isSizing and frame.__ctkWidthControlledByUser ~= true then
-        width = math.max(width, baselineWidth)
-    end
-    local widthScale = width / math.max(1, baselineWidth)
-    return Clamp(widthScale, MIN_FRAME_SCALE, MAX_FRAME_SCALE)
+    return 1
 end
 
 local function GetFrameWidth(frame)
@@ -317,16 +343,24 @@ local function GetVisibilityProfile(frame)
     return profile
 end
 
-local function GetHeaderCollapseState(frame, profile)
+local function GetHeaderWidthRatio(frame)
     local width = GetFrameWidth(frame)
     local baselineWidth = GetBaselineFrameWidth(frame)
     local t = Clamp((baselineWidth - width) / HEADER_COLLAPSE_TRANSITION_WIDTH, 0, 1)
-    local eased = t * t * (3 - 2 * t)
-    local widthRatio = 1 - eased
+    return 1 - SmoothStep(t)
+end
+
+local function GetHeaderCollapseState(frame, profile, layoutScale, rowHeight, rowGap)
+    local widthRatio = GetHeaderWidthRatio(frame)
     local heightRatio = Clamp((profile and profile.headerAlphaByHeight) or 1, 0, 1)
     local ratio = math.min(widthRatio, heightRatio)
-    local headerHeight = FIXED_ROW_HEIGHT * ratio
-    local headerGap = COMPACT_BASE_ROW_GAP * ratio
+    local baseRowHeight = rowHeight or FIXED_ROW_HEIGHT
+    local baseRowGap = rowGap
+    if baseRowGap == nil then
+        baseRowGap = COMPACT_BASE_ROW_GAP
+    end
+    local headerHeight = baseRowHeight * ratio
+    local headerGap = baseRowGap * ratio
     if headerHeight < 0.5 then
         headerHeight = 0
     end
@@ -339,21 +373,6 @@ local function GetHeaderCollapseState(frame, profile)
         alpha = ratio,
         shown = headerHeight > 0,
     }
-end
-
-local function GetSmoothCompactFontScale(frame, baseScale, profile)
-    if not profile or profile.showHeader ~= false then
-        return baseScale
-    end
-
-    local frameWidth = GetFrameWidth(frame)
-    local baselineWidth = GetBaselineFrameWidth(frame)
-    local t = Clamp((baselineWidth - frameWidth) / COMPACT_FONT_TRANSITION_WIDTH, 0, 1)
-    -- smoothstep: 消除阶段切换时字体缩放突兀跳变
-    t = t * t * (3 - 2 * t)
-
-    local targetScale = Clamp((baseScale or 1) * 1.15, 0.9, 1.1)
-    return baseScale + (targetScale - baseScale) * t
 end
 
 local function GetScaledFontSize(baseSize, scale)
@@ -529,6 +548,18 @@ local function GetMaxWidth(texts)
     return maxWidth
 end
 
+local function FormatPhaseDisplayText(phaseValue)
+    if phaseValue == nil or phaseValue == "" then
+        return nil
+    end
+
+    local text = tostring(phaseValue)
+    if #text > PHASE_DISPLAY_MAX_LENGTH then
+        text = string.sub(text, 1, PHASE_DISPLAY_MAX_LENGTH)
+    end
+    return text
+end
+
 local function BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
     local fullSamples = {}
     local shortSamples = {}
@@ -545,9 +576,10 @@ local function BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
             end
         end
 
-        if phaseValue and phaseValue ~= "" then
-            table.insert(fullSamples, string.sub(phaseValue, 1, fullCap))
-            table.insert(shortSamples, string.sub(phaseValue, 1, shortCap))
+        local displayText = FormatPhaseDisplayText(phaseValue)
+        if displayText and displayText ~= "" then
+            table.insert(fullSamples, string.sub(displayText, 1, fullCap))
+            table.insert(shortSamples, string.sub(displayText, 1, shortCap))
         end
     end
 
@@ -627,7 +659,7 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
         profile.mapCompactMinWidth = mapCompactMinWidth
     end
 
-    local phaseFullSamples, phaseShortSamples = BuildPhaseWidthSamples(rows, 10, 4)
+    local phaseFullSamples, phaseShortSamples = BuildPhaseWidthSamples(rows, PHASE_DISPLAY_MAX_LENGTH, PHASE_DISPLAY_MAX_LENGTH)
     local phaseFullDesiredSamples = {headers[2] or "", notAcquired}
     local phaseShortDesiredSamples = {headers[2] or "", notAcquired}
     local phaseFullNeedSamples = {notAcquired}
@@ -800,26 +832,30 @@ local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, prof
     return result
 end
 
-local function CalculateTableLayout(frame, profile)
+local function CalculateTableLayout(frame, profile, layoutScale, chromeMetrics, verticalMetrics)
     local tableParent = GetTableParent(frame)
     local contentWidth = tableParent and tableParent:GetWidth() or 0
 
     if contentWidth <= 1 then
         local frameWidth = frame and frame:GetWidth() or BASE_FRAME_WIDTH
-        contentWidth = math.max(1, math.floor(frameWidth - FRAME_HORIZONTAL_PADDING + 0.5))
+        local fallbackPadding = chromeMetrics and chromeMetrics.horizontalPadding or FRAME_HORIZONTAL_PADDING
+        contentWidth = math.max(1, math.floor(frameWidth - fallbackPadding + 0.5))
     end
 
-    local scale = GetScaleFactor(frame)
+    local scale = 1
     local visibilityProfile = profile or GetVisibilityProfile(frame)
-    local fontScale = GetSmoothCompactFontScale(frame, scale, visibilityProfile)
-    local headerState = GetHeaderCollapseState(frame, visibilityProfile)
-
-    local rowHeight = FIXED_ROW_HEIGHT
-    local rowGap = COMPACT_BASE_ROW_GAP
+    local fontScale = 1
+    local rowHeight = verticalMetrics and verticalMetrics.rowHeight or nil
+    local rowGap = verticalMetrics and verticalMetrics.rowGap or nil
+    if not rowHeight or not rowGap then
+        rowHeight, rowGap = GetScaledRowMetrics(scale)
+    end
+    local headerState = GetHeaderCollapseState(frame, visibilityProfile, scale, rowHeight, rowGap)
 
     return {
         parent = tableParent,
-        scale = fontScale,
+        scale = 1,
+        fontScale = fontScale,
         rowHeight = rowHeight,
         rowGap = rowGap,
         headerHeight = headerState.height,
@@ -843,55 +879,104 @@ local function GetRowsBlockHeight(rowCount, rowHeight, rowGap)
 end
 
 local function GetContentHeight(frame, tableParent)
+    local verticalPadding = frame and tonumber(frame.__ctkChromeVerticalPadding) or FRAME_VERTICAL_PADDING
     local contentHeight = tableParent and tableParent:GetHeight() or 0
     if contentHeight and contentHeight > 1 then
         return contentHeight
     end
     local frameHeight = GetFrameHeight(frame)
-    return math.max(0, math.floor(frameHeight - FRAME_VERTICAL_PADDING + 0.5))
+    return math.max(0, math.floor(frameHeight - verticalPadding + 0.5))
 end
 
-local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tableParent, allowHeaderSpace)
+local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tableParent, allowHeaderSpace, headerWidthRatio)
     local safeRowCount = math.max(0, rowCount or 0)
     local safeRowHeight = rowHeight or FIXED_ROW_HEIGHT
     local safeRowGap = rowGap or COMPACT_BASE_ROW_GAP
     local contentHeight = GetContentHeight(frame, tableParent)
     local fullRowsHeight = GetRowsBlockHeight(safeRowCount, safeRowHeight, safeRowGap)
-    local headerTransitionHeight = (allowHeaderSpace == true) and (safeRowHeight + safeRowGap) or 0
+    local fullHeaderSpace = (allowHeaderSpace == true) and (safeRowHeight + safeRowGap) or 0
+    local headerReserveRatio = Clamp(headerWidthRatio or 0, 0, 1)
+    local headerTransitionHeight = fullHeaderSpace * headerReserveRatio
     local headerAlphaByHeight = 1
     local visibleRowCount = safeRowCount
+    local fullVisibleRowCount = safeRowCount
+    local partialRowRatio = 0
+    local partialRowAlpha = 1
+    local effectiveRowHeight = safeRowHeight
+    local effectiveRowGap = safeRowGap
+    local renderedTableHeight = fullRowsHeight + headerTransitionHeight
 
     if safeRowCount <= 0 then
         headerAlphaByHeight = 0
         visibleRowCount = 0
+        fullVisibleRowCount = 0
+        renderedTableHeight = 0
     else
-        if headerTransitionHeight <= 0 then
-            headerAlphaByHeight = 0
-            local rowUnit = safeRowHeight + safeRowGap
-            local fittedRows = math.floor((contentHeight + safeRowGap) / math.max(1, rowUnit))
-            visibleRowCount = Clamp(fittedRows, 1, safeRowCount)
-        elseif contentHeight <= (fullRowsHeight + 0.5) then
-            headerAlphaByHeight = 0
-            local rowUnit = safeRowHeight + safeRowGap
-            local fittedRows = math.floor((contentHeight + safeRowGap) / math.max(1, rowUnit))
-            visibleRowCount = Clamp(fittedRows, 1, safeRowCount)
+        if headerTransitionHeight > 0 and contentHeight > (fullRowsHeight + 0.5) then
+            if contentHeight >= (fullRowsHeight + headerTransitionHeight - 0.5) then
+                headerAlphaByHeight = 1
+                renderedTableHeight = fullRowsHeight + headerTransitionHeight
+            else
+                local availableHeaderSpace = math.max(0, contentHeight - fullRowsHeight)
+                headerAlphaByHeight = Clamp(availableHeaderSpace / math.max(1, fullHeaderSpace), 0, 1)
+                renderedTableHeight = fullRowsHeight + (fullHeaderSpace * headerAlphaByHeight)
+            end
         else
-            local t = Clamp((fullRowsHeight + headerTransitionHeight - contentHeight) / math.max(1, headerTransitionHeight), 0, 1)
-            t = t * t * (3 - 2 * t)
-            headerAlphaByHeight = 1 - t
-            visibleRowCount = safeRowCount
+            headerAlphaByHeight = 0
+            renderedTableHeight = fullRowsHeight
+
+            if safeRowCount > 0 then
+                local rowUnit = effectiveRowHeight + effectiveRowGap
+                local exactRowSlots = Clamp((contentHeight + effectiveRowGap) / math.max(1, rowUnit), 0, safeRowCount)
+                fullVisibleRowCount = math.floor(exactRowSlots + 0.0001)
+                partialRowRatio = exactRowSlots - fullVisibleRowCount
+
+                if fullVisibleRowCount >= safeRowCount then
+                    fullVisibleRowCount = safeRowCount
+                    partialRowRatio = 0
+                    visibleRowCount = safeRowCount
+                elseif fullVisibleRowCount <= 0 then
+                    fullVisibleRowCount = 0
+                    partialRowRatio = Clamp(contentHeight / math.max(1, effectiveRowHeight), 0, 1)
+                    visibleRowCount = partialRowRatio > 0.001 and 1 or 0
+                else
+                    visibleRowCount = fullVisibleRowCount + (partialRowRatio > 0.001 and 1 or 0)
+                end
+
+                partialRowAlpha = partialRowRatio > 0 and SmoothStep(partialRowRatio) or 1
+                if visibleRowCount <= 0 then
+                    renderedTableHeight = 0
+                elseif partialRowRatio > 0 and visibleRowCount > fullVisibleRowCount then
+                    if fullVisibleRowCount <= 0 then
+                        renderedTableHeight = effectiveRowHeight * partialRowRatio
+                    else
+                        renderedTableHeight = GetRowsBlockHeight(fullVisibleRowCount, effectiveRowHeight, effectiveRowGap)
+                            + (effectiveRowGap * partialRowRatio)
+                            + (effectiveRowHeight * partialRowRatio)
+                    end
+                else
+                    renderedTableHeight = GetRowsBlockHeight(visibleRowCount, effectiveRowHeight, effectiveRowGap)
+                end
+            end
         end
     end
 
-    local minTableHeight = safeRowCount > 0 and safeRowHeight or 0
+    local minTableHeight = safeRowCount > 0 and 1 or 0
     local maxTableHeight = fullRowsHeight + headerTransitionHeight
-    local shouldAutoCompactSort = safeRowCount > 1 and headerAlphaByHeight <= 0.001 and contentHeight <= (fullRowsHeight + 0.5)
+    local effectiveHeaderRatio = math.min(headerReserveRatio, headerAlphaByHeight)
+    local shouldAutoCompactSort = safeRowCount > 1 and effectiveHeaderRatio <= 0.001 and contentHeight <= (fullRowsHeight + 0.5)
 
     return {
         contentHeight = contentHeight,
         fullRowsHeight = fullRowsHeight,
         headerAlphaByHeight = headerAlphaByHeight,
         visibleRowCount = visibleRowCount,
+        fullVisibleRowCount = fullVisibleRowCount,
+        partialRowRatio = partialRowRatio,
+        partialRowAlpha = partialRowAlpha,
+        rowHeight = effectiveRowHeight,
+        rowGap = effectiveRowGap,
+        renderedTableHeight = renderedTableHeight,
         minTableHeight = minTableHeight,
         maxTableHeight = maxTableHeight,
         shouldAutoCompactSort = shouldAutoCompactSort,
@@ -918,6 +1003,9 @@ local function AcquireRowFrame(parent, index)
 
     rowFrame = CreateFrame("Frame", nil, parent)
     rowFrame:EnableMouse(true)
+    if rowFrame.SetClipsChildren then
+        rowFrame:SetClipsChildren(true)
+    end
     rowFrame.rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
     rowFrame.rowBg:SetAllPoints(rowFrame)
     rowFrame.cellTexts = {}
@@ -945,15 +1033,35 @@ function TableUI:RebuildUI(frame, headerLabels)
     end
 
     local rows = BuildVisibleRows()
+    local layoutScale = GetScaleFactor(frame, #rows, visibilityProfile.showHeader == true)
+    local chromeMetrics = GetScaledChromeMetrics(1)
+    local rowHeight, rowGap = GetScaledRowMetrics(1)
+    local headerWidthRatio = visibilityProfile.showHeader == true and GetHeaderWidthRatio(frame) or 0
+    frame.__ctkLayoutScale = layoutScale
+    frame.__ctkChromeHorizontalPadding = chromeMetrics.horizontalPadding
+    frame.__ctkChromeVerticalPadding = chromeMetrics.verticalPadding
+    frame.__ctkBaselineFrameHeight = GetDefaultFrameHeightForRowCount(#rows, visibilityProfile.showHeader == true)
     local verticalMetrics = BuildVerticalMetrics(
         frame,
         #rows,
-        FIXED_ROW_HEIGHT,
-        COMPACT_BASE_ROW_GAP,
+        rowHeight,
+        rowGap,
         tableParent,
-        visibilityProfile.showHeader == true
+        visibilityProfile.showHeader == true,
+        headerWidthRatio
     )
-    local shouldAutoCompactSort = (frame.__ctkHeightControlledByUser == true or frame.isSizing == true) and verticalMetrics.shouldAutoCompactSort
+    local frameWidth = frame:GetWidth() or BASE_FRAME_WIDTH
+    local frameHeight = GetFrameHeight(frame)
+    local sizingStartHeight = tonumber(frame.__ctkSizingStartHeight) or frameHeight
+    local autoHeightSyncValue = tonumber(frame.__ctkAutoHeightSyncValue) or nil
+    local manualHeightReference = autoHeightSyncValue or sizingStartHeight
+    local manualSizingHeightDelta = math.abs(frameHeight - manualHeightReference)
+    local verticalCompactSortEligible = verticalMetrics.shouldAutoCompactSort
+        and (
+            frame.__ctkHeightControlledByUser == true
+            or (frame.isSizing and manualSizingHeightDelta > 2)
+        )
+    local shouldAutoCompactSort = verticalCompactSortEligible == true
     if SortingSystem and SortingSystem.SetCompactAutoSortEnabled then
         local sortChanged = SortingSystem:SetCompactAutoSortEnabled(shouldAutoCompactSort)
         if sortChanged then
@@ -961,17 +1069,18 @@ function TableUI:RebuildUI(frame, headerLabels)
             verticalMetrics = BuildVerticalMetrics(
                 frame,
                 #rows,
-                FIXED_ROW_HEIGHT,
-                COMPACT_BASE_ROW_GAP,
+                rowHeight,
+                rowGap,
                 tableParent,
-                visibilityProfile.showHeader == true
+                visibilityProfile.showHeader == true,
+                headerWidthRatio
             )
         end
     end
     visibilityProfile.headerAlphaByHeight = verticalMetrics.headerAlphaByHeight
 
-    local layout = CalculateTableLayout(frame, visibilityProfile)
-    local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.scale, visibilityProfile)
+    local layout = CalculateTableLayout(frame, visibilityProfile, layoutScale, chromeMetrics, verticalMetrics)
+    local colWidths = CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.fontScale, visibilityProfile)
     local mapNaturalWidth = visibilityProfile.mapNaturalWidth or (colWidths[1] or 0)
     local mapCompressed = ((colWidths[1] or 0) + 0.5) < mapNaturalWidth
     if frame.__ctkMapColumnCompressed ~= mapCompressed then
@@ -980,6 +1089,8 @@ function TableUI:RebuildUI(frame, headerLabels)
             MainFrame:ApplyScaledChrome(frame)
         end
     end
+    layout.scale = 1
+    layout.fontScale = 1
     layout.showPhaseColumn = visibilityProfile.showPhaseColumn == true
     layout.showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true
     layout.phaseShortMode = visibilityProfile.phaseShortMode == true
@@ -987,9 +1098,7 @@ function TableUI:RebuildUI(frame, headerLabels)
     local userControlledWidth = frame.__ctkWidthControlledByUser == true
     local userControlledHeight = frame.__ctkHeightControlledByUser == true
 
-    local frameWidth = frame:GetWidth() or BASE_FRAME_WIDTH
-    local frameHeight = GetFrameHeight(frame)
-    local horizontalPadding = FRAME_HORIZONTAL_PADDING
+    local horizontalPadding = chromeMetrics.horizontalPadding
     local defaultProfile = {
         showHeader = true,
         showPhaseColumn = true,
@@ -1012,8 +1121,8 @@ function TableUI:RebuildUI(frame, headerLabels)
     end
 
     local requiredMaxFrameWidth = Clamp(desiredFrameWidth, requiredMinFrameWidth, BASE_FRAME_WIDTH)
-    local requiredMinFrameHeight = math.max(1, math.floor((verticalMetrics.minTableHeight + FRAME_VERTICAL_PADDING) + 0.5))
-    local requiredMaxFrameHeight = math.max(requiredMinFrameHeight, math.floor((verticalMetrics.maxTableHeight + FRAME_VERTICAL_PADDING) + 0.5))
+    local requiredMinFrameHeight = math.max(1, math.floor((verticalMetrics.minTableHeight + chromeMetrics.verticalPadding) + 0.5))
+    local requiredMaxFrameHeight = math.max(requiredMinFrameHeight, math.floor((verticalMetrics.maxTableHeight + chromeMetrics.verticalPadding) + 0.5))
     local debugPayload = {
         frameWidth = math.floor(frameWidth + 0.5),
         frameHeight = math.floor(frameHeight + 0.5),
@@ -1027,6 +1136,8 @@ function TableUI:RebuildUI(frame, headerLabels)
         defaultTableWidth = defaultTableWidth,
         userControlled = userControlledWidth,
         userControlledHeight = userControlledHeight,
+        layoutScale = layoutScale,
+        autoCompactSort = shouldAutoCompactSort,
         showHeader = visibilityProfile.showHeader == true,
         isSizing = frame.isSizing == true,
         visibleRows = verticalMetrics.visibleRowCount,
@@ -1068,6 +1179,9 @@ function TableUI:RebuildUI(frame, headerLabels)
     local targetWidth = frameWidth
     local targetHeight = frameHeight
     local resizeStage = "stable"
+    local sizingAutoHeightSync = frame.isSizing
+        and userControlledHeight ~= true
+        and requiredMaxFrameHeight < (frameHeight - 0.5)
 
     if not userControlledWidth and not frame.isSizing and math.abs(targetWidth - desiredFrameWidth) > 0.5 then
         targetWidth = desiredFrameWidth
@@ -1078,6 +1192,15 @@ function TableUI:RebuildUI(frame, headerLabels)
         if resizeStage == "stable" then
             resizeStage = "snap-default-height"
         end
+    end
+    if sizingAutoHeightSync and math.abs(targetHeight - requiredMaxFrameHeight) > 0.5 then
+        targetHeight = requiredMaxFrameHeight
+        frame.__ctkAutoHeightSyncValue = targetHeight
+        if resizeStage == "stable" then
+            resizeStage = "sync-height-with-header-reserve"
+        end
+    elseif frame.isSizing and manualSizingHeightDelta > 2 then
+        frame.__ctkAutoHeightSyncValue = nil
     end
 
     if targetWidth + 0.5 < requiredMinFrameWidth then
@@ -1122,13 +1245,34 @@ function TableUI:RebuildUI(frame, headerLabels)
 
     EmitResizeDebug(frame, "stable", debugPayload)
 
-    local rowsToRender = rows
-    local visibleRowCount = math.max(0, math.min(verticalMetrics.visibleRowCount or #rows, #rows))
-    if visibleRowCount < #rows then
-        rowsToRender = {}
-        for idx = 1, visibleRowCount do
-            rowsToRender[#rowsToRender + 1] = rows[idx]
+    local rowsToRender = {}
+    local fullVisibleRowCount = math.max(0, math.min(verticalMetrics.fullVisibleRowCount or 0, #rows))
+    local partialRowRatio = Clamp(verticalMetrics.partialRowRatio or 0, 0, 1)
+    local currentSlotY = 0
+
+    for idx = 1, fullVisibleRowCount do
+        if idx > 1 then
+            currentSlotY = currentSlotY + layout.rowGap
         end
+        rowsToRender[#rowsToRender + 1] = {
+            rowInfo = rows[idx],
+            slotY = currentSlotY,
+            height = layout.rowHeight,
+            alpha = 1,
+        }
+        currentSlotY = currentSlotY + layout.rowHeight
+    end
+
+    if partialRowRatio > 0 and (fullVisibleRowCount + 1) <= #rows then
+        if fullVisibleRowCount > 0 then
+            currentSlotY = currentSlotY + (layout.rowGap * partialRowRatio)
+        end
+        rowsToRender[#rowsToRender + 1] = {
+            rowInfo = rows[fullVisibleRowCount + 1],
+            slotY = currentSlotY,
+            height = math.max(1, layout.rowHeight * partialRowRatio),
+            alpha = verticalMetrics.partialRowAlpha or partialRowRatio,
+        }
     end
 
     HideVisibleFrames()
@@ -1147,8 +1291,8 @@ function TableUI:RebuildUI(frame, headerLabels)
         headerRowFrame:Hide()
     end
 
-    for displayIndex, rowInfo in ipairs(rowsToRender) do
-        self:CreateDataRow(layout.parent, rowInfo, displayIndex, colWidths, layout)
+    for displayIndex, rowState in ipairs(rowsToRender) do
+        self:CreateDataRow(layout.parent, rowState, displayIndex, colWidths, layout)
     end
 
     for idx = #rowsToRender + 1, #rowFramePool do
@@ -1281,7 +1425,7 @@ function TableUI:CreateSortHeaderButton(parent, label, colWidth, layout, current
     buttonText:SetText(label)
     local textColor = cfg.GetTextColor("normal")
     buttonText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
-    ApplyFontScale(buttonText, layout.scale)
+    ApplyFontScale(buttonText, layout.fontScale or 1)
 
     return sortHeaderButton
 end
@@ -1311,26 +1455,30 @@ function TableUI:CreateHeaderText(parent, label, colIndex, colWidth, layout, cur
     cellText:SetShadowOffset(0, 0)
     local textColor = cfg.GetTextColor("normal")
     cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
-    ApplyFontScale(cellText, layout.scale)
+    ApplyFontScale(cellText, layout.fontScale or 1)
     return cellText
 end
 
-function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
+function TableUI:CreateDataRow(parent, rowState, displayIndex, colWidths, layout)
+    local rowInfo = rowState and rowState.rowInfo or rowState
     local rowId = rowInfo.rowId
     local headerOffsetY = 0
     if layout.showHeader then
         headerOffsetY = (layout.headerHeight or layout.rowHeight) + (layout.headerGap or layout.rowGap)
     end
-    local slotY = headerOffsetY + (layout.rowHeight + layout.rowGap) * (displayIndex - 1)
+    local slotY = headerOffsetY + (rowState and rowState.slotY or ((layout.rowHeight + layout.rowGap) * (displayIndex - 1)))
+    local renderHeight = math.max(1, rowState and rowState.height or layout.rowHeight)
+    local renderAlpha = Clamp(rowState and rowState.alpha or 1, 0, 1)
     local rowFrame = AcquireRowFrame(parent, displayIndex)
-    rowFrame:SetSize(layout.activeTableWidth or layout.tableWidth, layout.rowHeight)
+    rowFrame:SetSize(layout.activeTableWidth or layout.tableWidth, renderHeight)
     rowFrame:ClearAllPoints()
     rowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
     rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
-    rowFrame:SetAlpha(1.0)
+    rowFrame:SetAlpha(renderAlpha)
     rowFrame:Show()
     rowFrame.uiScale = layout.scale
-    rowFrame.uiRowHeight = layout.rowHeight
+    rowFrame.uiFontScale = layout.fontScale or 1
+    rowFrame.uiRowHeight = renderHeight
     rowFrame.rowId = rowId
 
     local rowBg = rowFrame.rowBg
@@ -1339,12 +1487,12 @@ function TableUI:CreateDataRow(parent, rowInfo, displayIndex, colWidths, layout)
     local rowColor = UIConfig.GetDataRowColor(displayIndex)
     if rowInfo.isHidden then
         rowBg:SetColorTexture(0.5, 0.5, 0.5, 0.3)
-        rowFrame:SetAlpha(0.6)
+        rowFrame:SetAlpha(renderAlpha * 0.6)
     else
         rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
     end
 
-    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, layout.scale, layout)
+    self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, rowFrame.uiFontScale, layout)
 
     table.insert(tableRows, rowFrame)
 end
@@ -1364,12 +1512,8 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
     local hasCurrentPhase = rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= ""
     local phaseText = L["NotAcquired"] or "---:---"
     local phaseColor = cfg.GetTextColor("normal")
-    local phaseMaxLength = (layout and layout.phaseShortMode) and 4 or 10
     if hasCurrentPhase then
-        phaseText = tostring(rowInfo.currentPhaseID)
-        if #phaseText > phaseMaxLength then
-            phaseText = string.sub(phaseText, 1, phaseMaxLength)
-        end
+        phaseText = FormatPhaseDisplayText(rowInfo.currentPhaseID) or phaseText
         if rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.color then
             phaseColor = {rowInfo.phaseDisplayInfo.color.r, rowInfo.phaseDisplayInfo.color.g, rowInfo.phaseDisplayInfo.color.b, 1}
         else
@@ -1377,10 +1521,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
         end
     else
         if rowInfo.lastRefreshPhase and rowInfo.lastRefreshPhase ~= "" then
-            phaseText = tostring(rowInfo.lastRefreshPhase)
-            if #phaseText > phaseMaxLength then
-                phaseText = string.sub(phaseText, 1, phaseMaxLength)
-            end
+            phaseText = FormatPhaseDisplayText(rowInfo.lastRefreshPhase) or phaseText
         end
     end
 
@@ -1432,7 +1573,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
             cellText:SetJustifyH("CENTER")
         end
 
-        ApplyFontScale(cellText, scale)
+        ApplyFontScale(cellText, layout and layout.fontScale or 1)
 
         local textValue = colData.text or ""
         if colIndex == 1 then

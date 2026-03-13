@@ -25,11 +25,42 @@ local COMPACT_BASE_ROW_GAP = 2
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
 local FIXED_TITLE_HEIGHT = 22
 local FIXED_CONTENT_EDGE_GAP = 12
+local function GetChromeMetrics(scale)
+    local resolvedScale = scale or 1
+    local titleHeight = FIXED_TITLE_HEIGHT
+    local edgeGap = FIXED_CONTENT_EDGE_GAP
+    local buttonSize = 16
+    local buttonInsetX = 12
+    local buttonInsetY = 3
+    local dotSize = 2
+    local dotOffset = 3
+    local closeLineWidth = 8
+    local closeLineHeight = 1
+    local handleSize = 16
+    local handleInset = 2
+    local sideWidth = 20
+    local bottomHeight = 30
+    local buttonGap = 7
 
-local function GetFixedTableInsets()
-    local tableInset = FIXED_CONTENT_EDGE_GAP
-    local tableTopInset = FIXED_TITLE_HEIGHT + FIXED_CONTENT_EDGE_GAP
-    return tableInset, tableTopInset
+    return {
+        scale = resolvedScale,
+        titleHeight = titleHeight,
+        edgeGap = edgeGap,
+        tableInset = edgeGap,
+        tableTopInset = titleHeight + edgeGap,
+        buttonSize = buttonSize,
+        buttonInsetX = buttonInsetX,
+        buttonInsetY = buttonInsetY,
+        dotSize = dotSize,
+        dotOffset = dotOffset,
+        closeLineWidth = closeLineWidth,
+        closeLineHeight = closeLineHeight,
+        handleSize = handleSize,
+        handleInset = handleInset,
+        sideWidth = sideWidth,
+        bottomHeight = bottomHeight,
+        buttonGap = buttonGap,
+    }
 end
 
 local function IsFiniteNumber(value)
@@ -218,7 +249,9 @@ local function GetCompactFixedHeight(width)
     local fixedRowHeight = COMPACT_FIXED_ROW_HEIGHT
     local rowGap = COMPACT_BASE_ROW_GAP
 
-    local tableInset, tableTopInset = GetFixedTableInsets()
+    local chromeMetrics = GetChromeMetrics(1)
+    local tableInset = chromeMetrics.tableInset
+    local tableTopInset = chromeMetrics.tableTopInset
 
     local rowsHeight = rowCount * fixedRowHeight + math.max(0, rowCount - 1) * rowGap
     local headerExtra = GetHeaderTransitionExtraHeight(width)
@@ -264,8 +297,7 @@ local function ApplyFontScale(fontString, scale, minSize, maxSize)
 end
 
 local function GetFrameScale(frame)
-    local width = frame and frame:GetWidth() or FRAME_CFG.width
-    return Clamp(width / FRAME_CFG.width, FRAME_CFG.minScale, FRAME_CFG.maxScale)
+    return 1
 end
 
 local function GetEffectiveMinWidth(frame)
@@ -320,21 +352,12 @@ function MainFrame:ApplyScaledChrome(frame, scale)
         return
     end
     local scaled = scale or GetFrameScale(frame)
-    local fixedTitleHeight = FIXED_TITLE_HEIGHT
-    local fixedTitleButtonSize = 16
-    local fixedTitleInsetY = -3
-    local fixedSettingsInsetX = -35
-    local fixedCloseInsetX = -12
-    local fixedDotSize = 2
-    local fixedDotOffset = 3
-    local fixedCloseLineWidth = 8
-    local fixedCloseLineHeight = 1
-    local handleSize = math.max(12, math.floor(16 * scaled + 0.5))
-    local handleInset = math.max(1, math.floor(2 * scaled + 0.5))
-    local titleHeight = fixedTitleHeight
-    local sideWidth = math.max(14, math.floor(20 * scaled + 0.5))
-    local bottomHeight = math.max(20, math.floor(30 * scaled + 0.5))
-    local tableInset, tableTopInset = GetFixedTableInsets()
+    local chromeMetrics = GetChromeMetrics(scaled)
+    local titleHeight = chromeMetrics.titleHeight
+    local sideWidth = chromeMetrics.sideWidth
+    local bottomHeight = chromeMetrics.bottomHeight
+    local tableInset = chromeMetrics.tableInset
+    local tableTopInset = chromeMetrics.tableTopInset
 
     if frame.titleDragArea then
         frame.titleDragArea:SetHeight(titleHeight)
@@ -343,7 +366,7 @@ function MainFrame:ApplyScaledChrome(frame, scale)
         frame.bottomDragArea:SetHeight(bottomHeight)
         frame.bottomDragArea:ClearAllPoints()
         frame.bottomDragArea:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 1, 1)
-        frame.bottomDragArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(handleSize + handleInset + 4), 1)
+        frame.bottomDragArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(chromeMetrics.handleSize + chromeMetrics.handleInset + 4), 1)
     end
     if frame.leftDragArea then
         frame.leftDragArea:SetWidth(sideWidth)
@@ -362,7 +385,6 @@ function MainFrame:ApplyScaledChrome(frame, scale)
         frame.titleBg:SetHeight(titleHeight)
     end
     if frame.titleText then
-        -- 标题字体保持固定，不随窗口缩放
         ApplyFontScale(frame.titleText, 1, 8, 16)
         if IsAtMinimumWidth(frame) or frame.__ctkMapColumnCompressed == true then
             frame.titleText:Hide()
@@ -372,33 +394,37 @@ function MainFrame:ApplyScaledChrome(frame, scale)
     end
 
     if frame.settingsButton then
-        frame.settingsButton:SetSize(fixedTitleButtonSize, fixedTitleButtonSize)
+        frame.settingsButton:SetSize(chromeMetrics.buttonSize, chromeMetrics.buttonSize)
         frame.settingsButton:ClearAllPoints()
-        frame.settingsButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", fixedSettingsInsetX, fixedTitleInsetY)
+        if frame.closeButton then
+            frame.settingsButton:SetPoint("TOPRIGHT", frame.closeButton, "TOPLEFT", -chromeMetrics.buttonGap, 0)
+        else
+            frame.settingsButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -chromeMetrics.buttonInsetX, -chromeMetrics.buttonInsetY)
+        end
         if frame.settingsDot1 then
-            frame.settingsDot1:SetSize(fixedDotSize, fixedDotSize)
+            frame.settingsDot1:SetSize(chromeMetrics.dotSize, chromeMetrics.dotSize)
             frame.settingsDot1:ClearAllPoints()
-            frame.settingsDot1:SetPoint("CENTER", frame.settingsButton, "CENTER", -fixedDotOffset, 0)
+            frame.settingsDot1:SetPoint("CENTER", frame.settingsButton, "CENTER", -chromeMetrics.dotOffset, 0)
         end
         if frame.settingsDot2 then
-            frame.settingsDot2:SetSize(fixedDotSize, fixedDotSize)
+            frame.settingsDot2:SetSize(chromeMetrics.dotSize, chromeMetrics.dotSize)
             frame.settingsDot2:ClearAllPoints()
             frame.settingsDot2:SetPoint("CENTER", frame.settingsButton, "CENTER", 0, 0)
         end
         if frame.settingsDot3 then
-            frame.settingsDot3:SetSize(fixedDotSize, fixedDotSize)
+            frame.settingsDot3:SetSize(chromeMetrics.dotSize, chromeMetrics.dotSize)
             frame.settingsDot3:ClearAllPoints()
-            frame.settingsDot3:SetPoint("CENTER", frame.settingsButton, "CENTER", fixedDotOffset, 0)
+            frame.settingsDot3:SetPoint("CENTER", frame.settingsButton, "CENTER", chromeMetrics.dotOffset, 0)
         end
     end
 
     if frame.closeButton then
-        frame.closeButton:SetSize(fixedTitleButtonSize, fixedTitleButtonSize)
+        frame.closeButton:SetSize(chromeMetrics.buttonSize, chromeMetrics.buttonSize)
         frame.closeButton:ClearAllPoints()
-        frame.closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", fixedCloseInsetX, fixedTitleInsetY)
+        frame.closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -chromeMetrics.buttonInsetX, -chromeMetrics.buttonInsetY)
     end
     if frame.closeLine then
-        frame.closeLine:SetSize(fixedCloseLineWidth, fixedCloseLineHeight)
+        frame.closeLine:SetSize(chromeMetrics.closeLineWidth, chromeMetrics.closeLineHeight)
     end
 
     if frame.tableContainer then
@@ -408,9 +434,9 @@ function MainFrame:ApplyScaledChrome(frame, scale)
     end
 
     if frame.mainFrameResizeHandle then
-        frame.mainFrameResizeHandle:SetSize(handleSize, handleSize)
+        frame.mainFrameResizeHandle:SetSize(chromeMetrics.handleSize, chromeMetrics.handleSize)
         frame.mainFrameResizeHandle:ClearAllPoints()
-        frame.mainFrameResizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -handleInset, handleInset)
+        frame.mainFrameResizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -chromeMetrics.handleInset, chromeMetrics.handleInset)
     end
 end
 
@@ -419,7 +445,6 @@ function MainFrame:NormalizeSize(frame)
         return
     end
     local currentWidth = frame:GetWidth() or FRAME_CFG.width
-    local _, scale = GetAdaptiveHeightForWidth(currentWidth)
     local minHeight = GetEffectiveMinHeight(frame)
     local maxHeight = GetEffectiveMaxHeight(frame, minHeight)
     local currentHeight = frame:GetHeight() or maxHeight
@@ -436,7 +461,7 @@ function MainFrame:NormalizeSize(frame)
         frame:SetHeight(targetHeight)
         frame.isNormalizingSize = nil
     end
-    self:ApplyScaledChrome(frame, scale)
+    self:ApplyScaledChrome(frame, GetFrameScale(frame))
 end
 
 function MainFrame:ApplyAdaptiveResizeBounds(frame)
@@ -875,6 +900,9 @@ function MainFrame:CreateResizeHandle(frame)
             return
         end
         frame.isSizing = false
+        frame.__ctkSizingStartWidth = nil
+        frame.__ctkSizingStartHeight = nil
+        frame.__ctkAutoHeightSyncValue = nil
         local finalWidth = frame:GetWidth() or FRAME_CFG.width
         local finalHeight = frame:GetHeight() or FRAME_CFG.height
         local maxWidth = tonumber(frame.__ctkContentMaxWidth) or FRAME_CFG.width
@@ -901,6 +929,9 @@ function MainFrame:CreateResizeHandle(frame)
             return
         end
         frame.isSizing = true
+        frame.__ctkSizingStartWidth = frame:GetWidth() or FRAME_CFG.width
+        frame.__ctkSizingStartHeight = frame:GetHeight() or FRAME_CFG.height
+        frame.__ctkAutoHeightSyncValue = nil
         SetResizeHandleVisible(true)
         StartLayoutRefreshTicker()
         frame:StartSizing("BOTTOMRIGHT")

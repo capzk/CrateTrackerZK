@@ -5,6 +5,8 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local Notification = BuildEnv("Notification")
 local ThemeConfig = BuildEnv("ThemeConfig")
 local ExpansionConfig = BuildEnv("ExpansionConfig")
+local Data = BuildEnv("Data")
+local Localization = BuildEnv("Localization")
 
 function SettingsPanelState:LT(key, fallback)
     local L = CrateTrackerZK and CrateTrackerZK.L
@@ -94,19 +96,36 @@ function SettingsPanelState:IsExpansionSwitchEnabled()
     return ExpansionConfig and ExpansionConfig.IsSwitchEnabled and ExpansionConfig:IsSwitchEnabled()
 end
 
-function SettingsPanelState:GetExpansionOptions()
+function SettingsPanelState:GetCurrentExpansionID()
+    if Data and Data.GetCurrentExpansionID then
+        local expansionID = Data:GetCurrentExpansionID()
+        if expansionID then
+            return expansionID
+        end
+    end
+    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
+        return ExpansionConfig:GetCurrentExpansionID()
+    end
+    return nil
+end
+
+function SettingsPanelState:GetAvailableExpansions()
     if ExpansionConfig and ExpansionConfig.GetAvailableExpansions then
         return ExpansionConfig:GetAvailableExpansions() or {}
     end
     return {}
 end
 
+function SettingsPanelState:GetExpansionOptions()
+    return self:GetAvailableExpansions()
+end
+
 function SettingsPanelState:GetCurrentExpansionButtonText()
     if not self:IsExpansionSwitchEnabled() then
         return self:LT("SettingsToggleOff", "已关闭")
     end
-    local expansionID = ExpansionConfig and ExpansionConfig.GetCurrentExpansionID and ExpansionConfig:GetCurrentExpansionID()
-    local options = self:GetExpansionOptions()
+    local expansionID = self:GetCurrentExpansionID()
+    local options = self:GetAvailableExpansions()
     for _, option in ipairs(options) do
         if option.id == expansionID then
             return option.id
@@ -138,6 +157,60 @@ function SettingsPanelState:GetCurrentThemeButtonText()
         end
     end
     return currentID or "N/A"
+end
+
+function SettingsPanelState:GetMapDisplayName(mapID)
+    if Localization and Localization.GetMapName then
+        return Localization:GetMapName(mapID)
+    end
+    return "Map " .. tostring(mapID)
+end
+
+function SettingsPanelState:GetExpansionMapOptions(expansionID)
+    local result = {}
+    local targetExpansionID = expansionID or self:GetCurrentExpansionID()
+    local expansion = ExpansionConfig and ExpansionConfig.expansions and ExpansionConfig.expansions[targetExpansionID]
+    if not expansion then
+        return result
+    end
+
+    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps(targetExpansionID)) or {}
+    for _, mapID in ipairs(expansion.mapIDs or {}) do
+        if type(mapID) == "number" and not (ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(mapID)) then
+            result[#result + 1] = {
+                id = mapID,
+                label = self:GetMapDisplayName(mapID),
+                visible = hiddenMaps[mapID] ~= true,
+            }
+        end
+    end
+
+    return result
+end
+
+function SettingsPanelState:GetSettingsSnapshot()
+    local addonEnabled = self:IsAddonEnabled()
+    local teamEnabled = addonEnabled and self:IsTeamNotificationEnabled()
+    local soundEnabled = addonEnabled and self:IsSoundAlertEnabled()
+    local autoEnabled = addonEnabled and teamEnabled and self:IsAutoTeamReportEnabled()
+    local currentExpansionID = self:GetCurrentExpansionID()
+
+    return {
+        addonEnabled = addonEnabled,
+        teamNotificationEnabled = teamEnabled,
+        teamNotificationInteractable = addonEnabled,
+        soundAlertEnabled = soundEnabled,
+        soundAlertInteractable = addonEnabled,
+        autoReportEnabled = autoEnabled,
+        autoReportInteractable = addonEnabled and teamEnabled,
+        autoReportInterval = self:GetAutoTeamReportInterval(),
+        autoReportIntervalInteractable = addonEnabled and teamEnabled and autoEnabled,
+        themeEnabled = self:IsThemeSwitchEnabled(),
+        themeText = self:GetCurrentThemeButtonText(),
+        currentExpansionID = currentExpansionID,
+        expansionOptions = self:GetAvailableExpansions(),
+        mapOptions = self:GetExpansionMapOptions(currentExpansionID),
+    }
 end
 
 return SettingsPanelState
