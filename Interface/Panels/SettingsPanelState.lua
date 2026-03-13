@@ -16,35 +16,6 @@ function SettingsPanelState:LT(key, fallback)
     return fallback
 end
 
-function SettingsPanelState:GetTabLabel(key)
-    if key == "settings" then
-        return self:LT("SettingsTabSettings", "设置")
-    end
-    if key == "help" then
-        return self:LT("MenuHelp", "帮助")
-    end
-    if key == "about" then
-        return self:LT("MenuAbout", "关于")
-    end
-    return tostring(key)
-end
-
-function SettingsPanelState:ResolveTabKey(tabName)
-    if tabName == "settings" or tabName == "help" or tabName == "about" then
-        return tabName
-    end
-    if tabName == self:GetTabLabel("settings") then
-        return "settings"
-    end
-    if tabName == self:GetTabLabel("help") then
-        return "help"
-    end
-    if tabName == self:GetTabLabel("about") then
-        return "about"
-    end
-    return nil
-end
-
 function SettingsPanelState:IsAddonEnabled()
     if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
         return true

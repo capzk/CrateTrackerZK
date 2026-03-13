@@ -1,7 +1,5 @@
 local SettingsPanelView = BuildEnv("CrateTrackerZKSettingsPanelView")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local HelpTextProvider = BuildEnv("HelpTextProvider")
-local AboutTextProvider = BuildEnv("AboutTextProvider")
 local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
 local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
 local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
@@ -32,6 +30,17 @@ local navButtons = {}
 local pages = {}
 local controls = {}
 local currentPage = SettingsPanelView.PAGE_MAIN
+local ABOUT_TEXT = [[
+
+Maintainer:
+capzk
+
+Source Code:
+https://github.com/capzk/CrateTrackerZK
+
+Addon Release Page:
+https://www.curseforge.com/wow/addons/cratetrackerzk
+]]
 
 local function LT(key, fallback)
     if SettingsPanelState and SettingsPanelState.LT then
@@ -182,6 +191,18 @@ local function CreateActionButton(parent, text, width, onClick)
     return button
 end
 
+local function UpdateButtonText(button, text, minWidth)
+    if not button then
+        return
+    end
+    button:SetText(text or "")
+    local width = minWidth or 120
+    if button.GetFontString and button:GetFontString() and button:GetFontString().GetStringWidth then
+        width = math.max(width, math.ceil(button:GetFontString():GetStringWidth() + 24))
+    end
+    button:SetWidth(width)
+end
+
 local function CreateValueRow(parent, anchor, labelText, buttonText, buttonWidth, onClick)
     local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
@@ -199,6 +220,21 @@ local function CreateValueRow(parent, anchor, labelText, buttonText, buttonWidth
     return {
         label = label,
         value = value,
+        button = button,
+    }
+end
+
+local function CreateInlineButtonRow(parent, anchor, labelText, buttonText, buttonWidth, onClick)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
+    label:SetJustifyH("LEFT")
+    label:SetText(labelText or "")
+
+    local button = CreateActionButton(parent, buttonText, buttonWidth, onClick)
+    button:SetPoint("LEFT", label, "RIGHT", 16, 0)
+
+    return {
+        label = label,
         button = button,
     }
 end
@@ -256,6 +292,10 @@ local function CreateScrollableContent(parent, text)
     return label
 end
 
+local function GetHelpText()
+    return LT("SettingsHelpText", "")
+end
+
 local function RefreshExpansionSelectors(expansionOptions, currentExpansionID)
     local selectorGroup = controls.expansionSelectors
     if not selectorGroup then
@@ -285,7 +325,11 @@ local function RefreshExpansionSelectors(expansionOptions, currentExpansionID)
         end
 
         checkbox:ClearAllPoints()
-        checkbox:SetPoint("TOPLEFT", previous or selectorGroup.anchor, previous and "BOTTOMLEFT" or "BOTTOMLEFT", 0, previous and -8 or -12)
+        if previous then
+            checkbox:SetPoint("LEFT", previous, "RIGHT", 64, 0)
+        else
+            checkbox:SetPoint("TOPLEFT", selectorGroup.anchor, "BOTTOMLEFT", 0, -12)
+        end
         checkbox.expansionID = option.id
         checkbox.label:SetText(option.label or option.id)
         checkbox:SetChecked(option.id == currentExpansionID)
@@ -360,12 +404,12 @@ local function BuildMainPage(parent)
 
     local selectorGroup = CreateFrame("Frame", nil, page)
     selectorGroup:SetPoint("TOPLEFT", controls.expansionLabel, "BOTTOMLEFT", 0, 0)
-    selectorGroup:SetSize(320, 100)
+    selectorGroup:SetSize(520, 28)
     selectorGroup.anchor = controls.expansionLabel
     selectorGroup.checkboxes = {}
     controls.expansionSelectors = selectorGroup
 
-    controls.versionMapListLabel = CreateSectionLabel(page, selectorGroup, "地图列表")
+    controls.versionMapListLabel = CreateSectionLabel(page, selectorGroup, LT("SettingsMapList", "地图列表"))
 
     local mapList = CreateFrame("Frame", nil, page)
     mapList:SetPoint("TOPLEFT", controls.versionMapListLabel, "BOTTOMLEFT", 0, 0)
@@ -412,12 +456,12 @@ local function BuildAppearancePage(parent)
     local page = CreatePageFrame(parent)
     pages[SettingsPanelView.PAGE_APPEARANCE] = page
 
-    controls.theme = CreateValueRow(
+    controls.theme = CreateInlineButtonRow(
         page,
         page.topAnchor,
         LT("SettingsThemeSwitch", "界面主题"),
-        LT("SettingsThemeSwitch", "界面主题"),
-        140,
+        "N/A",
+        160,
         function()
             if SettingsPanelActions and SettingsPanelActions.CycleTheme then
                 SettingsPanelActions:CycleTheme()
@@ -431,20 +475,6 @@ local function BuildDataPage(parent)
     local page = CreatePageFrame(parent)
     pages[SettingsPanelView.PAGE_DATA] = page
 
-    local title = page:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    title:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
-    title:SetJustifyH("LEFT")
-    title:SetText(LT("SettingsSectionData", "数据"))
-    controls.dataTitle = title
-
-    local desc = page:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    desc:SetWidth(560)
-    desc:SetJustifyH("LEFT")
-    desc:SetJustifyV("TOP")
-    desc:SetText(LT("SettingsClearDesc", "会清空所有空投时间与位面记录"))
-    controls.dataDescription = desc
-
     controls.clearButton = CreateActionButton(page, LT("SettingsClearButton", "清除"), 120, function()
         if SettingsPanelActions and SettingsPanelActions.EnsureClearDialog then
             SettingsPanelActions:EnsureClearDialog()
@@ -453,7 +483,7 @@ local function BuildDataPage(parent)
             StaticPopup_Show("CRATETRACKERZK_CLEAR_DATA")
         end
     end)
-    controls.clearButton:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+    controls.clearButton:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
 end
 
 local function BuildTextPage(parent, pageKey, providerText)
@@ -468,10 +498,10 @@ end
 
 function SettingsPanelView:GetPageLabel(pageKey)
     if pageKey == self.PAGE_MAIN then
-        return "主要设置"
+        return LT("SettingsMainPage", "主要设置")
     end
     if pageKey == self.PAGE_NOTIFICATIONS then
-        return LT("SettingsTeamNotify", "通知")
+        return LT("SettingsMessages", "消息设置")
     end
     if pageKey == self.PAGE_APPEARANCE then
         return LT("SettingsSectionUI", "界面")
@@ -559,9 +589,8 @@ function SettingsPanelView:RefreshState()
     end
 
     if controls.theme then
-        controls.theme.value:SetText(snapshot.themeText or "N/A")
+        UpdateButtonText(controls.theme.button, snapshot.themeText or "N/A", 160)
         controls.theme.button:SetEnabled(snapshot.themeEnabled == true)
-        SetValueEnabled(controls.theme.value, snapshot.themeEnabled == true)
         SetTextEnabled(controls.theme.label, true)
     end
 
@@ -607,8 +636,8 @@ function SettingsPanelView:Build(frame)
     BuildNotificationsPage(contentHost)
     BuildAppearancePage(contentHost)
     BuildDataPage(contentHost)
-    BuildTextPage(contentHost, self.PAGE_HELP, HelpTextProvider and HelpTextProvider.GetHelpText and HelpTextProvider:GetHelpText() or "")
-    BuildTextPage(contentHost, self.PAGE_ABOUT, AboutTextProvider and AboutTextProvider.GetAboutText and AboutTextProvider:GetAboutText() or "")
+    BuildTextPage(contentHost, self.PAGE_HELP, GetHelpText())
+    BuildTextPage(contentHost, self.PAGE_ABOUT, ABOUT_TEXT)
 
     frame:SetScript("OnShow", function()
         SettingsPanelView:RefreshState()

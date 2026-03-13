@@ -11,7 +11,7 @@ local FRAME_CFG = {
     minScale = 0.6,
     maxScale = 1.0,
     minWidth = 100,
-    minHeight = 80,
+    minHeight = 1,
     maxWidth = 600,
     maxHeight = 419,
 }
@@ -20,15 +20,16 @@ local UI_STATE_MIGRATION_VERSION = 1
 
 local RESIZE_LAYOUT_NOTIFY_INTERVAL = 0.016
 local RESIZE_LAYOUT_PIXEL_STEP = 1
-local COMPACT_FIXED_ROW_HEIGHT = 34
+local COMPACT_FIXED_ROW_HEIGHT = 31
 local COMPACT_BASE_ROW_GAP = 2
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
 local FIXED_TITLE_HEIGHT = 22
-local FIXED_CONTENT_EDGE_GAP = 12
+local FIXED_CONTENT_TOP_GAP = 7
+local FIXED_CONTENT_BOTTOM_GAP = 8
 local function GetChromeMetrics(scale)
     local resolvedScale = scale or 1
     local titleHeight = FIXED_TITLE_HEIGHT
-    local edgeGap = FIXED_CONTENT_EDGE_GAP
+    local edgeGap = FIXED_CONTENT_BOTTOM_GAP
     local buttonSize = 16
     local buttonInsetX = 12
     local buttonInsetY = 3
@@ -46,8 +47,8 @@ local function GetChromeMetrics(scale)
         scale = resolvedScale,
         titleHeight = titleHeight,
         edgeGap = edgeGap,
-        tableInset = edgeGap,
-        tableTopInset = titleHeight + edgeGap,
+        tableInset = FIXED_CONTENT_BOTTOM_GAP,
+        tableTopInset = titleHeight + FIXED_CONTENT_TOP_GAP,
         buttonSize = buttonSize,
         buttonInsetX = buttonInsetX,
         buttonInsetY = buttonInsetY,

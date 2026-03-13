@@ -34,10 +34,6 @@ localeData["MapName"] = "地圖名稱";
 localeData["PhaseID"] = "當前位面";
 localeData["LastRefresh"] = "上次刷新";
 localeData["NextRefresh"] = "下次刷新";
-localeData["Operation"] = "手動操作";
-localeData["Notify"] = "通知";
-localeData["Delete"] = "刪除";
-localeData["Restore"] = "恢復";
 localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d分%02d秒";
@@ -46,12 +42,13 @@ localeData["MenuHelp"] = "幫助";
 localeData["MenuAbout"] = "關於";
 
 -- 設定面板
-localeData["SettingsPanelTitle"] = "CrateTrackerZK - 設定";
-localeData["SettingsTabSettings"] = "設定";
 localeData["SettingsSectionExpansion"] = "版本設定";
 localeData["SettingsSectionControl"] = "插件控制";
 localeData["SettingsSectionData"] = "資料管理";
 localeData["SettingsSectionUI"] = "介面設定";
+localeData["SettingsMainPage"] = "主要設定";
+localeData["SettingsMessages"] = "訊息設定";
+localeData["SettingsMapList"] = "地圖列表";
 localeData["SettingsExpansionVersion"] = "遊戲版本";
 localeData["SettingsThemeSwitch"] = "介面主題";
 localeData["SettingsAddonToggle"] = "插件開關";
@@ -59,9 +56,7 @@ localeData["SettingsTeamNotify"] = "團隊通知";
 localeData["SettingsSoundAlert"] = "聲音提示";
 localeData["SettingsAutoReport"] = "自動通知";
 localeData["SettingsAutoReportInterval"] = "通知頻率（秒）";
-localeData["SettingsClearAllData"] = "清除所有資料";
-localeData["SettingsClearButton"] = "清除";
-localeData["SettingsClearDesc"] = "• 會清空所有空投時間與位面記錄";
+localeData["SettingsClearButton"] = "清除本機資料";
 localeData["SettingsToggleOn"] = "已開啟";
 localeData["SettingsToggleOff"] = "已關閉";
 localeData["SettingsClearConfirmText"] = "確認清除所有資料並重新初始化？此操作不可撤銷。";
@@ -75,6 +70,21 @@ localeData.AirdropShouts = {
     "魯夫厄斯說：附近似乎有寶藏。自然也會引來寶藏獵人。小心背後。",
     "魯夫厄斯說：我在這附近看到珍貴的資源！快去搶到手！",
 };
+
+localeData["SettingsHelpText"] = [[
+使用說明
+
+1. 主介面倒數計時支援滑鼠點擊發送訊息：
+   左鍵點擊：發送「【地圖】 距離戰爭物資空投還有：時間」
+   右鍵點擊：發送「當前【地圖】距離戰爭物資空投還有：時間」
+
+2. 訊息設定頁各選項作用：
+   訊息設定：控制手動發送和自動發送相關行為
+   團隊通知：開啟後，會把訊息發送到小隊、團隊或副本頻道
+   聲音提示：開啟後，檢測到空投時會播放提示音
+   自動通知：開啟後，會依設定頻率自動發送最近的空投倒數計時
+   通知頻率（秒）：設定自動通知發送間隔
+]];
 
 -- Register this locale
 LocaleManager.RegisterLocale("zhTW", localeData);

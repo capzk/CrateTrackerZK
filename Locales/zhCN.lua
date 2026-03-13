@@ -34,10 +34,6 @@ localeData["MapName"] = "地图名称";
 localeData["PhaseID"] = "当前位面";
 localeData["LastRefresh"] = "上次刷新";
 localeData["NextRefresh"] = "下次刷新";
-localeData["Operation"] = "手动操作";
-localeData["Notify"] = "通知";
-localeData["Delete"] = "删除";
-localeData["Restore"] = "恢复";
 localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d分%02d秒";
@@ -46,12 +42,13 @@ localeData["MenuHelp"] = "帮助";
 localeData["MenuAbout"] = "关于";
 
 -- 设置面板
-localeData["SettingsPanelTitle"] = "CrateTrackerZK - 设置";
-localeData["SettingsTabSettings"] = "设置";
 localeData["SettingsSectionExpansion"] = "版本设置";
 localeData["SettingsSectionControl"] = "插件控制";
 localeData["SettingsSectionData"] = "数据管理";
 localeData["SettingsSectionUI"] = "界面设置";
+localeData["SettingsMainPage"] = "主要设置";
+localeData["SettingsMessages"] = "消息设置";
+localeData["SettingsMapList"] = "地图列表";
 localeData["SettingsExpansionVersion"] = "游戏版本";
 localeData["SettingsThemeSwitch"] = "界面主题";
 localeData["SettingsAddonToggle"] = "插件开关";
@@ -59,9 +56,7 @@ localeData["SettingsTeamNotify"] = "团队通知";
 localeData["SettingsSoundAlert"] = "声音提示";
 localeData["SettingsAutoReport"] = "自动通知";
 localeData["SettingsAutoReportInterval"] = "通知频率（秒）";
-localeData["SettingsClearAllData"] = "清除所有数据";
-localeData["SettingsClearButton"] = "清除";
-localeData["SettingsClearDesc"] = "• 会清空所有空投时间与位面记录";
+localeData["SettingsClearButton"] = "清除本地数据";
 localeData["SettingsToggleOn"] = "已开启";
 localeData["SettingsToggleOff"] = "已关闭";
 localeData["SettingsClearConfirmText"] = "确认清除所有数据并重新初始化？该操作不可撤销。";
@@ -79,6 +74,21 @@ localeData.AirdropShouts = {
     "维迪奥斯说： 时刻关注战利品出现的机会，比如现在！",
     "兹尔丹说： 抢占先机，夺取你的战利品。",
 };
+
+localeData["SettingsHelpText"] = [[
+使用说明
+
+1. 主界面倒计时支持鼠标点击发送消息：
+   左键点击：发送“【地图】 距离战争物资空投还有：时间”
+   右键点击：发送“当前【地图】距离战争物资空投还有：时间”
+
+2. 消息设置页各选项作用：
+   消息设置：控制手动发送和自动发送相关行为
+   团队通知：开启后，会把消息发送到小队、团队或副本频道
+   声音提示：开启后，检测到空投时会播放提示音
+   自动通知：开启后，会按设定频率自动发送最近的空投倒计时
+   通知频率（秒）：设置自动通知发送间隔
+]];
 
 -- Register this locale
 LocaleManager.RegisterLocale("zhCN", localeData);

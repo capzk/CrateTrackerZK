@@ -16,7 +16,7 @@ end
 local localeData = {};
 
 -- Floating Button
-localeData["FloatingButtonTooltipLine3"] = "Правый клик — открыть настройки";
+localeData["FloatingButtonTooltipLine3"] = "ПКМ - открыть настройки";
 
 -- Notifications (Airdrop)
 localeData["Enabled"] = "включены";
@@ -36,10 +36,6 @@ localeData["MapName"] = "Название карты";
 localeData["PhaseID"] = "Текущая фаза";
 localeData["LastRefresh"] = "Последний";
 localeData["NextRefresh"] = "Следующий";
-localeData["Operation"] = "Действия";
-localeData["Notify"] = "Уведомить";
-localeData["Delete"] = "Удалить";
-localeData["Restore"] = "Восстановить";
 localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d мин %02d сек";
@@ -49,12 +45,13 @@ localeData["MenuHelp"] = "Справка";
 localeData["MenuAbout"] = "О аддоне";
 
 -- Settings Panel
-localeData["SettingsPanelTitle"] = "CrateTrackerZK - Настройки";
-localeData["SettingsTabSettings"] = "Настройки";
 localeData["SettingsSectionExpansion"] = "Настройки версии";
 localeData["SettingsSectionControl"] = "Управление аддоном";
 localeData["SettingsSectionData"] = "Управление данными";
 localeData["SettingsSectionUI"] = "Настройки интерфейса";
+localeData["SettingsMainPage"] = "Основные настройки";
+localeData["SettingsMessages"] = "Настройки сообщений";
+localeData["SettingsMapList"] = "Список карт";
 localeData["SettingsExpansionVersion"] = "Версия игры";
 localeData["SettingsThemeSwitch"] = "Тема";
 localeData["SettingsAddonToggle"] = "Переключатель аддона";
@@ -62,9 +59,7 @@ localeData["SettingsTeamNotify"] = "Уведомления группы";
 localeData["SettingsSoundAlert"] = "Звуковое уведомление";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
 localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";
-localeData["SettingsClearAllData"] = "Очистить все данные";
-localeData["SettingsClearButton"] = "Очистить";
-localeData["SettingsClearDesc"] = "• Сбросит все записи времени и фаз";
+localeData["SettingsClearButton"] = "Очистить локальные данные";
 localeData["SettingsToggleOn"] = "Включено";
 localeData["SettingsToggleOff"] = "Выключено";
 localeData["SettingsClearConfirmText"] = "Очистить все данные и переинициализировать аддон? Действие необратимо.";
@@ -79,6 +74,21 @@ localeData.AirdropShouts = {
     "Ruffious says: There's a cache of resources nearby. Find it before you have to fight over it!",
     "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",
 };
+
+localeData["SettingsHelpText"] = [[
+Руководство по использованию
+
+1. Таймер обратного отсчета на главном окне поддерживает отправку сообщений по клику мышью:
+   ЛКМ: отправляет сообщение "[Карта] War Supplies airdrop in: Время"
+   ПКМ: отправляет сообщение "Current [Карта] War Supplies airdrop in: Время"
+
+2. Параметры страницы настроек сообщений:
+   Настройки сообщений: управляют ручной и автоматической отправкой сообщений
+   Уведомления группы: при включении сообщение отправляется в группу, рейд или чат подземелья
+   Звуковое уведомление: при включении воспроизводится звук при обнаружении сброса
+   Авто-уведомление: при включении автоматически отправляет ближайший таймер сброса через заданный интервал
+   Интервал отправки (сек): задает интервал автоматической отправки сообщений
+]];
 
 -- Register this locale
 LocaleManager.RegisterLocale("ruRU", localeData);

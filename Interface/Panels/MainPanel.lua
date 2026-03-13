@@ -381,7 +381,7 @@ function MainPanel:RefreshTheme()
     self:UpdateTable()
 end
 
-function MainPanel:NotifyMapById(mapId)
+function MainPanel:NotifyMapById(mapId, clickButton)
     if not mapId then return end
     local now = GetTime()
     local last = self.lastNotifyClickTime[mapId] or 0
@@ -389,11 +389,11 @@ function MainPanel:NotifyMapById(mapId)
     self.lastNotifyClickTime[mapId] = now
     local mapData = Data:GetMap(mapId)
     if mapData then
-        self:NotifyMapRefresh(mapData)
+        self:NotifyMapRefresh(mapData, clickButton)
     end
 end
 
-function MainPanel:NotifyMapRefresh(mapData)
+function MainPanel:NotifyMapRefresh(mapData, clickButton)
     if not Notification or not mapData then return end
     local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player") or (Area and Area:GetCurrentMapId() or nil)
     local isAirdropActive = false
@@ -408,7 +408,7 @@ function MainPanel:NotifyMapRefresh(mapData)
             end
         end
     end
-    Notification:NotifyMapRefresh(mapData, isAirdropActive)
+    Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
 end
 
 function MainPanel:HideMap(mapId)

@@ -425,7 +425,7 @@ function Notification:SendAutoTeamReport()
     return true;
 end
 
-function Notification:NotifyMapRefresh(mapData, isAirdropActive)
+function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     if not self.isInitialized then self:Initialize() end
     if not mapData then 
         Logger:Debug("Notification", "通知", "通知地图刷新失败：地图数据为空");
@@ -455,7 +455,11 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive)
             message = string.format(L["NoTimeRecord"], displayName);
             systemMessage = message;
         else
-            message = string.format(L["TimeRemaining"], displayName, UnifiedDataManager:FormatTime(remaining, true));
+            if clickButton == "RightButton" then
+                message = BuildAutoTeamReportMessage(displayName, remaining);
+            else
+                message = string.format(L["TimeRemaining"], displayName, UnifiedDataManager:FormatTime(remaining, true));
+            end
             systemMessage = message;
         end
     end

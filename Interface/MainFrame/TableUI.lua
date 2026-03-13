@@ -14,13 +14,15 @@ local rowFramePool = {}
 local headerRowFrame = nil
 local measureText = nil
 local BASE_FRAME_WIDTH = 600
-local FIXED_ROW_HEIGHT = 34
+local FIXED_ROW_HEIGHT = 31
 local MIN_FRAME_SCALE = 0.6
 local MAX_FRAME_SCALE = 1.0
 local COMPACT_BASE_ROW_GAP = 2
 local BASE_MIN_FRAME_WIDTH = 100
 local FRAME_HORIZONTAL_PADDING = 24
-local FRAME_VERTICAL_PADDING = 46
+local FRAME_VERTICAL_PADDING = 37
+local INNER_TABLE_SIDE_MARGIN = 4
+local MIN_PARTIAL_ROW_RATIO = 0.35
 local COMPACT_FONT_TRANSITION_WIDTH = 80
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
 local MAP_COL_COMPACT_MIN_CHARS = 1
@@ -277,7 +279,7 @@ end
 local function GetScaledChromeMetrics(scale)
     return {
         scale = 1,
-        edgeGap = 12,
+        edgeGap = 8,
         titleHeight = 22,
         horizontalPadding = FRAME_HORIZONTAL_PADDING,
         verticalPadding = FRAME_VERTICAL_PADDING,
@@ -841,6 +843,7 @@ local function CalculateTableLayout(frame, profile, layoutScale, chromeMetrics, 
         local fallbackPadding = chromeMetrics and chromeMetrics.horizontalPadding or FRAME_HORIZONTAL_PADDING
         contentWidth = math.max(1, math.floor(frameWidth - fallbackPadding + 0.5))
     end
+    local tableWidth = math.max(1, math.floor(contentWidth - (INNER_TABLE_SIDE_MARGIN * 2) + 0.5))
 
     local scale = 1
     local visibilityProfile = profile or GetVisibilityProfile(frame)
@@ -861,8 +864,8 @@ local function CalculateTableLayout(frame, profile, layoutScale, chromeMetrics, 
         headerHeight = headerState.height,
         headerGap = headerState.gap,
         headerAlpha = headerState.alpha,
-        tableWidth = math.max(1, math.floor(contentWidth + 0.5)),
-        startX = 0,
+        tableWidth = tableWidth,
+        startX = INNER_TABLE_SIDE_MARGIN,
         startY = 0,
         showPhaseColumn = visibilityProfile.showPhaseColumn == true,
         showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true,
@@ -930,6 +933,9 @@ local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tablePar
                 local exactRowSlots = Clamp((contentHeight + effectiveRowGap) / math.max(1, rowUnit), 0, safeRowCount)
                 fullVisibleRowCount = math.floor(exactRowSlots + 0.0001)
                 partialRowRatio = exactRowSlots - fullVisibleRowCount
+                if partialRowRatio < MIN_PARTIAL_ROW_RATIO then
+                    partialRowRatio = 0
+                end
 
                 if fullVisibleRowCount >= safeRowCount then
                     fullVisibleRowCount = safeRowCount
@@ -937,10 +943,10 @@ local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tablePar
                     visibleRowCount = safeRowCount
                 elseif fullVisibleRowCount <= 0 then
                     fullVisibleRowCount = 0
-                    partialRowRatio = Clamp(contentHeight / math.max(1, effectiveRowHeight), 0, 1)
-                    visibleRowCount = partialRowRatio > 0.001 and 1 or 0
+                    partialRowRatio = 0
+                    visibleRowCount = 0
                 else
-                    visibleRowCount = fullVisibleRowCount + (partialRowRatio > 0.001 and 1 or 0)
+                    visibleRowCount = fullVisibleRowCount + (partialRowRatio >= MIN_PARTIAL_ROW_RATIO and 1 or 0)
                 end
 
                 partialRowAlpha = partialRowRatio > 0 and SmoothStep(partialRowRatio) or 1
@@ -961,7 +967,7 @@ local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tablePar
         end
     end
 
-    local minTableHeight = safeRowCount > 0 and 1 or 0
+    local minTableHeight = safeRowCount > 0 and safeRowHeight or 0
     local maxTableHeight = fullRowsHeight + headerTransitionHeight
     local effectiveHeaderRatio = math.min(headerReserveRatio, headerAlphaByHeight)
     local shouldAutoCompactSort = safeRowCount > 1 and effectiveHeaderRatio <= 0.001 and contentHeight <= (fullRowsHeight + 0.5)
@@ -1095,6 +1101,7 @@ function TableUI:RebuildUI(frame, headerLabels)
     layout.showLastRefreshColumn = visibilityProfile.showLastRefreshColumn == true
     layout.phaseShortMode = visibilityProfile.phaseShortMode == true
     layout.activeTableWidth = SumColumnWidths(colWidths)
+    layout.startX = INNER_TABLE_SIDE_MARGIN
     local userControlledWidth = frame.__ctkWidthControlledByUser == true
     local userControlledHeight = frame.__ctkHeightControlledByUser == true
 
@@ -1107,16 +1114,16 @@ function TableUI:RebuildUI(frame, headerLabels)
         showDeletedRows = false,
         isFullInfo = true,
     }
-    local defaultTableWidthHint = math.max(1, math.floor((BASE_FRAME_WIDTH - FRAME_HORIZONTAL_PADDING) + 0.5))
+    local defaultTableWidthHint = math.max(1, math.floor((BASE_FRAME_WIDTH - FRAME_HORIZONTAL_PADDING - (INNER_TABLE_SIDE_MARGIN * 2)) + 0.5))
     local defaultColWidths = CalculateColumnWidths(rows, headerLabels, defaultTableWidthHint, 1, defaultProfile)
     local defaultTableWidth = SumColumnWidths(defaultColWidths)
-    local desiredFrameWidth = math.floor(defaultTableWidth + horizontalPadding + 0.5)
+    local desiredFrameWidth = math.floor(defaultTableWidth + horizontalPadding + (INNER_TABLE_SIDE_MARGIN * 2) + 0.5)
     desiredFrameWidth = Clamp(desiredFrameWidth, BASE_MIN_FRAME_WIDTH, BASE_FRAME_WIDTH)
 
     local requiredMinFrameWidth = BASE_MIN_FRAME_WIDTH
     if visibilityProfile.compactByWidth == true then
         local minTableWidth = math.max(1, visibilityProfile.minTableWidth or 1)
-        requiredMinFrameWidth = math.floor(minTableWidth + horizontalPadding + 0.5)
+        requiredMinFrameWidth = math.floor(minTableWidth + horizontalPadding + (INNER_TABLE_SIDE_MARGIN * 2) + 0.5)
         requiredMinFrameWidth = Clamp(requiredMinFrameWidth, BASE_MIN_FRAME_WIDTH, BASE_FRAME_WIDTH - 1)
     end
 
@@ -1319,7 +1326,7 @@ function TableUI:CreateHeaderRow(parent, headerLabels, colWidths, layout)
     end
 
     local headerHeight = layout.headerHeight or layout.rowHeight
-    headerRowFrame:SetSize(layout.activeTableWidth or layout.tableWidth, headerHeight)
+    headerRowFrame:SetSize(layout.tableWidth, headerHeight)
     headerRowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -layout.startY)
     headerRowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     headerRowFrame:SetAlpha(layout.headerAlpha or 1.0)
@@ -1470,7 +1477,7 @@ function TableUI:CreateDataRow(parent, rowState, displayIndex, colWidths, layout
     local renderHeight = math.max(1, rowState and rowState.height or layout.rowHeight)
     local renderAlpha = Clamp(rowState and rowState.alpha or 1, 0, 1)
     local rowFrame = AcquireRowFrame(parent, displayIndex)
-    rowFrame:SetSize(layout.activeTableWidth or layout.tableWidth, renderHeight)
+    rowFrame:SetSize(layout.tableWidth, renderHeight)
     rowFrame:ClearAllPoints()
     rowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
     rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
@@ -1610,7 +1617,7 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
             local hitArea = rowFrame.countdownHitArea
             if not hitArea then
                 hitArea = CreateFrame("Button", nil, rowFrame)
-                hitArea:RegisterForClicks("LeftButtonUp")
+                hitArea:RegisterForClicks("LeftButtonUp", "RightButtonUp")
                 if hitArea.SetPropagateMouseClicks then
                     hitArea:SetPropagateMouseClicks(true)
                 end
@@ -1631,14 +1638,11 @@ function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layo
                     end
                 end)
                 hitArea:SetScript("OnClick", function(self, button)
-                    if button ~= "LeftButton" then
-                        return
-                    end
                     if self.__ctkIsHidden or not IsAddonEnabled() then
                         return
                     end
                     if MainPanel and MainPanel.NotifyMapById then
-                        MainPanel:NotifyMapById(self.__ctkRowId)
+                        MainPanel:NotifyMapById(self.__ctkRowId, button)
                     end
                 end)
                 rowFrame.countdownHitArea = hitArea

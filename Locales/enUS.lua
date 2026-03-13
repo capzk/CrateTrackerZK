@@ -34,10 +34,6 @@ localeData["MapName"] = "Map Name";
 localeData["PhaseID"] = "Current Phase";
 localeData["LastRefresh"] = "Last Refresh";
 localeData["NextRefresh"] = "Next Refresh";
-localeData["Operation"] = "Operation";
-localeData["Notify"] = "Alert";
-localeData["Delete"] = "Delete";
-localeData["Restore"] = "Restore";
 localeData["NotAcquired"] = "---:---";
 localeData["NoRecord"] = "--:--";
 localeData["MinuteSecond"] = "%d min %02d sec";
@@ -46,12 +42,13 @@ localeData["MenuHelp"] = "Help";
 localeData["MenuAbout"] = "About";
 
 -- Settings Panel
-localeData["SettingsPanelTitle"] = "CrateTrackerZK - Settings";
-localeData["SettingsTabSettings"] = "Settings";
 localeData["SettingsSectionExpansion"] = "Version Settings";
 localeData["SettingsSectionControl"] = "Addon Control";
 localeData["SettingsSectionData"] = "Data Management";
 localeData["SettingsSectionUI"] = "UI Settings";
+localeData["SettingsMainPage"] = "Main Settings";
+localeData["SettingsMessages"] = "Message Settings";
+localeData["SettingsMapList"] = "Map List";
 localeData["SettingsExpansionVersion"] = "Game Version";
 localeData["SettingsThemeSwitch"] = "Theme";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
@@ -59,9 +56,7 @@ localeData["SettingsTeamNotify"] = "Team Notifications";
 localeData["SettingsSoundAlert"] = "Sound Alert";
 localeData["SettingsAutoReport"] = "Auto Notify";
 localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
-localeData["SettingsClearAllData"] = "Clear All Data";
-localeData["SettingsClearButton"] = "Clear";
-localeData["SettingsClearDesc"] = "• Clears all airdrop time and phase records";
+localeData["SettingsClearButton"] = "Clear Local Data";
 localeData["SettingsToggleOn"] = "Enabled";
 localeData["SettingsToggleOff"] = "Disabled";
 localeData["SettingsClearConfirmText"] = "Clear all data and reinitialize? This action cannot be undone.";
@@ -75,6 +70,21 @@ localeData.AirdropShouts = {
     "Ruffious says: There's a cache of resources nearby. Find it before you have to fight over it!",
     "Ruffious says: Looks like there's treasure nearby. And that means treasure hunters. Watch your back.",
 };
+
+localeData["SettingsHelpText"] = [[
+Usage Guide
+
+1. The main UI countdown supports mouse click message sending:
+   Left click: sends "[Map] War Supplies airdrop in: Time"
+   Right click: sends "Current [Map] War Supplies airdrop in: Time"
+
+2. Message Settings page options:
+   Message Settings: controls manual and automatic message sending behavior
+   Team Notifications: when enabled, messages are sent to party, raid, or instance chat
+   Sound Alert: when enabled, a sound plays when an airdrop is detected
+   Auto Notify: when enabled, automatically sends the nearest airdrop countdown at the configured interval
+   Report Interval (sec): sets the interval for automatic countdown messages
+]];
 
 -- Register this locale
 LocaleManager.RegisterLocale("enUS", localeData);
