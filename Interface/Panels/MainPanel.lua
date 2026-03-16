@@ -220,8 +220,21 @@ end
 function MainPanel:CreateMainFrame()
     if CrateTrackerZKFrame then
         self.mainFrame = CrateTrackerZKFrame
+        if MainFrame and MainFrame.ApplySavedSize then
+            MainFrame:ApplySavedSize(self.mainFrame)
+        end
+        self.mainFrame:ClearAllPoints()
+        if CRATETRACKERZK_UI_DB.position then
+            local pos = CRATETRACKERZK_UI_DB.position
+            self.mainFrame:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
+        else
+            self.mainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
         if MainFrame and MainFrame.ApplyAdaptiveHeight then
             MainFrame:ApplyAdaptiveHeight(self.mainFrame)
+        end
+        if MainFrame and MainFrame.ApplyThemeColors then
+            MainFrame:ApplyThemeColors(self.mainFrame)
         end
         self:BindFrameLifecycle(self.mainFrame)
         if self:IsMainFrameVisible() then

@@ -524,7 +524,7 @@ function MainFrame:Create()
     frame.__ctkHeightControlledByUser = false
     frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    frame:SetFrameStrata("HIGH")
+    frame:SetFrameStrata("LOW")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetClampedToScreen(true)
