@@ -211,6 +211,7 @@ local updateDriver = nil
 local updateElapsed = 0
 local sortRefreshCallback = nil
 local UPDATE_INTERVAL = 0.2
+local SORT_VALIDATE_INTERVAL = 0.5
 
 local function GetCountdownConfig()
     return UIConfig
@@ -455,7 +456,7 @@ local function RefreshCountdownUI(now)
     if SortingRef and SortingRef.GetSortState and SortingRef:GetSortState() ~= "default" then
         local currentTime = GetTime()
         local lastTime = SortingRef:GetLastSortTime()
-        if not lastTime or currentTime - lastTime >= 10 then
+        if not lastTime or currentTime - lastTime >= SORT_VALIDATE_INTERVAL then
             if sortRefreshCallback and not IsCurrentSortOrderValid(context) then
                 sortRefreshCallback()
             end

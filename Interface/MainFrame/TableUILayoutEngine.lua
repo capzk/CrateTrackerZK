@@ -2,7 +2,6 @@
 
 local TableUILayoutEngine = BuildEnv("TableUILayoutEngine")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
-local Data = BuildEnv("Data")
 local TableUITextMetrics = BuildEnv("TableUITextMetrics")
 local L = CrateTrackerZK and CrateTrackerZK.L or {}
 
@@ -13,7 +12,7 @@ local BASE_MIN_FRAME_WIDTH = 100
 local FRAME_HORIZONTAL_PADDING = 24
 local FRAME_VERTICAL_PADDING = 37
 local INNER_TABLE_SIDE_MARGIN = 4
-local MIN_PARTIAL_ROW_RATIO = 0.35
+local PARTIAL_ROW_MIN_ALPHA = 0.18
 local HEADER_COLLAPSE_TRANSITION_WIDTH = 60
 local MAP_COL_BASE_PADDING = 24
 local MAP_COL_SAFETY_PADDING = 6
@@ -151,13 +150,6 @@ end
 local function GetTextWidth(text)
     if TableUITextMetrics and TableUITextMetrics.GetTextWidth then
         return TableUITextMetrics:GetTextWidth(text)
-    end
-    return 0
-end
-
-local function GetScaledTextWidth(text, scale)
-    if TableUITextMetrics and TableUITextMetrics.GetScaledTextWidth then
-        return TableUITextMetrics:GetScaledTextWidth(text, scale)
     end
     return 0
 end
@@ -507,11 +499,17 @@ function TableUILayoutEngine:CalculateTableLayout(frame, profile, layoutScale, c
     }
 end
 
-function TableUILayoutEngine:GetRowsBlockHeight(rowCount, rowHeight, rowGap)
-    if (rowCount or 0) <= 0 then
-        return 0
+function TableUILayoutEngine:GetTransitionRatio(rawRatio)
+    local clampedRatio = self:Clamp(rawRatio or 0, 0, 1)
+    return self:SmoothStep(clampedRatio)
+end
+
+function TableUILayoutEngine:GetPartialRowAlpha(partialRowRatio)
+    local ratio = self:Clamp(partialRowRatio or 0, 0, 1)
+    if ratio <= 0 then
+        return 1
     end
-    return (rowCount * rowHeight) + math.max(0, rowCount - 1) * rowGap
+    return PARTIAL_ROW_MIN_ALPHA + ((1 - PARTIAL_ROW_MIN_ALPHA) * self:SmoothStep(ratio))
 end
 
 function TableUILayoutEngine:GetContentHeight(frame, tableParent)
@@ -529,18 +527,22 @@ function TableUILayoutEngine:BuildVerticalMetrics(frame, rowCount, rowHeight, ro
     local safeRowHeight = rowHeight or FIXED_ROW_HEIGHT
     local safeRowGap = rowGap or COMPACT_BASE_ROW_GAP
     local contentHeight = self:GetContentHeight(frame, tableParent)
-    local fullRowsHeight = self:GetRowsBlockHeight(safeRowCount, safeRowHeight, safeRowGap)
+    local fullRowsHeight = self:ComputeRowsBlockHeight(safeRowCount, safeRowHeight, safeRowGap)
     local fullHeaderSpace = (allowHeaderSpace == true) and (safeRowHeight + safeRowGap) or 0
     local headerReserveRatio = self:Clamp(headerWidthRatio or 0, 0, 1)
     local headerTransitionHeight = fullHeaderSpace * headerReserveRatio
     local headerAlphaByHeight = 1
+    local headerTransitionRatio = nil
     local visibleRowCount = safeRowCount
     local fullVisibleRowCount = safeRowCount
     local partialRowRatio = 0
+    local partialRowRawRatio = nil
     local partialRowAlpha = 1
     local effectiveRowHeight = safeRowHeight
     local effectiveRowGap = safeRowGap
     local renderedTableHeight = fullRowsHeight + headerTransitionHeight
+    local snapCollapseTableHeight = nil
+    local snapExpandTableHeight = nil
 
     if safeRowCount <= 0 then
         headerAlphaByHeight = 0
@@ -554,8 +556,12 @@ function TableUILayoutEngine:BuildVerticalMetrics(frame, rowCount, rowHeight, ro
                 renderedTableHeight = fullRowsHeight + headerTransitionHeight
             else
                 local availableHeaderSpace = math.max(0, contentHeight - fullRowsHeight)
-                headerAlphaByHeight = self:Clamp(availableHeaderSpace / math.max(1, fullHeaderSpace), 0, 1)
+                local rawHeaderRatio = self:Clamp(availableHeaderSpace / math.max(1, fullHeaderSpace), 0, 1)
+                headerTransitionRatio = rawHeaderRatio
+                headerAlphaByHeight = self:GetTransitionRatio(rawHeaderRatio)
                 renderedTableHeight = fullRowsHeight + (fullHeaderSpace * headerAlphaByHeight)
+                snapCollapseTableHeight = fullRowsHeight
+                snapExpandTableHeight = fullRowsHeight + fullHeaderSpace
             end
         else
             headerAlphaByHeight = 0
@@ -564,10 +570,15 @@ function TableUILayoutEngine:BuildVerticalMetrics(frame, rowCount, rowHeight, ro
             local rowUnit = effectiveRowHeight + effectiveRowGap
             local exactRowSlots = self:Clamp((contentHeight + effectiveRowGap) / math.max(1, rowUnit), 0, safeRowCount)
             fullVisibleRowCount = math.floor(exactRowSlots + 0.0001)
-            partialRowRatio = exactRowSlots - fullVisibleRowCount
-            if partialRowRatio < MIN_PARTIAL_ROW_RATIO then
-                partialRowRatio = 0
-            end
+            local rawPartialRowRatio = exactRowSlots - fullVisibleRowCount
+            partialRowRawRatio = rawPartialRowRatio
+            local collapsedTableHeight = self:ComputeRowsBlockHeight(fullVisibleRowCount, effectiveRowHeight, effectiveRowGap)
+            local expandedTableHeight = self:ComputeRowsBlockHeight(
+                math.min(safeRowCount, fullVisibleRowCount + 1),
+                effectiveRowHeight,
+                effectiveRowGap
+            )
+            partialRowRatio = self:GetTransitionRatio(rawPartialRowRatio)
 
             if fullVisibleRowCount >= safeRowCount then
                 fullVisibleRowCount = safeRowCount
@@ -578,22 +589,28 @@ function TableUILayoutEngine:BuildVerticalMetrics(frame, rowCount, rowHeight, ro
                 partialRowRatio = 0
                 visibleRowCount = 0
             else
-                visibleRowCount = fullVisibleRowCount + (partialRowRatio >= MIN_PARTIAL_ROW_RATIO and 1 or 0)
+                visibleRowCount = fullVisibleRowCount + (partialRowRatio > 0 and 1 or 0)
             end
 
-            partialRowAlpha = partialRowRatio > 0 and self:SmoothStep(partialRowRatio) or 1
+            partialRowAlpha = partialRowRatio > 0 and self:GetPartialRowAlpha(partialRowRatio) or 1
             if visibleRowCount <= 0 then
                 renderedTableHeight = 0
             elseif partialRowRatio > 0 and visibleRowCount > fullVisibleRowCount then
+                snapCollapseTableHeight = self:ComputeRowsBlockHeight(fullVisibleRowCount, effectiveRowHeight, effectiveRowGap)
+                snapExpandTableHeight = self:ComputeRowsBlockHeight(
+                    math.min(safeRowCount, fullVisibleRowCount + 1),
+                    effectiveRowHeight,
+                    effectiveRowGap
+                )
                 if fullVisibleRowCount <= 0 then
                     renderedTableHeight = effectiveRowHeight * partialRowRatio
                 else
-                    renderedTableHeight = self:GetRowsBlockHeight(fullVisibleRowCount, effectiveRowHeight, effectiveRowGap)
+                    renderedTableHeight = self:ComputeRowsBlockHeight(fullVisibleRowCount, effectiveRowHeight, effectiveRowGap)
                         + (effectiveRowGap * partialRowRatio)
                         + (effectiveRowHeight * partialRowRatio)
                 end
             else
-                renderedTableHeight = self:GetRowsBlockHeight(visibleRowCount, effectiveRowHeight, effectiveRowGap)
+                renderedTableHeight = self:ComputeRowsBlockHeight(visibleRowCount, effectiveRowHeight, effectiveRowGap)
             end
         end
     end
@@ -601,16 +618,28 @@ function TableUILayoutEngine:BuildVerticalMetrics(frame, rowCount, rowHeight, ro
     local minTableHeight = safeRowCount > 0 and safeRowHeight or 0
     local maxTableHeight = fullRowsHeight + headerTransitionHeight
     local effectiveHeaderRatio = math.min(headerReserveRatio, headerAlphaByHeight)
-    local shouldAutoCompactSort = safeRowCount > 1 and effectiveHeaderRatio <= 0.001 and contentHeight <= (fullRowsHeight + 0.5)
+    local partialTransitionActive = partialRowRawRatio ~= nil and partialRowRawRatio > 0.02 and partialRowRawRatio < 0.98
+    local headerTransitionActive = headerTransitionRatio ~= nil and headerTransitionRatio > 0.02 and headerTransitionRatio < 0.98
+    local fullyHiddenRowCount = math.max(0, safeRowCount - math.max(0, fullVisibleRowCount or 0))
+    local hasFullyHiddenRow = fullyHiddenRowCount >= 1
+    local shouldAutoCompactSort = safeRowCount > 1
+        and hasFullyHiddenRow
+        and not partialTransitionActive
+        and not headerTransitionActive
+        and effectiveHeaderRatio <= 0.001
 
     return {
         contentHeight = contentHeight,
         fullRowsHeight = fullRowsHeight,
         headerAlphaByHeight = headerAlphaByHeight,
+        headerTransitionRatio = headerTransitionRatio,
         visibleRowCount = visibleRowCount,
         fullVisibleRowCount = fullVisibleRowCount,
         partialRowRatio = partialRowRatio,
+        partialRowRawRatio = partialRowRawRatio,
         partialRowAlpha = partialRowAlpha,
+        snapCollapseTableHeight = snapCollapseTableHeight,
+        snapExpandTableHeight = snapExpandTableHeight,
         rowHeight = effectiveRowHeight,
         rowGap = effectiveRowGap,
         renderedTableHeight = renderedTableHeight,

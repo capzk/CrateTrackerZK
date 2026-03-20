@@ -2,6 +2,68 @@
 
 local TableUIRebuildEngine = BuildEnv("TableUIRebuildEngine")
 
+local function ResolveReleaseSnapHeight(chromeMetrics, verticalMetrics)
+    if not chromeMetrics or not verticalMetrics then
+        return nil
+    end
+
+    local verticalPadding = tonumber(chromeMetrics.verticalPadding) or 0
+    local targetTableHeight = nil
+
+    local headerRatio = tonumber(verticalMetrics.headerTransitionRatio)
+    if headerRatio and headerRatio > 0 and headerRatio < 1 then
+        if headerRatio >= 0.5 then
+            targetTableHeight = verticalMetrics.snapExpandTableHeight
+        else
+            targetTableHeight = verticalMetrics.snapCollapseTableHeight
+        end
+    end
+
+    if not targetTableHeight then
+        local partialRatio = tonumber(verticalMetrics.partialRowRawRatio)
+        if partialRatio and partialRatio > 0 and partialRatio < 1 then
+            if partialRatio >= 0.5 then
+                targetTableHeight = verticalMetrics.snapExpandTableHeight
+            else
+                targetTableHeight = verticalMetrics.snapCollapseTableHeight
+            end
+        end
+    end
+
+    if type(targetTableHeight) ~= "number" then
+        return nil
+    end
+
+    return math.max(1, math.floor(targetTableHeight + verticalPadding + 0.5))
+end
+
+local function ResolveReleaseSnapWidth(frame, deps)
+    if not frame or not deps then
+        return nil
+    end
+
+    local baselineWidth = math.min(
+        tonumber(frame.__ctkContentMaxWidth) or deps.baseFrameWidth or 600,
+        deps.baseFrameWidth or 600
+    )
+    local transitionWidth = 60
+    local compactBoundaryWidth = baselineWidth - transitionWidth
+    local currentWidth = deps.GetFrameWidth(frame)
+
+    if currentWidth >= baselineWidth - 0.5 then
+        return nil
+    end
+    if currentWidth <= compactBoundaryWidth + 0.5 then
+        return nil
+    end
+
+    local ratio = (baselineWidth - currentWidth) / math.max(1, transitionWidth)
+    if ratio >= 0.5 then
+        return math.max(deps.baseMinFrameWidth or 100, math.floor(compactBoundaryWidth + 0.5))
+    end
+    return math.floor(baselineWidth + 0.5)
+end
+
 function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     if not frame or not deps or not deps.SortingSystem then
         return
@@ -48,12 +110,14 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local autoHeightSyncValue = tonumber(frame.__ctkAutoHeightSyncValue) or nil
     local manualHeightReference = autoHeightSyncValue or sizingStartHeight
     local manualSizingHeightDelta = math.abs(frameHeight - manualHeightReference)
-    local verticalCompactSortEligible = verticalMetrics.shouldAutoCompactSort
-        and (
-            frame.__ctkHeightControlledByUser == true
-            or (frame.isSizing and manualSizingHeightDelta > 2)
-        )
-    local shouldAutoCompactSort = verticalCompactSortEligible == true
+    local shouldAutoCompactSort = nil
+    if frame.isSizing then
+        shouldAutoCompactSort = deps.SortingSystem.IsCompactAutoSortEnabled
+            and deps.SortingSystem:IsCompactAutoSortEnabled()
+            or false
+    else
+        shouldAutoCompactSort = verticalMetrics.shouldAutoCompactSort == true
+    end
     if deps.SortingSystem and deps.SortingSystem.SetCompactAutoSortEnabled then
         local sortChanged = deps.SortingSystem:SetCompactAutoSortEnabled(shouldAutoCompactSort)
         if sortChanged then
@@ -68,6 +132,18 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
                 headerWidthRatio
             )
         end
+    end
+    local releaseHeightSnap = ResolveReleaseSnapHeight(chromeMetrics, verticalMetrics)
+    if releaseHeightSnap then
+        frame.__ctkReleaseSnapHeight = releaseHeightSnap
+    else
+        frame.__ctkReleaseSnapHeight = nil
+    end
+    local releaseWidthSnap = ResolveReleaseSnapWidth(frame, deps)
+    if releaseWidthSnap then
+        frame.__ctkReleaseSnapWidth = releaseWidthSnap
+    else
+        frame.__ctkReleaseSnapWidth = nil
     end
     visibilityProfile.headerAlphaByHeight = verticalMetrics.headerAlphaByHeight
 

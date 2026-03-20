@@ -143,6 +143,21 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
         local maxWidth = tonumber(frame.__ctkContentMaxWidth) or options.frameCfg.width
         local minHeight = options.getEffectiveMinHeight(frame)
         local maxHeight = options.getEffectiveMaxHeight(frame, minHeight)
+        local releaseSnapWidth = tonumber(frame.__ctkReleaseSnapWidth) or nil
+        local releaseSnapHeight = tonumber(frame.__ctkReleaseSnapHeight) or nil
+        if releaseSnapWidth then
+            local minWidth = tonumber(frame.__ctkContentMinWidth) or options.frameCfg.minWidth
+            local clampedSnapWidth = Clamp(math.floor(releaseSnapWidth + 0.5), minWidth, maxWidth)
+            frame:SetWidth(clampedSnapWidth)
+            finalWidth = clampedSnapWidth
+        end
+        if releaseSnapHeight then
+            local clampedSnapHeight = Clamp(math.floor(releaseSnapHeight + 0.5), minHeight, maxHeight)
+            frame:SetHeight(clampedSnapHeight)
+            finalHeight = clampedSnapHeight
+        end
+        frame.__ctkReleaseSnapWidth = nil
+        frame.__ctkReleaseSnapHeight = nil
         maxWidth = Clamp(math.floor(maxWidth + 0.5), options.frameCfg.minWidth, options.frameCfg.maxWidth)
         frame.__ctkWidthControlledByUser = (finalWidth + 0.5) < maxWidth
         frame.__ctkHeightControlledByUser = (finalHeight + 0.5) < maxHeight
@@ -208,6 +223,8 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
         StopLayoutRefreshTicker()
         CancelHideTimer()
         frame.isSizing = false
+        frame.__ctkReleaseSnapWidth = nil
+        frame.__ctkReleaseSnapHeight = nil
         SetResizeHandleVisible(false)
     end)
 
