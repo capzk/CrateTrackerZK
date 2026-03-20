@@ -55,6 +55,9 @@ local FALLBACK_THEME = {
     },
     textColors = {
         normal = {255, 255, 255, 1.0},
+        tableHeader = {255, 255, 255, 1.0},
+        tableHeaderSortDesc = {255, 204, 204, 1.0},
+        tableHeaderSortAsc = {204, 255, 204, 1.0},
         planeId = {51, 255, 51, 1.0},
         deleted = {128, 128, 128, 0.8},
         countdownNormal = {0, 255, 0, 1.0},

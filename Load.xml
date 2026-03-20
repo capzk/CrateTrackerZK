@@ -27,9 +27,12 @@
     <!-- 本地配置目录 -->
     <Script file="Shared/Configuration/ExpansionConfig.lua"/>
     <Script file="Shared/Configuration/ThemeConfig.lua"/>
-    <Script file="Shared/Configuration/Themes/Theme_001_Default.lua"/>
-    <Script file="Shared/Configuration/Themes/Theme_002_SeaGlass.lua"/>
-    <Script file="Shared/Configuration/Themes/Theme_003_LegacyGlass.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_001.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_002.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_003.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_004.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_005.lua"/>
+    <Script file="Shared/Configuration/Themes/Theme_006.lua"/>
     
     <!-- 数据管理（代号系统配置优先） -->
         <Script file="Data/MapConfig.lua"/>

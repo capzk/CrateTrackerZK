@@ -1,4 +1,4 @@
--- Theme_002_SeaGlass.lua - 海玻璃主题
+-- Theme_002.lua - 海玻璃主题
 
 local ThemeConfig = BuildEnv("ThemeConfig")
 
@@ -7,7 +7,7 @@ if not ThemeConfig or not ThemeConfig.RegisterTheme then
 end
 
 ThemeConfig:RegisterTheme("sea_glass", {
-    label = "Sea Glass",
+    label = "002",
     mainFrame = {
         background = {27, 60, 71, 0.95},
     },
@@ -35,6 +35,9 @@ ThemeConfig:RegisterTheme("sea_glass", {
     },
     textColors = {
         normal = {238, 250, 252, 1.0},
+        tableHeader = {238, 250, 252, 1.0},
+        tableHeaderSortDesc = {255, 214, 214, 1.0},
+        tableHeaderSortAsc = {180, 255, 224, 1.0},
         planeId = {90, 255, 204, 1.0},
         deleted = {128, 128, 128, 0.8},
         countdownNormal = {90, 255, 204, 1.0},

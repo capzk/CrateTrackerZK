@@ -139,17 +139,19 @@ end
 
 function SortingSystem:UpdateHeaderVisual()
     if not headerButton then return end
-    local headerText = headerButton:GetFontString()
+    local headerText = headerButton.label or (headerButton.GetFontString and headerButton:GetFontString())
     if not headerText then return end
 
     local cfg = GetSortingConfig()
     if sortState == "default" then
-        local normal = cfg.GetTextColor("normal")
-        headerText:SetTextColor(normal[1], normal[2], normal[3], normal[4])
+        local color = cfg.GetTextColor("tableHeader")
+        headerText:SetTextColor(color[1], color[2], color[3], color[4])
     elseif sortState == "desc" then
-        headerText:SetTextColor(1, 0.8, 0.8, 1)
+        local color = cfg.GetTextColor("tableHeaderSortDesc")
+        headerText:SetTextColor(color[1], color[2], color[3], color[4])
     else
-        headerText:SetTextColor(0.8, 1, 0.8, 1)
+        local color = cfg.GetTextColor("tableHeaderSortAsc")
+        headerText:SetTextColor(color[1], color[2], color[3], color[4])
     end
 end
 

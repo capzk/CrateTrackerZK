@@ -232,7 +232,7 @@ function TableUIRenderer:CreateSortHeaderButton(parent, label, colWidth, layout,
 
     local buttonText = sortHeaderButton.label
     buttonText:SetText(label)
-    local textColor = cfg.GetTextColor("normal")
+    local textColor = cfg.GetTextColor("tableHeader")
     buttonText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
     ApplyFontScale(buttonText, layout.fontScale or 1)
 
@@ -262,7 +262,7 @@ function TableUIRenderer:CreateHeaderText(parent, label, colIndex, colWidth, lay
     cellText:SetText(label)
     cellText:SetJustifyV("MIDDLE")
     cellText:SetShadowOffset(0, 0)
-    local textColor = cfg.GetTextColor("normal")
+    local textColor = cfg.GetTextColor("tableHeader")
     cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
     ApplyFontScale(cellText, layout.fontScale or 1)
     return cellText
@@ -411,7 +411,8 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
 
         local textColor = colData.color or cfg.GetTextColor("normal")
         if rowInfo.isHidden then
-            cellText:SetTextColor(0.5, 0.5, 0.5, 0.8)
+            local hiddenColor = cfg.GetTextColor("deleted")
+            cellText:SetTextColor(hiddenColor[1], hiddenColor[2], hiddenColor[3], hiddenColor[4])
         else
             cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
         end

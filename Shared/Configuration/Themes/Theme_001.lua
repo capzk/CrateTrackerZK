@@ -1,4 +1,4 @@
--- Theme_001_Default.lua - 默认主题
+-- Theme_001.lua - 默认主题
 
 local ThemeConfig = BuildEnv("ThemeConfig")
 
@@ -7,7 +7,7 @@ if not ThemeConfig or not ThemeConfig.RegisterTheme then
 end
 
 ThemeConfig:RegisterTheme("default", {
-    label = "Default",
+    label = "001",
     mainFrame = {
         background = {38, 51, 77, 0.95},
     },
@@ -35,6 +35,9 @@ ThemeConfig:RegisterTheme("default", {
     },
     textColors = {
         normal = {255, 255, 255, 1.0},
+        tableHeader = {255, 255, 255, 1.0},
+        tableHeaderSortDesc = {255, 204, 204, 1.0},
+        tableHeaderSortAsc = {204, 255, 204, 1.0},
         planeId = {51, 255, 51, 1.0},
         deleted = {128, 128, 128, 0.8},
         countdownNormal = {0, 255, 0, 1.0},
