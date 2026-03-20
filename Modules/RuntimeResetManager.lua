@@ -78,7 +78,6 @@ function RuntimeResetManager:PrepareUIForClear()
 
     if CrateTrackerZKFrame then
         CrateTrackerZKFrame:Hide();
-        CrateTrackerZKFrame = nil;
     end
     if CrateTrackerZKFloatingButton then
         CrateTrackerZKFloatingButton:Show();

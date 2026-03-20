@@ -3,6 +3,7 @@
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
+local AirdropEventService = BuildEnv("AirdropEventService");
 local Notification = BuildEnv('Notification');
 local Area = BuildEnv("Area");
 
@@ -12,6 +13,7 @@ Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
 Notification.airdropAlertSoundFile = "Interface\\AddOns\\CrateTrackerZK\\Assets\\Sounds\\ctk_airdrop_detected_v1.ogg";
+Notification.NOTIFICATION_WINDOW = 30;
 -- 首次通知时间记录（用于30秒限制）
 Notification.firstNotificationTime = {};
 -- 玩家发送通知记录（防止重复发送）
@@ -186,14 +188,39 @@ function Notification:CanSendNotification(mapName)
     if not firstNotificationTime then
         return true;
     end
-    
-    local timeSinceFirstNotification = currentTime - firstNotificationTime;
-    if timeSinceFirstNotification > 30 then
+
+    local isAllowed = nil;
+    if AirdropEventService and AirdropEventService.HasRecentTimestamp then
+        isAllowed = AirdropEventService:HasRecentTimestamp(firstNotificationTime, currentTime, self.NOTIFICATION_WINDOW);
+    else
+        isAllowed = (currentTime - firstNotificationTime) <= self.NOTIFICATION_WINDOW;
+    end
+
+    if not isAllowed then
+        local timeSinceFirstNotification = currentTime - firstNotificationTime;
         Logger:Debug("Notification", "限制", string.format("距离首次通知已超过30秒（%d秒），不允许发送：地图=%s", 
             timeSinceFirstNotification, mapName));
         return false;
     end
     
+    return true;
+end
+
+function Notification:ResetMapNotificationState(mapName)
+    self.firstNotificationTime = self.firstNotificationTime or {};
+    self.playerSentNotification = self.playerSentNotification or {};
+    if AirdropEventService and AirdropEventService.ResetNotificationState then
+        return AirdropEventService:ResetNotificationState(
+            self.firstNotificationTime,
+            self.playerSentNotification,
+            mapName
+        );
+    end
+    if not mapName then
+        return false;
+    end
+    self.firstNotificationTime[mapName] = nil;
+    self.playerSentNotification[mapName] = nil;
     return true;
 end
 
@@ -227,7 +254,10 @@ function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
     if not lastTime then return false, nil end
     windowSeconds = windowSeconds or self.SHOUT_DEDUP_WINDOW or 20;
     currentTime = currentTime or time();
-    return (currentTime - lastTime) <= windowSeconds, lastTime;
+    local isRecent = AirdropEventService and AirdropEventService.HasRecentTimestamp
+        and AirdropEventService:HasRecentTimestamp(lastTime, currentTime, windowSeconds)
+        or ((currentTime - lastTime) <= windowSeconds);
+    return isRecent, lastTime;
 end
 
 local function TryPlaySound(path)
@@ -268,7 +298,13 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         self:RecordShout(mapName, currentTime);
     end
     local isRecentShout, lastShoutTime = self:IsRecentShout(mapName, self.SHOUT_DEDUP_WINDOW, currentTime);
-    if detectionSource == "map_icon" and isRecentShout then
+    local shouldSuppressMapIcon = detectionSource == "map_icon"
+        and (
+            (AirdropEventService and AirdropEventService.ShouldSuppressMapIconNotification
+                and AirdropEventService:ShouldSuppressMapIconNotification(lastShoutTime, currentTime, self.SHOUT_DEDUP_WINDOW))
+            or isRecentShout
+        );
+    if shouldSuppressMapIcon then
         self:UpdateFirstNotificationTime(mapName, lastShoutTime or currentTime);
         self:MarkPlayerSentNotification(mapName);
         Logger:Debug("Notification", "去重", string.format("最近%ds内已由喊话触发，跳过图标二次通知：地图=%s，间隔=%ds",

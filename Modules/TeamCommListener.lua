@@ -20,6 +20,10 @@ if not Utils then
     Utils = BuildEnv('Utils')
 end
 
+if not AirdropEventService then
+    AirdropEventService = BuildEnv('AirdropEventService')
+end
+
 if not UnifiedDataManager then
     UnifiedDataManager = BuildEnv('UnifiedDataManager')
 end
@@ -440,7 +444,10 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
             local tempRecord = UnifiedDataManager:GetValidTemporaryTime(mapId);
             if tempRecord then
                 local timeSinceLast = currentTime - tempRecord.timestamp;
-                if timeSinceLast >= 0 and timeSinceLast <= 30 and currentTime > tempRecord.timestamp then
+                local isDuplicate = AirdropEventService and AirdropEventService.IsDuplicateTeamMessage
+                    and AirdropEventService:IsDuplicateTeamMessage(tempRecord.timestamp, currentTime, 30)
+                    or (timeSinceLast >= 0 and timeSinceLast <= 30 and currentTime > tempRecord.timestamp);
+                if isDuplicate then
                     if IsDebugEnabled() and Logger and Logger.Debug then
                         Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒",
                             mapName,
@@ -489,7 +496,10 @@ function TeamCommListener:CheckHistoricalObjectGUID(mapId, objectGUID)
     end
 
     local mapData = Data:GetMap(mapId);
-    if mapData and mapData.currentAirdropObjectGUID == objectGUID then
+    local isSameObject = AirdropEventService and AirdropEventService.HasSameObjectGUID
+        and AirdropEventService:HasSameObjectGUID(mapData and mapData.currentAirdropObjectGUID, objectGUID)
+        or (mapData and mapData.currentAirdropObjectGUID == objectGUID);
+    if isSameObject then
         if IsDebugEnabled() and Logger and Logger.Debug then
             Logger:Debug("TeamCommListener", "比对", string.format("重载后比对：相同 objectGUID，是同一事件，忽略：地图ID=%d，objectGUID=%s",
                 mapId, objectGUID));

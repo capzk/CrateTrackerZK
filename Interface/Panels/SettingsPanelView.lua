@@ -2,7 +2,8 @@ local SettingsPanelView = BuildEnv("CrateTrackerZKSettingsPanelView")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
 local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
-local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
+local SettingsPanelFactory = BuildEnv("CrateTrackerZKSettingsPanelFactory")
+local SettingsPanelPages = BuildEnv("CrateTrackerZKSettingsPanelPages")
 local ThemeConfig = BuildEnv("ThemeConfig")
 
 SettingsPanelView.PAGE_MAIN = "main"
@@ -82,15 +83,6 @@ local function SetValueEnabled(fontString, enabled)
     end
 end
 
-local function CreateDivider(parent, anchor, offsetY)
-    local divider = parent:CreateTexture(nil, "ARTWORK")
-    divider:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY or -8)
-    divider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -24, offsetY or -8)
-    divider:SetHeight(1)
-    divider:SetColorTexture(1, 1, 1, 0.12)
-    return divider
-end
-
 local function ApplyNavButtonVisualState(button, active, hovered)
     if not button then
         return
@@ -149,351 +141,14 @@ local function CreateNavButton(parent, text, onClick)
     return button
 end
 
-local function CreatePageFrame(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    page:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
-    page.topAnchor = CreateFrame("Frame", nil, page)
-    page.topAnchor:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
-    page.topAnchor:SetSize(1, 1)
-    page:Hide()
-    return page
-end
-
-local function CreateCheckbox(parent, anchor, labelText, onClick)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -14)
-
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("LEFT", check, "RIGHT", 4, 1)
-    label:SetJustifyH("LEFT")
-    label:SetText(labelText or "")
-    check.label = label
-
-    check:SetScript("OnClick", function(self)
-        if onClick then
-            onClick(self:GetChecked() == true)
-        end
-    end)
-
-    return check
-end
-
-local function CreateActionButton(parent, text, width, onClick)
-    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    button:SetSize(width or 120, 24)
-    button:SetText(text or "")
-    button:SetScript("OnClick", function()
-        if onClick then
-            onClick()
-        end
-    end)
-    return button
-end
-
 local function UpdateButtonText(button, text, minWidth)
-    if not button then
-        return
+    if SettingsPanelFactory and SettingsPanelFactory.UpdateButtonText then
+        return SettingsPanelFactory:UpdateButtonText(button, text, minWidth)
     end
-    button:SetText(text or "")
-    local width = minWidth or 120
-    if button.GetFontString and button:GetFontString() and button:GetFontString().GetStringWidth then
-        width = math.max(width, math.ceil(button:GetFontString():GetStringWidth() + 24))
-    end
-    button:SetWidth(width)
-end
-
-local function CreateValueRow(parent, anchor, labelText, buttonText, buttonWidth, onClick)
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
-    label:SetJustifyH("LEFT")
-    label:SetText(labelText or "")
-
-    local value = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    value:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
-    value:SetJustifyH("LEFT")
-    value:SetText("")
-
-    local button = CreateActionButton(parent, buttonText, buttonWidth, onClick)
-    button:SetPoint("LEFT", value, "RIGHT", 16, 0)
-
-    return {
-        label = label,
-        value = value,
-        button = button,
-    }
-end
-
-local function CreateInlineButtonRow(parent, anchor, labelText, buttonText, buttonWidth, onClick)
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
-    label:SetJustifyH("LEFT")
-    label:SetText(labelText or "")
-
-    local button = CreateActionButton(parent, buttonText, buttonWidth, onClick)
-    button:SetPoint("LEFT", label, "RIGHT", 16, 0)
-
-    return {
-        label = label,
-        button = button,
-    }
-end
-
-local function CreateSectionLabel(parent, anchor, text)
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -18)
-    label:SetJustifyH("LEFT")
-    label:SetText(text or "")
-    return label
-end
-
-local function CreateIntervalRow(parent, anchor)
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 26, -14)
-    label:SetJustifyH("LEFT")
-    label:SetText(LT("SettingsAutoReportInterval", "通知频率（秒）"))
-
-    local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    editBox:SetSize(64, 24)
-    editBox:SetPoint("LEFT", label, "RIGHT", 12, 0)
-    editBox:SetAutoFocus(false)
-    editBox:SetNumeric(true)
-    editBox:SetMaxLetters(4)
-
-    editBox:SetScript("OnEnterPressed", function(self)
-        if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
-            SettingsPanelActions:ApplyAutoTeamReportInterval(self)
-        end
-        self:ClearFocus()
-        SettingsPanelView:RefreshState()
-    end)
-
-    editBox:SetScript("OnEditFocusLost", function(self)
-        if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
-            SettingsPanelActions:ApplyAutoTeamReportInterval(self)
-        end
-        SettingsPanelView:RefreshState()
-    end)
-
-    return label, editBox
-end
-
-local function CreateScrollableContent(parent, text)
-    if SettingsPanelLayout and SettingsPanelLayout.CreateScrollableText then
-        return SettingsPanelLayout:CreateScrollableText(parent, text or "", true)
-    end
-
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    label:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    label:SetJustifyH("LEFT")
-    label:SetJustifyV("TOP")
-    label:SetText(text or "")
-    return label
 end
 
 local function GetHelpText()
     return LT("SettingsHelpText", "")
-end
-
-local function RefreshExpansionSelectors(expansionOptions, currentExpansionID)
-    local selectorGroup = controls.expansionSelectors
-    if not selectorGroup then
-        return
-    end
-
-    local previous = nil
-    for index, option in ipairs(expansionOptions or {}) do
-        local checkbox = selectorGroup.checkboxes[index]
-        if not checkbox then
-            checkbox = CreateFrame("CheckButton", nil, selectorGroup, "UICheckButtonTemplate")
-            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
-            label:SetJustifyH("LEFT")
-            checkbox.label = label
-            checkbox:SetScript("OnClick", function(self)
-                if self:GetChecked() ~= true then
-                    self:SetChecked(true)
-                    return
-                end
-                if SettingsPanelActions and SettingsPanelActions.SetExpansionVersion then
-                    SettingsPanelActions:SetExpansionVersion(self.expansionID)
-                end
-                SettingsPanelView:RefreshState()
-            end)
-            selectorGroup.checkboxes[index] = checkbox
-        end
-
-        checkbox:ClearAllPoints()
-        if previous then
-            checkbox:SetPoint("LEFT", previous, "RIGHT", 64, 0)
-        else
-            checkbox:SetPoint("TOPLEFT", selectorGroup.anchor, "BOTTOMLEFT", 0, -12)
-        end
-        checkbox.expansionID = option.id
-        checkbox.label:SetText(option.label or option.id)
-        checkbox:SetChecked(option.id == currentExpansionID)
-        checkbox:Show()
-        previous = checkbox
-    end
-
-    for index = #(expansionOptions or {}) + 1, #selectorGroup.checkboxes do
-        selectorGroup.checkboxes[index]:Hide()
-    end
-end
-
-local function RefreshVersionMapList(mapOptions, currentExpansionID)
-    local mapList = controls.versionMapList
-    if not mapList then
-        return
-    end
-
-    mapList.expansionID = currentExpansionID
-    local previous = nil
-    for _, checkbox in ipairs(mapList.checkboxes) do
-        checkbox:Hide()
-    end
-
-    for index, option in ipairs(mapOptions or {}) do
-        local checkbox = mapList.checkboxes[index]
-        if not checkbox then
-            checkbox = CreateFrame("CheckButton", nil, mapList, "UICheckButtonTemplate")
-            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
-            label:SetJustifyH("LEFT")
-            checkbox.label = label
-            checkbox:SetScript("OnClick", function(self)
-                if SettingsPanelActions and SettingsPanelActions.SetMapVisibleForExpansion then
-                    SettingsPanelActions:SetMapVisibleForExpansion(mapList.expansionID, self.mapID, self:GetChecked() == true)
-                end
-                SettingsPanelView:RefreshState()
-            end)
-            mapList.checkboxes[index] = checkbox
-        end
-
-        checkbox:ClearAllPoints()
-        checkbox:SetPoint("TOPLEFT", previous or mapList.anchor, previous and "BOTTOMLEFT" or "BOTTOMLEFT", 0, previous and -8 or -12)
-        checkbox.mapID = option.id
-        checkbox.label:SetText(option.label)
-        checkbox:SetChecked(option.visible == true)
-        checkbox:Show()
-        previous = checkbox
-    end
-
-    if mapList.emptyText then
-        if #(mapOptions or {}) == 0 then
-            mapList.emptyText:Show()
-        else
-            mapList.emptyText:Hide()
-        end
-    end
-end
-
-local function BuildMainPage(parent)
-    local page = CreatePageFrame(parent)
-    pages[SettingsPanelView.PAGE_MAIN] = page
-
-    controls.addonToggle = CreateCheckbox(page, page.topAnchor, LT("SettingsAddonToggle", "插件开关"), function(enabled)
-        if SettingsPanelActions and SettingsPanelActions.SetAddonEnabled then
-            SettingsPanelActions:SetAddonEnabled(enabled)
-        end
-        SettingsPanelView:RefreshState()
-    end)
-
-    controls.expansionLabel = CreateSectionLabel(page, controls.addonToggle, LT("SettingsExpansionVersion", "游戏版本"))
-
-    local selectorGroup = CreateFrame("Frame", nil, page)
-    selectorGroup:SetPoint("TOPLEFT", controls.expansionLabel, "BOTTOMLEFT", 0, 0)
-    selectorGroup:SetSize(520, 28)
-    selectorGroup.anchor = controls.expansionLabel
-    selectorGroup.checkboxes = {}
-    controls.expansionSelectors = selectorGroup
-
-    controls.versionMapListLabel = CreateSectionLabel(page, selectorGroup, LT("SettingsMapList", "地图列表"))
-
-    local mapList = CreateFrame("Frame", nil, page)
-    mapList:SetPoint("TOPLEFT", controls.versionMapListLabel, "BOTTOMLEFT", 0, 0)
-    mapList:SetSize(520, 260)
-    mapList.anchor = controls.versionMapListLabel
-    mapList.checkboxes = {}
-    controls.versionMapList = mapList
-
-    local emptyText = mapList:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    emptyText:SetPoint("TOPLEFT", mapList, "TOPLEFT", 0, -12)
-    emptyText:SetText("-")
-    mapList.emptyText = emptyText
-end
-
-local function BuildNotificationsPage(parent)
-    local page = CreatePageFrame(parent)
-    pages[SettingsPanelView.PAGE_NOTIFICATIONS] = page
-
-    controls.teamNotification = CreateCheckbox(page, page.topAnchor, LT("SettingsTeamNotify", "团队通知"), function(enabled)
-        if SettingsPanelActions and SettingsPanelActions.SetTeamNotificationEnabled then
-            SettingsPanelActions:SetTeamNotificationEnabled(enabled)
-        end
-        SettingsPanelView:RefreshState()
-    end)
-
-    controls.soundAlert = CreateCheckbox(page, controls.teamNotification, LT("SettingsSoundAlert", "声音提示"), function(enabled)
-        if SettingsPanelActions and SettingsPanelActions.SetSoundAlertEnabled then
-            SettingsPanelActions:SetSoundAlertEnabled(enabled)
-        end
-        SettingsPanelView:RefreshState()
-    end)
-
-    controls.autoReport = CreateCheckbox(page, controls.soundAlert, LT("SettingsAutoReport", "自动通知"), function(enabled)
-        if SettingsPanelActions and SettingsPanelActions.SetAutoTeamReportEnabled then
-            SettingsPanelActions:SetAutoTeamReportEnabled(enabled)
-        end
-        SettingsPanelView:RefreshState()
-    end)
-
-    controls.intervalLabel, controls.intervalEditBox = CreateIntervalRow(page, controls.autoReport)
-end
-
-local function BuildAppearancePage(parent)
-    local page = CreatePageFrame(parent)
-    pages[SettingsPanelView.PAGE_APPEARANCE] = page
-
-    controls.theme = CreateInlineButtonRow(
-        page,
-        page.topAnchor,
-        LT("SettingsThemeSwitch", "界面主题"),
-        "N/A",
-        160,
-        function()
-            if SettingsPanelActions and SettingsPanelActions.CycleTheme then
-                SettingsPanelActions:CycleTheme()
-            end
-            SettingsPanelView:RefreshState()
-        end
-    )
-end
-
-local function BuildDataPage(parent)
-    local page = CreatePageFrame(parent)
-    pages[SettingsPanelView.PAGE_DATA] = page
-
-    controls.clearButton = CreateActionButton(page, LT("SettingsClearButton", "清除"), 120, function()
-        if SettingsPanelActions and SettingsPanelActions.EnsureClearDialog then
-            SettingsPanelActions:EnsureClearDialog()
-        end
-        if StaticPopup_Show then
-            StaticPopup_Show("CRATETRACKERZK_CLEAR_DATA")
-        end
-    end)
-    controls.clearButton:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
-end
-
-local function BuildTextPage(parent, pageKey, providerText)
-    local page = CreatePageFrame(parent)
-    pages[pageKey] = page
-
-    local contentHost = CreateFrame("Frame", nil, page)
-    contentHost:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
-    contentHost:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
-    CreateScrollableContent(contentHost, providerText)
 end
 
 function SettingsPanelView:GetPageLabel(pageKey)
@@ -594,8 +249,16 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.theme.label, true)
     end
 
-    RefreshExpansionSelectors(snapshot.expansionOptions or {}, snapshot.currentExpansionID)
-    RefreshVersionMapList(snapshot.mapOptions or {}, snapshot.currentExpansionID)
+    if SettingsPanelPages and SettingsPanelPages.RefreshExpansionSelectors then
+        SettingsPanelPages:RefreshExpansionSelectors(controls, snapshot.expansionOptions or {}, snapshot.currentExpansionID, function()
+            SettingsPanelView:RefreshState()
+        end)
+    end
+    if SettingsPanelPages and SettingsPanelPages.RefreshVersionMapList then
+        SettingsPanelPages:RefreshVersionMapList(controls, snapshot.mapOptions or {}, snapshot.currentExpansionID, function()
+            SettingsPanelView:RefreshState()
+        end)
+    end
 end
 
 function SettingsPanelView:Build(frame)
@@ -627,17 +290,30 @@ function SettingsPanelView:Build(frame)
         lastButton = button
     end
 
-    local contentDivider = CreateDivider(frame, navHost, -8)
+    local contentDivider = SettingsPanelFactory and SettingsPanelFactory.CreateDivider and SettingsPanelFactory:CreateDivider(frame, navHost, -8)
     local contentHost = CreateFrame("Frame", nil, frame)
     contentHost:SetPoint("TOPLEFT", contentDivider, "BOTTOMLEFT", 0, -14)
     contentHost:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -24, 16)
 
-    BuildMainPage(contentHost)
-    BuildNotificationsPage(contentHost)
-    BuildAppearancePage(contentHost)
-    BuildDataPage(contentHost)
-    BuildTextPage(contentHost, self.PAGE_HELP, GetHelpText())
-    BuildTextPage(contentHost, self.PAGE_ABOUT, ABOUT_TEXT)
+    if SettingsPanelPages then
+        SettingsPanelPages:BuildMainPage(contentHost, self.PAGE_MAIN, pages, controls, LT, function()
+            SettingsPanelView:RefreshState()
+        end)
+        SettingsPanelPages:BuildNotificationsPage(contentHost, self.PAGE_NOTIFICATIONS, pages, controls, LT, function()
+            SettingsPanelView:RefreshState()
+        end, function(editBox)
+            if SettingsPanelActions and SettingsPanelActions.ApplyAutoTeamReportInterval then
+                SettingsPanelActions:ApplyAutoTeamReportInterval(editBox)
+            end
+            SettingsPanelView:RefreshState()
+        end)
+        SettingsPanelPages:BuildAppearancePage(contentHost, self.PAGE_APPEARANCE, pages, controls, LT, function()
+            SettingsPanelView:RefreshState()
+        end)
+        SettingsPanelPages:BuildDataPage(contentHost, self.PAGE_DATA, pages, controls, LT)
+        SettingsPanelPages:BuildTextPage(contentHost, self.PAGE_HELP, pages, GetHelpText())
+        SettingsPanelPages:BuildTextPage(contentHost, self.PAGE_ABOUT, pages, ABOUT_TEXT)
+    end
 
     frame:SetScript("OnShow", function()
         SettingsPanelView:RefreshState()

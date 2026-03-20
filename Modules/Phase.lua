@@ -2,6 +2,7 @@
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
+local AppContext = BuildEnv("AppContext");
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
 local Area = BuildEnv("Area");
@@ -13,7 +14,9 @@ Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
 
 local function GetExpansionAwareCacheKey(mapID)
-    local expansionID = (Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID()) or "default";
+    local expansionID = (AppContext and AppContext.GetCurrentExpansionID and AppContext:GetCurrentExpansionID())
+        or (Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID())
+        or "default";
     return tostring(expansionID) .. ":" .. tostring(mapID);
 end
 

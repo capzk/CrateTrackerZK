@@ -1,6 +1,7 @@
 <Ui xmlns:xsi="" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
     <!-- 第三方库 -->
     <Script file="Libs/LibStub/LibStub.lua"/>
+    <Script file="Libs/WagoAnalytics/Shim.lua"/>
     <Script file="Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua"/>
     <Script file="Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua"/>
     <Script file="Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua"/>
@@ -8,6 +9,9 @@
     <!-- 基础工具（优先加载） -->
     <Script file="Shared/Foundation/Utils.lua"/>
     <Script file="Shared/Foundation/Logger.lua"/>
+    <Script file="Shared/Foundation/AppContext.lua"/>
+    <Script file="Shared/Foundation/StateBuckets.lua"/>
+    <Script file="Shared/Foundation/Analytics.lua"/>
     <!-- 本地化管理模块（在本地化文件之前加载） -->
     <Script file="Shared/Foundation/Localization.lua"/>
     
@@ -30,14 +34,19 @@
     <!-- 数据管理（代号系统配置优先） -->
         <Script file="Data/MapConfig.lua"/>
         <!-- 时间数据管理模块（在Data.lua之前加载） -->
+        <Script file="Modules/TimeStateStore.lua"/>
+        <Script file="Modules/PhaseStateStore.lua"/>
+        <Script file="Modules/TimeFormatter.lua"/>
         <Script file="Modules/UnifiedDataManager.lua"/>
         <Script file="Modules/UnifiedDataManagerExtensions.lua"/>
         <Script file="Data/Data.lua"/>
+        <Script file="Modules/AirdropEventService.lua"/>
     
     <!-- 功能模块 -->
     <Script file="Modules/Notification.lua"/>
     <Script file="Modules/RuntimeResetManager.lua"/>
     <Script file="Modules/TeamCommListener.lua"/>
+    <Script file="Modules/AddonControlService.lua"/>
     <Script file="Modules/Commands.lua"/>
     <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
     <Script file="Modules/IconDetector.lua"/>
@@ -48,18 +57,34 @@
     <Script file="Modules/Phase.lua"/>
     
     <!-- 核心逻辑 -->
+    <Script file="Core/CoreShared.lua"/>
+    <Script file="Core/TickerController.lua"/>
+    <Script file="Core/AddonLifecycle.lua"/>
+    <Script file="Core/EventRouter.lua"/>
     <Script file="Core/Core.lua"/>
     
     <!-- 现代化界面模块 -->
     <Script file="Interface/MainFrame/TableSystems.lua"/>
+    <Script file="Interface/MainFrame/TableUITextMetrics.lua"/>
+    <Script file="Interface/MainFrame/TableUILayoutEngine.lua"/>
+    <Script file="Interface/MainFrame/TableUIRenderer.lua"/>
+    <Script file="Interface/MainFrame/TableUIRebuildEngine.lua"/>
     <Script file="Interface/MainFrame/TableUI.lua"/>
+    <Script file="Interface/MainFrame/MainFrameMetrics.lua"/>
+    <Script file="Interface/MainFrame/MainFrameState.lua"/>
+    <Script file="Interface/MainFrame/MainFrameChrome.lua"/>
+    <Script file="Interface/MainFrame/MainFrameResizeController.lua"/>
     <Script file="Interface/MainFrame/MainFrame.lua"/>
     <Script file="Interface/MainFrame/MainFrameTheme.lua"/>
     <Script file="Interface/Panels/SettingsPanelState.lua"/>
     <Script file="Interface/Panels/SettingsPanelLayout.lua"/>
     <Script file="Interface/Panels/SettingsPanelActions.lua"/>
+    <Script file="Interface/Panels/SettingsPanelControlFactory.lua"/>
+    <Script file="Interface/Panels/SettingsPanelPages.lua"/>
     <Script file="Interface/Panels/SettingsPanelView.lua"/>
     <Script file="Interface/Panels/SettingsPanel.lua"/>
+    <Script file="Interface/Panels/RowViewModelBuilder.lua"/>
+    <Script file="Interface/Panels/MainPanelController.lua"/>
     <Script file="Interface/Panels/MainPanel.lua"/>
     <Script file="Interface/Widgets/MinimapButton.lua"/>
     <Include file="Interface/Frame.xml"/>

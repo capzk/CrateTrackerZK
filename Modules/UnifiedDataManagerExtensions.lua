@@ -1,21 +1,18 @@
 -- UnifiedDataManagerExtensions.lua - 清理与格式化职责拆分
 
 local UnifiedDataManager = BuildEnv("UnifiedDataManager");
+local AppContext = BuildEnv("AppContext");
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
+local TimeFormatter = BuildEnv("TimeFormatter");
 local L = CrateTrackerZK and CrateTrackerZK.L or {};
 local ExpansionConfig = BuildEnv("ExpansionConfig");
 local Data = BuildEnv("Data");
 local Logger = BuildEnv("Logger");
+local StateBuckets = BuildEnv("StateBuckets");
 
 local function GetCurrentExpansionID()
-    if Data and Data.GetCurrentExpansionID then
-        local id = Data:GetCurrentExpansionID();
-        if id then
-            return id;
-        end
-    end
-    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
-        local id = ExpansionConfig:GetCurrentExpansionID();
+    if AppContext and AppContext.GetCurrentExpansionID then
+        local id = AppContext:GetCurrentExpansionID();
         if id then
             return id;
         end
@@ -24,24 +21,13 @@ local function GetCurrentExpansionID()
 end
 
 local function GetPhaseCacheStore()
+    if StateBuckets and StateBuckets.GetPhaseCache then
+        return StateBuckets:GetPhaseCache();
+    end
     if Data and Data.GetPhaseCache then
         return Data:GetPhaseCache();
     end
-    if type(CRATETRACKERZK_UI_DB) ~= "table" then
-        CRATETRACKERZK_UI_DB = {};
-    end
-    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
-        CRATETRACKERZK_UI_DB.expansionUIData = {};
-    end
-    local expansionID = GetCurrentExpansionID();
-    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
-        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {};
-    end
-    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID];
-    if type(bucket.phaseCache) ~= "table" then
-        bucket.phaseCache = {};
-    end
-    return bucket.phaseCache;
+    return {};
 end
 
 function UnifiedDataManager:ClearExpiredTemporaryTimes()
@@ -131,43 +117,24 @@ function UnifiedDataManager:ClearExpiredTemporaryData()
 end
 
 function UnifiedDataManager:FormatTime(seconds, showOnlyMinutes)
-    if not seconds then
-        return L["NoRecord"] or "--:--";
+    if TimeFormatter and TimeFormatter.FormatTime then
+        return TimeFormatter:FormatTime(seconds, showOnlyMinutes, L);
     end
-    if seconds < 0 then
-        return L["NoRecord"] or "--:--";
-    end
-    if seconds == 0 then
-        return "00:00";
-    end
-
-    local hours = math.floor(seconds / 3600);
-    local minutes = math.floor((seconds % 3600) / 60);
-    local secs = seconds % 60;
-
-    if showOnlyMinutes then
-        local formatStr = L["MinuteSecond"] or "%d:%02d";
-        return string.format(formatStr, minutes + hours * 60, secs);
-    end
-    if hours > 0 then
-        return string.format("%d:%02d:%02d", hours, minutes, secs);
-    end
-    return string.format("%02d:%02d", minutes, secs);
+    return L["NoRecord"] or "--:--";
 end
 
 function UnifiedDataManager:FormatDateTime(timestamp)
-    if not timestamp then
-        return L["NoRecord"] or "无";
+    if TimeFormatter and TimeFormatter.FormatDateTime then
+        return TimeFormatter:FormatDateTime(timestamp, L);
     end
-    return date("%H:%M:%S", timestamp);
+    return L["NoRecord"] or "无";
 end
 
 function UnifiedDataManager:FormatTimeForDisplay(timestamp)
-    if not timestamp then
-        return "--:--";
+    if TimeFormatter and TimeFormatter.FormatTimeForDisplay then
+        return TimeFormatter:FormatTimeForDisplay(timestamp);
     end
-    local t = date("*t", timestamp);
-    return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec);
+    return "--:--";
 end
 
 return UnifiedDataManager;

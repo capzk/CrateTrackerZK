@@ -1,6 +1,7 @@
 -- SettingsPanelState.lua - 设置面板状态与配置读取
 
 local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
+local AddonControlService = BuildEnv("AddonControlService")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local Notification = BuildEnv("Notification")
 local ThemeConfig = BuildEnv("ThemeConfig")
@@ -17,6 +18,9 @@ function SettingsPanelState:LT(key, fallback)
 end
 
 function SettingsPanelState:IsAddonEnabled()
+    if AddonControlService and AddonControlService.IsAddonEnabled then
+        return AddonControlService:IsAddonEnabled()
+    end
     if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
         return true
     end

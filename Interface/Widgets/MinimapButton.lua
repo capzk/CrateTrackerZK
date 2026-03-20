@@ -53,9 +53,7 @@ local function HandleClick(button)
             MainPanel:Toggle()
         end
     elseif button == "RightButton" then
-        if SettingsPanel and SettingsPanel.Toggle then
-            SettingsPanel:Toggle()
-        elseif SettingsPanel and SettingsPanel.Show then
+        if SettingsPanel and SettingsPanel.Show then
             SettingsPanel:Show()
         end
     end

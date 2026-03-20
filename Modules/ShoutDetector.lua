@@ -77,7 +77,9 @@ local function OnShoutDetected(message)
         Notification:RecordShout(mapName);
     end
     -- 喊话触发视为新事件，清除通知去重，确保立即广播
-    if Notification then
+    if Notification and Notification.ResetMapNotificationState then
+        Notification:ResetMapNotificationState(mapName);
+    elseif Notification then
         Notification.firstNotificationTime = Notification.firstNotificationTime or {};
         Notification.playerSentNotification = Notification.playerSentNotification or {};
         Notification.firstNotificationTime[mapName] = nil;

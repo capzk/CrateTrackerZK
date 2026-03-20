@@ -10,6 +10,7 @@ end
 local TimerManager = BuildEnv('TimerManager')
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
+local AirdropEventService = BuildEnv("AirdropEventService");
 local L = CrateTrackerZK.L;
 
 if not Data then
@@ -68,6 +69,34 @@ local function HasRecentShout(mapDisplayName, currentTime)
     return false, nil;
 end
 
+local function ResetNotificationStateForNewEvent(mapDisplayName, currentTime)
+    local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
+    local shouldReset = nil;
+    if AirdropEventService and AirdropEventService.ShouldResetNotificationStateForNewEvent then
+        shouldReset = AirdropEventService:ShouldResetNotificationStateForNewEvent(
+            lastShoutTime,
+            currentTime,
+            Notification and Notification.SHOUT_DEDUP_WINDOW or 20
+        );
+    else
+        shouldReset = not isRecentShout;
+    end
+
+    if shouldReset and Notification and Notification.ResetMapNotificationState then
+        Notification:ResetMapNotificationState(mapDisplayName);
+    elseif shouldReset and Notification then
+        if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
+            Notification.firstNotificationTime[mapDisplayName] = nil;
+        end
+        if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
+            Notification.playerSentNotification[mapDisplayName] = nil;
+        end
+    elseif isRecentShout then
+        Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
+            mapDisplayName, currentTime - (lastShoutTime or currentTime)));
+    end
+end
+
 function TimerManager:GetSourceDisplayName(source)
     local displayNames = {
         [self.detectionSources.MAP_ICON] = DT("DebugDetectionSourceMapIcon")
@@ -85,6 +114,9 @@ end
 
 -- 检查是否应该发送通知（30秒限制）
 local function ShouldSendNotification(eventTimestamp, currentTime)
+    if AirdropEventService and AirdropEventService.ShouldBroadcastByEventAge then
+        return AirdropEventService:ShouldBroadcastByEventAge(eventTimestamp, currentTime, 30);
+    end
     if not eventTimestamp then
         return true;
     end
@@ -183,63 +215,56 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
     
     -- objectGUID 比对：相同则跳过（同一事件）
-    if targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID == objectGUID then
+    local hasSameObjectGUID = AirdropEventService and AirdropEventService.HasSameObjectGUID
+        and AirdropEventService:HasSameObjectGUID(targetMapData.currentAirdropObjectGUID, objectGUID)
+        or (targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID == objectGUID);
+    local hasDifferentObjectGUID = AirdropEventService and AirdropEventService.HasDifferentObjectGUID
+        and AirdropEventService:HasDifferentObjectGUID(targetMapData.currentAirdropObjectGUID, objectGUID)
+        or (targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID);
+
+    if hasSameObjectGUID then
         Logger:DebugLimited("detection:same_event_" .. targetMapData.id, "Timer", "检测", 
             string.format("检测到相同 objectGUID（同一事件持续中）：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，空投开始时间=%s", 
                 Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
                 targetMapData.currentAirdropTimestamp and UnifiedDataManager:FormatDateTime(targetMapData.currentAirdropTimestamp) or "无"));
         return true;
-    elseif targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID then
+    elseif hasDifferentObjectGUID then
         -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
         local mapDisplayName = Data:GetMapDisplayName(targetMapData);
-        local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
-        if Notification and not isRecentShout then
-            if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
-                Notification.firstNotificationTime[mapDisplayName] = nil;
-            end
-            if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
-                Notification.playerSentNotification[mapDisplayName] = nil;
-            end
-        elseif isRecentShout then
-            Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
-                mapDisplayName, currentTime - (lastShoutTime or currentTime)));
-        end
+        ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
     end
     
     local detectionState = self.detectionState[targetMapData.id];
     if not detectionState then
         -- 首次检测
-        self.detectionState[targetMapData.id] = {
-            firstDetectedTime = currentTime,
-            detectedObjectGUID = objectGUID
-        };
+        self.detectionState[targetMapData.id] = AirdropEventService
+            and AirdropEventService.CreateDetectionState
+            and AirdropEventService:CreateDetectionState(currentTime, objectGUID)
+            or {
+                firstDetectedTime = currentTime,
+                detectedObjectGUID = objectGUID
+            };
         Logger:Debug("Timer", "检测", string.format("首次检测到空投：地图=%s，objectGUID=%s", 
             Data:GetMapDisplayName(targetMapData), objectGUID));
         return true;
     end
     
-    if detectionState.detectedObjectGUID ~= objectGUID then
+    if (AirdropEventService and AirdropEventService.HasDifferentObjectGUID
+        and AirdropEventService:HasDifferentObjectGUID(detectionState.detectedObjectGUID, objectGUID))
+        or (detectionState.detectedObjectGUID ~= objectGUID) then
         -- 新事件：清除通知记录
         local mapDisplayName = Data:GetMapDisplayName(targetMapData);
-        local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
-        if Notification and not isRecentShout then
-            if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
-                Notification.firstNotificationTime[mapDisplayName] = nil;
-            end
-            if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
-                Notification.playerSentNotification[mapDisplayName] = nil;
-            end
-        elseif isRecentShout then
-            Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
-                mapDisplayName, currentTime - (lastShoutTime or currentTime)));
-        end
+        ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
         
         Logger:Debug("Timer", "检测", string.format("检测到新事件（objectGUID不同）：地图=%s，旧objectGUID=%s，新objectGUID=%s", 
             Data:GetMapDisplayName(targetMapData), detectionState.detectedObjectGUID, objectGUID));
-        self.detectionState[targetMapData.id] = {
-            firstDetectedTime = currentTime,
-            detectedObjectGUID = objectGUID
-        };
+        self.detectionState[targetMapData.id] = AirdropEventService
+            and AirdropEventService.CreateDetectionState
+            and AirdropEventService:CreateDetectionState(currentTime, objectGUID)
+            or {
+                firstDetectedTime = currentTime,
+                detectedObjectGUID = objectGUID
+            };
         return true;
     end
     local timeSinceFirstDetection = currentTime - detectionState.firstDetectedTime;

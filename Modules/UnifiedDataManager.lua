@@ -11,8 +11,12 @@ end
 local UnifiedDataManager = BuildEnv('UnifiedDataManager')
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
+local AppContext = BuildEnv("AppContext");
 local L = CrateTrackerZK.L;
 local ExpansionConfig = BuildEnv("ExpansionConfig");
+local PhaseStateStore = BuildEnv("PhaseStateStore");
+local StateBuckets = BuildEnv("StateBuckets");
+local TimeStateStore = BuildEnv("TimeStateStore");
 
 if not Data then
     Data = BuildEnv('Data')
@@ -44,14 +48,8 @@ UnifiedDataManager.TEMPORARY_PHASE_EXPIRE = 1800  -- 30分钟
 UnifiedDataManager.TEMPORARY_TIME_ADOPTION_WINDOW = 120  -- 2分钟
 
 local function GetCurrentExpansionID()
-    if Data and Data.GetCurrentExpansionID then
-        local id = Data:GetCurrentExpansionID();
-        if id then
-            return id;
-        end
-    end
-    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
-        local id = ExpansionConfig:GetCurrentExpansionID();
+    if AppContext and AppContext.GetCurrentExpansionID then
+        local id = AppContext:GetCurrentExpansionID();
         if id then
             return id;
         end
@@ -59,29 +57,14 @@ local function GetCurrentExpansionID()
     return "default";
 end
 
-local function BuildScopedMapKey(mapId)
-    return tostring(GetCurrentExpansionID()) .. ":" .. tostring(mapId);
-end
-
 local function GetPhaseCacheStore()
+    if StateBuckets and StateBuckets.GetPhaseCache then
+        return StateBuckets:GetPhaseCache();
+    end
     if Data and Data.GetPhaseCache then
         return Data:GetPhaseCache();
     end
-    if not CRATETRACKERZK_UI_DB or type(CRATETRACKERZK_UI_DB) ~= "table" then
-        CRATETRACKERZK_UI_DB = {};
-    end
-    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
-        CRATETRACKERZK_UI_DB.expansionUIData = {};
-    end
-    local expansionID = GetCurrentExpansionID();
-    if type(CRATETRACKERZK_UI_DB.expansionUIData[expansionID]) ~= "table" then
-        CRATETRACKERZK_UI_DB.expansionUIData[expansionID] = {};
-    end
-    local bucket = CRATETRACKERZK_UI_DB.expansionUIData[expansionID];
-    if type(bucket.phaseCache) ~= "table" then
-        bucket.phaseCache = {};
-    end
-    return bucket.phaseCache;
+    return {};
 end
 
 -- 初始化
@@ -101,25 +84,6 @@ function UnifiedDataManager:Initialize()
     Logger:Debug("UnifiedDataManager", "初始化", "统一数据管理器已初始化");
 end
 
--- 时间数据结构
-local function CreateTimeData(mapId)
-    return {
-        mapId = mapId,
-        temporaryTime = nil,  -- {timestamp, source, setTime}
-        persistentTime = nil -- {timestamp, source, phaseId}
-    }
-end
-
--- 位面数据结构
-local function CreatePhaseData(mapId)
-    return {
-        mapId = mapId,
-        phaseId = nil,
-        source = nil,
-        detectTime = nil
-    }
-end
-
 -- 获取地图刷新间隔（优先使用Data中的配置）
 local function GetMapInterval(mapId)
     if Data and Data.GetMap then
@@ -137,50 +101,28 @@ local function GetMapInterval(mapId)
     return 1100;
 end
 
--- 计算下一次刷新时间，确保返回值始终指向“未来”
-local function CalculateNextRefreshTime(lastRefresh, interval, currentTime)
-    if not lastRefresh or not interval or interval <= 0 then
-        return nil;
-    end
-
-    local now = currentTime or time();
-
-    -- 如果记录时间在未来或刚刚发生，直接推一个间隔
-    if now <= lastRefresh then
-        return lastRefresh + interval;
-    end
-
-    -- 向上取整补齐所有间隔，保证结果不早于当前时间
-    local cycles = math.ceil((now - lastRefresh) / interval);
-    if cycles < 1 then
-        cycles = 1;
-    end
-
-    return lastRefresh + cycles * interval;
-end
-
 -- 对外暴露统一时间计算入口，便于其他模块复用
 function UnifiedDataManager:CalculateNextRefreshTime(lastRefresh, interval, currentTime)
-    return CalculateNextRefreshTime(lastRefresh, interval, currentTime);
+    if TimeStateStore and TimeStateStore.CalculateNextRefreshTime then
+        return TimeStateStore:CalculateNextRefreshTime(lastRefresh, interval, currentTime);
+    end
+    return nil;
 end
 
 -- 获取或创建时间数据
 function UnifiedDataManager:GetOrCreateTimeData(mapId)
-    local scopedKey = BuildScopedMapKey(mapId);
-    if not self.temporaryTimes[scopedKey] then
-        self.temporaryTimes[scopedKey] = CreateTimeData(mapId);
+    if TimeStateStore and TimeStateStore.GetOrCreate then
+        return TimeStateStore:GetOrCreate(self, mapId);
     end
-    return self.temporaryTimes[scopedKey];
+    return nil;
 end
 
 -- 获取或创建位面数据
 function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary)
-    local scopedKey = BuildScopedMapKey(mapId);
-    local storage = isTemporary and self.temporaryPhases or self.persistentPhases;
-    if not storage[scopedKey] then
-        storage[scopedKey] = CreatePhaseData(mapId);
+    if PhaseStateStore and PhaseStateStore.GetOrCreate then
+        return PhaseStateStore:GetOrCreate(self, mapId, isTemporary);
     end
-    return storage[scopedKey];
+    return nil;
 end
 
 -- 统一时间设置接口
@@ -219,12 +161,10 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建时间数据：mapId=%s", tostring(mapId)));
         return false;
     end
-    
-    timeData.temporaryTime = {
-        timestamp = timestamp,
-        source = source,
-        setTime = time()
-    };
+
+    if TimeStateStore and TimeStateStore.SetTemporary then
+        TimeStateStore:SetTemporary(self, mapId, timestamp, source, time());
+    end
     
     Logger:Debug("UnifiedDataManager", "临时时间", string.format("设置临时时间成功：地图ID=%d，时间=%d，来源=%s", 
         mapId, timestamp, source));
@@ -234,28 +174,16 @@ end
 
 -- 获取未过期的临时时间（不清除）
 function UnifiedDataManager:GetValidTemporaryTime(mapId)
-    local scopedKey = BuildScopedMapKey(mapId);
-    local timeData = self.temporaryTimes[scopedKey];
-    if not timeData or not timeData.temporaryTime then
-        return nil;
+    if TimeStateStore and TimeStateStore.GetValidTemporary then
+        return TimeStateStore:GetValidTemporary(self, mapId, time());
     end
-    
-    local now = time();
-    local record = timeData.temporaryTime;
-    if now - record.setTime <= self.TEMPORARY_TIME_EXPIRE then
-        return record;
-    end
-    
-    -- 已过期则清除
-    timeData.temporaryTime = nil;
     return nil;
 end
 
 -- 清除指定地图的临时时间
 function UnifiedDataManager:ClearTemporaryTime(mapId)
-    local scopedKey = BuildScopedMapKey(mapId);
-    if self.temporaryTimes[scopedKey] then
-        self.temporaryTimes[scopedKey].temporaryTime = nil;
+    if TimeStateStore and TimeStateStore.ClearTemporary then
+        TimeStateStore:ClearTemporary(self, mapId);
     end
 end
 
@@ -289,16 +217,12 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId)
     end
     
     local timeData = self:GetOrCreateTimeData(mapId);
-    timeData.persistentTime = {
-        timestamp = timestamp,
-        source = source,
-        phaseId = phaseId
-    };
-    
-    -- 持久化时间优先级最高，清除临时时间
-    if timeData.temporaryTime then
+    if TimeStateStore and TimeStateStore.SetPersistent then
+        TimeStateStore:SetPersistent(self, mapId, timestamp, source, phaseId);
+    end
+
+    if timeData and timeData.temporaryTime then
         Logger:Debug("UnifiedDataManager", "优先级", string.format("持久化时间优先级更高，清除临时时间：地图ID=%d", mapId));
-        timeData.temporaryTime = nil;
     end
     
     -- 调用Data模块进行持久化存储
@@ -318,8 +242,8 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
         return nil;
     end
     
-    local scopedKey = BuildScopedMapKey(mapId);
-    local timeData = self.temporaryTimes[scopedKey];
+    local scopedKey = TimeStateStore and TimeStateStore.GetScopedKey and TimeStateStore:GetScopedKey(mapId) or nil;
+    local timeData = scopedKey and self.temporaryTimes[scopedKey] or nil;
     local now = currentTime or time();
 
     local tempRecord = nil;
@@ -410,17 +334,10 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建临时位面数据：mapId=%s", tostring(mapId)));
         return false;
     end
-    
-    phaseData.phaseId = phaseId;
-    phaseData.source = source;
-    phaseData.detectTime = time();
-    
-    local phaseCache = GetPhaseCacheStore();
-    phaseCache[BuildScopedMapKey(mapId)] = {
-        mapId = mapId,
-        phaseId = phaseId,
-        detectTime = phaseData.detectTime
-    };
+
+    if PhaseStateStore and PhaseStateStore.SetTemporary then
+        PhaseStateStore:SetTemporary(self, mapId, phaseId, source, time(), GetPhaseCacheStore());
+    end
 
     Logger:Debug("UnifiedDataManager", "临时位面", string.format("设置临时位面成功：地图ID=%d，位面ID=%s，来源=%s", 
         mapId, phaseId, source));
@@ -440,10 +357,10 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建持久化位面数据：mapId=%s", tostring(mapId)));
         return false;
     end
-    
-    phaseData.phaseId = phaseId;
-    phaseData.source = source;
-    phaseData.detectTime = time();
+
+    if PhaseStateStore and PhaseStateStore.SetPersistent then
+        PhaseStateStore:SetPersistent(self, mapId, phaseId, source, time());
+    end
     
     Logger:Debug("UnifiedDataManager", "持久化位面", string.format("设置持久化位面成功：地图ID=%d，位面ID=%s，来源=%s", 
         mapId, phaseId, source));
@@ -458,26 +375,9 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     end
     
     -- 优先使用临时位面（如果存在且未过期）
-    local scopedKey = BuildScopedMapKey(mapId);
-    local tempPhase = self.temporaryPhases[scopedKey];
-    if tempPhase and tempPhase.phaseId then
-        local now = time();
-        if now - tempPhase.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
-            return tempPhase.phaseId;
-        else
-            -- 临时位面已过期，清除
-            tempPhase.phaseId = nil;
-            tempPhase.source = nil;
-            tempPhase.detectTime = nil;
-        end
+    if PhaseStateStore and PhaseStateStore.GetCurrent then
+        return PhaseStateStore:GetCurrent(self, mapId, time());
     end
-    
-    -- 使用持久化位面
-    local persistentPhase = self.persistentPhases[scopedKey];
-    if persistentPhase and persistentPhase.phaseId then
-        return persistentPhase.phaseId;
-    end
-    
     return nil;
 end
 
@@ -487,12 +387,9 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
         return nil;
     end
     
-    local scopedKey = BuildScopedMapKey(mapId);
-    local persistentPhase = self.persistentPhases[scopedKey];
-    if persistentPhase and persistentPhase.phaseId then
-        return persistentPhase.phaseId;
+    if PhaseStateStore and PhaseStateStore.GetPersistent then
+        return PhaseStateStore:GetPersistent(self, mapId);
     end
-    
     return nil;
 end
 
@@ -614,7 +511,7 @@ function UnifiedDataManager:GetNextRefreshTime(mapId, currentTime, displayTime)
     end
 
     local interval = GetMapInterval(mapId);
-    return CalculateNextRefreshTime(displayTime.time, interval, currentTime);
+    return self:CalculateNextRefreshTime(displayTime.time, interval, currentTime);
 end
 
 -- 迁移现有数据

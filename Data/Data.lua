@@ -4,7 +4,9 @@ local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
 local Data = BuildEnv('Data');
+local AppContext = BuildEnv('AppContext');
 local ExpansionConfig = BuildEnv('ExpansionConfig');
+local StateBuckets = BuildEnv('StateBuckets');
 
 -- 引用UnifiedDataManager模块
 local UnifiedDataManager = BuildEnv('UnifiedDataManager');
@@ -14,9 +16,7 @@ Data.maps = {};
 Data.SCHEMA_VERSION = 4;
 
 local function ensureDB()
-    if type(CRATETRACKERZK_DB) ~= "table" then
-        CRATETRACKERZK_DB = {};
-    end
+    AppContext:EnsurePersistentState();
     -- 全新版本仅使用按版本分桶结构
     CRATETRACKERZK_DB.mapData = nil;
     if type(CRATETRACKERZK_DB.expansionData) ~= "table" then
@@ -25,59 +25,27 @@ local function ensureDB()
 end
 
 local function getCurrentExpansionID()
-    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
-        return ExpansionConfig:GetCurrentExpansionID();
+    if AppContext and AppContext.GetCurrentExpansionID then
+        return AppContext:GetCurrentExpansionID();
     end
     return "default";
 end
 
 local function ensureExpansionMapData(expansionID)
     ensureDB();
+    if StateBuckets and StateBuckets.GetExpansionMapData then
+        return StateBuckets:GetExpansionMapData(expansionID);
+    end
     expansionID = expansionID or getCurrentExpansionID() or "default";
-
-    if type(CRATETRACKERZK_DB.expansionData[expansionID]) ~= "table" then
-        CRATETRACKERZK_DB.expansionData[expansionID] = {};
-    end
-    if type(CRATETRACKERZK_DB.expansionData[expansionID].mapData) ~= "table" then
-        CRATETRACKERZK_DB.expansionData[expansionID].mapData = {};
-    end
-
     return CRATETRACKERZK_DB.expansionData[expansionID].mapData, expansionID;
 end
 
-local function ensureUIRoot()
-    if type(CRATETRACKERZK_UI_DB) ~= "table" then
-        CRATETRACKERZK_UI_DB = {};
-    end
-    -- 全新版本不保留旧全局字段
-    CRATETRACKERZK_UI_DB.hiddenMaps = nil;
-    CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
-    CRATETRACKERZK_UI_DB.phaseCache = nil;
-    if type(CRATETRACKERZK_UI_DB.expansionUIData) ~= "table" then
-        CRATETRACKERZK_UI_DB.expansionUIData = {};
-    end
-    return CRATETRACKERZK_UI_DB.expansionUIData;
-end
-
 local function ensureExpansionUIData(expansionID)
+    if StateBuckets and StateBuckets.GetExpansionUIBucket then
+        return StateBuckets:GetExpansionUIBucket(expansionID);
+    end
     expansionID = expansionID or getCurrentExpansionID() or "default";
-    local expansionUIData = ensureUIRoot();
-
-    if type(expansionUIData[expansionID]) ~= "table" then
-        expansionUIData[expansionID] = {};
-    end
-    local bucket = expansionUIData[expansionID];
-    if type(bucket.hiddenMaps) ~= "table" then
-        bucket.hiddenMaps = {};
-    end
-    if type(bucket.hiddenRemaining) ~= "table" then
-        bucket.hiddenRemaining = {};
-    end
-    if type(bucket.phaseCache) ~= "table" then
-        bucket.phaseCache = {};
-    end
-
-    return bucket, expansionID;
+    return CRATETRACKERZK_UI_DB.expansionUIData[expansionID], expansionID;
 end
 
 local function sanitizeTimestamp(ts)
