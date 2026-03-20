@@ -65,10 +65,16 @@ localeData["SettingsClearConfirmNo"] = "Cancel";
 
 -- Airdrop NPC shouts (optional for shout detection and efficiency; can be omitted or left as default)
 localeData.AirdropShouts = {
+    --11.0
     "Ruffious says: Opportunity's knocking! If you've got the mettle, there are valuables waiting to be won.",
     "Ruffious says: I see some valuable resources in the area! Get ready to grab them!",
     "Ruffious says: There's a cache of resources nearby. Find it before you have to fight over it!",
     "Ruffious says: Looks like there's treasure nearby. And that means treasure hunters. Watch your back.",
+    --12.0
+    "Ziadan says: Take the early advantage and get your spoils.",
+    "Ziadan says: That looks like a treasure out in the distance. Don't miss this opportunity!",
+    "Vidious says: Keep an eye out for opportunities for loot when they arise, like now!",
+    "Vidious says: You like goods don't you? Then find them.",
 };
 
 localeData["SettingsHelpText"] = [[
