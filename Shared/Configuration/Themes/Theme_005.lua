@@ -34,7 +34,7 @@ ThemeConfig:RegisterTheme("pine_signal", {
         },
     },
     textColors = {
-        normal = {204, 236, 182, 1.0},
+        normal = {255, 255, 255, 1.0},
         tableHeader = {255, 202, 118, 1.0},
         tableHeaderSortDesc = {255, 205, 186, 1.0},
         tableHeaderSortAsc = {198, 244, 214, 1.0},
