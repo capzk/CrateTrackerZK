@@ -64,7 +64,7 @@ function MainFrameChrome:ApplyScaledChrome(frame, scale)
     end
     if frame.titleText then
         ApplyFontScale(frame.titleText, 1, 8, 16)
-        if IsAtMinimumWidth(frame) or frame.__ctkMapColumnCompressed == true then
+        if IsAtMinimumWidth(frame) or frame.__ctkHideTitleForCompactLayout == true then
             frame.titleText:Hide()
         else
             frame.titleText:Show()

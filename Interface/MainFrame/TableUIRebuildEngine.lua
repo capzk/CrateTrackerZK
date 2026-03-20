@@ -151,8 +151,13 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local colWidths = deps.CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.fontScale, visibilityProfile)
     local mapNaturalWidth = visibilityProfile.mapNaturalWidth or (colWidths[1] or 0)
     local mapCompressed = ((colWidths[1] or 0) + 0.5) < mapNaturalWidth
-    if frame.__ctkMapColumnCompressed ~= mapCompressed then
+    local shouldHideTitleForCompactLayout = visibilityProfile.compactByWidth == true
+        and visibilityProfile.showPhaseColumn ~= true
+        and visibilityProfile.showLastRefreshColumn ~= true
+    if frame.__ctkMapColumnCompressed ~= mapCompressed
+        or frame.__ctkHideTitleForCompactLayout ~= shouldHideTitleForCompactLayout then
         frame.__ctkMapColumnCompressed = mapCompressed
+        frame.__ctkHideTitleForCompactLayout = shouldHideTitleForCompactLayout
         if deps.MainFrame and deps.MainFrame.ApplyScaledChrome then
             deps.MainFrame:ApplyScaledChrome(frame)
         end
