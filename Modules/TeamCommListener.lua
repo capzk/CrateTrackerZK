@@ -51,6 +51,8 @@ TeamCommListener.mapNameCacheExpansionID = nil;
 TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
 
+TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW = 300;
+
 local TEAM_CHAT_TYPES = {
     RAID = true,
     RAID_WARNING = true,
@@ -77,6 +79,27 @@ end
 
 local function IsDebugEnabled()
     return Logger and Logger.debugEnabled == true;
+end
+
+local function HasRecentLocalConfirmedAirdrop(mapData, currentTime)
+    if type(mapData) ~= "table" then
+        return false;
+    end
+    if type(mapData.currentAirdropObjectGUID) ~= "string" or mapData.currentAirdropObjectGUID == "" then
+        return false;
+    end
+    if type(mapData.currentAirdropTimestamp) ~= "number" then
+        return false;
+    end
+    if type(currentTime) ~= "number" or currentTime < mapData.currentAirdropTimestamp then
+        return false;
+    end
+
+    local suppressWindow = TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300;
+    if AirdropEventService and AirdropEventService.HasRecentTimestamp then
+        return AirdropEventService:HasRecentTimestamp(mapData.currentAirdropTimestamp, currentTime, suppressWindow);
+    end
+    return (currentTime - mapData.currentAirdropTimestamp) <= suppressWindow;
 end
 
 local function BuildParser(messageFormat, locale)
@@ -440,6 +463,18 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
     end
 
     if not isOnMap then
+        if HasRecentLocalConfirmedAirdrop(mapData, currentTime) then
+            if IsDebugEnabled() and Logger and Logger.Debug then
+                Logger:Debug("TeamCommListener", "处理", string.format(
+                    "忽略晚到团队消息：地图=%s，本地已在%d秒保护窗内确认过空投，确认时间=%s",
+                    mapName,
+                    self.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300,
+                    UnifiedDataManager:FormatDateTime(mapData.currentAirdropTimestamp)
+                ));
+            end
+            return true;
+        end
+
         if UnifiedDataManager and UnifiedDataManager.GetValidTemporaryTime then
             local tempRecord = UnifiedDataManager:GetValidTemporaryTime(mapId);
             if tempRecord then
