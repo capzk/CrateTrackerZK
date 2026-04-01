@@ -27,13 +27,6 @@ local function ResetRuntimeState()
         Area.lastAreaValidState = nil
         Area.detectionPaused = false
     end
-    if Data and Data.maps then
-        for _, mapData in ipairs(Data.maps) do
-            if mapData then
-                mapData.currentPhaseID = nil
-            end
-        end
-    end
     if Notification then
         Notification.firstNotificationTime = {}
         Notification.playerSentNotification = {}

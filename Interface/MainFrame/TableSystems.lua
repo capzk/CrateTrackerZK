@@ -220,14 +220,11 @@ local function GetCountdownConfig()
 end
 
 local function HasCurrentPhase(rowId)
-    if not Data or not Data.GetMap then
+    if not UnifiedDataManager or not UnifiedDataManager.GetCurrentPhase then
         return true;
     end
-    local mapData = Data:GetMap(rowId);
-    if not mapData then
-        return true;
-    end
-    return mapData.currentPhaseID ~= nil and mapData.currentPhaseID ~= "";
+    local currentPhaseID = UnifiedDataManager:GetCurrentPhase(rowId);
+    return currentPhaseID ~= nil and currentPhaseID ~= "";
 end
 
 local function FormatRemaining(seconds)
@@ -264,7 +261,7 @@ local function ShouldRealtimeUpdate(rowId, context)
         end
     end
 
-    return mapData.lastRefresh ~= nil
+    return false
 end
 
 local function GetRemaining(rowId, context)
@@ -285,17 +282,6 @@ local function GetRemaining(rowId, context)
     if remaining ~= nil then
         if remaining < 0 then remaining = 0 end
         return remaining, false
-    end
-
-    if mapData.lastRefresh then
-        if mapData.nextRefresh and mapData.nextRefresh <= now then
-            Data:UpdateNextRefresh(mapData.id, mapData)
-        end
-        if mapData.nextRefresh then
-            remaining = mapData.nextRefresh - now
-            if remaining < 0 then remaining = 0 end
-            return remaining, false
-        end
     end
 
     return nil, false

@@ -191,6 +191,13 @@ function MainPanel:UpdateLayoutOnly()
     TableUI:RebuildUI(self.mainFrame, headers)
 end
 
+function MainPanel:RefreshTrackedMapConfiguration()
+    if self.mainFrame and MainFrame and MainFrame.ApplyAdaptiveHeight then
+        MainFrame:ApplyAdaptiveHeight(self.mainFrame)
+    end
+    self:UpdateTable(true)
+end
+
 function MainPanel:RefreshTheme()
     if self.mainFrame and MainFrame and MainFrame.ApplyThemeColors then
         MainFrame:ApplyThemeColors(self.mainFrame)

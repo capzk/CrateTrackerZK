@@ -93,26 +93,6 @@ function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
     return false;
 end
 
-function TeamCommListener:CheckHistoricalObjectGUID(mapId, objectGUID)
-    if not mapId or not objectGUID then
-        return false;
-    end
-
-    local mapData = Data:GetMap(mapId);
-    local isSameObject = AirdropEventService and AirdropEventService.HasSameObjectGUID
-        and AirdropEventService:HasSameObjectGUID(mapData and mapData.currentAirdropObjectGUID, objectGUID)
-        or (mapData and mapData.currentAirdropObjectGUID == objectGUID);
-    if isSameObject then
-        if IsDebugEnabled() and Logger and Logger.Debug then
-            Logger:Debug("TeamCommListener", "比对", string.format("重载后比对：相同 objectGUID，是同一事件，忽略：地图ID=%d，objectGUID=%s",
-                mapId, objectGUID));
-        end
-        return true;
-    end
-
-    return false;
-end
-
 function TeamCommListener:Initialize()
     if TeamCommParserRegistry and TeamCommParserRegistry.Initialize then
         TeamCommParserRegistry:Initialize(self);

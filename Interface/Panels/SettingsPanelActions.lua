@@ -38,18 +38,6 @@ function SettingsPanelActions:SetTrackedMap(expansionID, mapID, tracked)
     end
 end
 
-function SettingsPanelActions:SelectAllMapsForExpansion(expansionID)
-    if AddonControlService and AddonControlService.SetAllMapsTracked then
-        AddonControlService:SetAllMapsTracked(expansionID, true)
-    end
-end
-
-function SettingsPanelActions:InvertTrackedMapsForExpansion(expansionID)
-    if AddonControlService and AddonControlService.InvertTrackedMaps then
-        AddonControlService:InvertTrackedMaps(expansionID)
-    end
-end
-
 function SettingsPanelActions:CycleTheme()
     if AddonControlService and AddonControlService.CycleTheme then
         AddonControlService:CycleTheme()

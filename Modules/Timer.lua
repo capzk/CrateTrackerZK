@@ -45,8 +45,6 @@ function TimerManager:Initialize()
     -- 初始化UnifiedDataManager
     if UnifiedDataManager and UnifiedDataManager.Initialize then
         UnifiedDataManager:Initialize();
-        -- 迁移现有数据
-        UnifiedDataManager:MigrateExistingData();
     end
     
     Logger:DebugLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
@@ -216,18 +214,23 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
     
     -- objectGUID 比对：相同则跳过（同一事件）
+    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropState
+        and UnifiedDataManager:GetPersistentAirdropState(targetMapData.id)
+        or nil;
+    local persistentObjectGUID = persistentState and persistentState.currentAirdropObjectGUID or nil;
+    local persistentTimestamp = persistentState and persistentState.currentAirdropTimestamp or nil;
     local hasSameObjectGUID = AirdropEventService and AirdropEventService.HasSameObjectGUID
-        and AirdropEventService:HasSameObjectGUID(targetMapData.currentAirdropObjectGUID, objectGUID)
-        or (targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID == objectGUID);
+        and AirdropEventService:HasSameObjectGUID(persistentObjectGUID, objectGUID)
+        or (persistentObjectGUID and persistentObjectGUID == objectGUID);
     local hasDifferentObjectGUID = AirdropEventService and AirdropEventService.HasDifferentObjectGUID
-        and AirdropEventService:HasDifferentObjectGUID(targetMapData.currentAirdropObjectGUID, objectGUID)
-        or (targetMapData.currentAirdropObjectGUID and targetMapData.currentAirdropObjectGUID ~= objectGUID);
+        and AirdropEventService:HasDifferentObjectGUID(persistentObjectGUID, objectGUID)
+        or (persistentObjectGUID and persistentObjectGUID ~= objectGUID);
 
     if hasSameObjectGUID then
         Logger:DebugLimited("detection:same_event_" .. targetMapData.id, "Timer", "检测", 
             string.format("检测到相同 objectGUID（同一事件持续中）：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，空投开始时间=%s", 
                 Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
-                targetMapData.currentAirdropTimestamp and UnifiedDataManager:FormatDateTime(targetMapData.currentAirdropTimestamp) or "无"));
+                persistentTimestamp and UnifiedDataManager:FormatDateTime(persistentTimestamp) or "无"));
         return true;
     elseif hasDifferentObjectGUID then
         -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
@@ -313,39 +316,26 @@ function TimerManager:DetectMapIcons(currentMapID)
                 UnifiedDataManager:FormatDateTime(currentTime)));
         end
         
-        -- 使用UnifiedDataManager设置持久化时间和位面数据
         local phaseId = nil;
         if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
             phaseId = IconDetector.ExtractPhaseID(objectGUID);
         end
-        
-        local success = UnifiedDataManager:SetTime(targetMapData.id, eventTimestamp, UnifiedDataManager.TimeSource.ICON_DETECTION);
-        
-        -- 如果有位面ID，同时设置持久化位面数据
-        if success and phaseId and UnifiedDataManager.SetPhase then
-            UnifiedDataManager:SetPhase(targetMapData.id, phaseId, UnifiedDataManager.PhaseSource.ICON_DETECTION, true);
-        end
+
+        local success = UnifiedDataManager and UnifiedDataManager.PersistConfirmedAirdropState
+            and UnifiedDataManager:PersistConfirmedAirdropState(targetMapData.id, {
+                lastRefresh = eventTimestamp,
+                currentAirdropObjectGUID = objectGUID,
+                currentAirdropTimestamp = eventTimestamp,
+                lastRefreshPhase = phaseId,
+                source = UnifiedDataManager.TimeSource.ICON_DETECTION,
+                phaseSource = UnifiedDataManager.PhaseSource.ICON_DETECTION,
+            });
         
         if success then
             Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s（%s）",
                 Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
                 UnifiedDataManager:FormatDateTime(eventTimestamp),
                 usedTemporary and "来自团队消息" or "本地检测"));
-            if Data and Data.PersistAirdropState then
-                Data:PersistAirdropState(targetMapData.id, {
-                    lastRefresh = eventTimestamp,
-                    currentAirdropObjectGUID = objectGUID,
-                    currentAirdropTimestamp = eventTimestamp,
-                    lastRefreshPhase = phaseId,
-                    currentPhaseID = phaseId or false,
-                });
-            else
-                targetMapData.currentAirdropObjectGUID = objectGUID;
-                targetMapData.currentAirdropTimestamp = eventTimestamp;
-                targetMapData.lastRefreshPhase = phaseId;
-                targetMapData.currentPhaseID = phaseId;
-                Data:SaveMapData(targetMapData.id);
-            end
 
             if phaseId then
                 Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s",

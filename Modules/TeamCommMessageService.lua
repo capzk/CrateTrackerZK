@@ -9,23 +9,24 @@ local TimerManager = BuildEnv("TimerManager")
 local Data = BuildEnv("Data")
 
 function TeamCommMessageService:HasRecentLocalConfirmedAirdrop(listener, mapData, currentTime)
-    if type(mapData) ~= "table" then
+    local persistentState = mapData;
+    if type(persistentState) ~= "table" then
         return false
     end
-    if type(mapData.currentAirdropObjectGUID) ~= "string" or mapData.currentAirdropObjectGUID == "" then
+    if type(persistentState.currentAirdropObjectGUID) ~= "string" or persistentState.currentAirdropObjectGUID == "" then
         return false
     end
-    if type(mapData.currentAirdropTimestamp) ~= "number" then
+    if type(persistentState.currentAirdropTimestamp) ~= "number" then
         return false
     end
-    if type(currentTime) ~= "number" or currentTime < mapData.currentAirdropTimestamp then
+    if type(currentTime) ~= "number" or currentTime < persistentState.currentAirdropTimestamp then
         return false
     end
     local suppressWindow = listener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300
     if AirdropEventService and AirdropEventService.HasRecentTimestamp then
-        return AirdropEventService:HasRecentTimestamp(mapData.currentAirdropTimestamp, currentTime, suppressWindow)
+        return AirdropEventService:HasRecentTimestamp(persistentState.currentAirdropTimestamp, currentTime, suppressWindow)
     end
-    return (currentTime - mapData.currentAirdropTimestamp) <= suppressWindow
+    return (currentTime - persistentState.currentAirdropTimestamp) <= suppressWindow
 end
 
 function TeamCommMessageService:Process(listener, message, chatType, sender)
@@ -56,6 +57,9 @@ function TeamCommMessageService:Process(listener, message, chatType, sender)
 
     local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapData = Data:GetMap(mapId)
+    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropState
+        and UnifiedDataManager:GetPersistentAirdropState(mapId)
+        or nil
     local isOnMap = mapData and currentMapID == mapData.mapID
     local currentTime = time()
 
@@ -65,13 +69,13 @@ function TeamCommMessageService:Process(listener, message, chatType, sender)
     end
 
     if not isOnMap then
-        if self:HasRecentLocalConfirmedAirdrop(listener, mapData, currentTime) then
+        if self:HasRecentLocalConfirmedAirdrop(listener, persistentState, currentTime) then
             if Logger and Logger.debugEnabled and Logger.Debug then
                 Logger:Debug("TeamCommListener", "处理", string.format(
                     "忽略晚到团队消息：地图=%s，本地已在%d秒保护窗内确认过空投，确认时间=%s",
                     mapName,
                     listener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300,
-                    UnifiedDataManager:FormatDateTime(mapData.currentAirdropTimestamp)
+                    UnifiedDataManager:FormatDateTime(persistentState.currentAirdropTimestamp)
                 ))
             end
             return true
@@ -101,8 +105,6 @@ function TeamCommMessageService:Process(listener, message, chatType, sender)
         if UnifiedDataManager and UnifiedDataManager.SetTime then
             local source = (TimerManager and TimerManager.detectionSources and TimerManager.detectionSources.TEAM_MESSAGE) or "team_message"
             success = UnifiedDataManager:SetTime(mapId, currentTime, source)
-        elseif Data and Data.SetLastRefresh then
-            success = Data:SetLastRefresh(mapId, currentTime)
         end
 
         if not success then

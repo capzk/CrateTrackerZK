@@ -11,6 +11,11 @@ local MainPanel = BuildEnv("MainPanel")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
+local UnifiedDataManager = BuildEnv("UnifiedDataManager")
+local MapTracker = BuildEnv("MapTracker")
+local Phase = BuildEnv("Phase")
+local TeamCommListener = BuildEnv("TeamCommListener")
+local TimerManager = BuildEnv("TimerManager")
 
 local function EnsureUIConfig()
     if AppSettingsStore and AppSettingsStore.GetUIState then
@@ -31,10 +36,51 @@ local function RefreshSettingsState()
     end
 end
 
-local function ReinitializeAfterTrackedMapChange(self)
-    if not self:ReinitializeAddon() then
-        return false
+local function RefreshTrackedMapRuntime()
+    if Data and Data.Initialize then
+        Data:Initialize()
     end
+
+    if UnifiedDataManager then
+        if not UnifiedDataManager.isInitialized and UnifiedDataManager.Initialize then
+            UnifiedDataManager:Initialize()
+        elseif UnifiedDataManager.MigrateExistingData then
+            UnifiedDataManager:MigrateExistingData()
+        end
+    end
+
+    if TimerManager then
+        TimerManager.detectionState = {}
+    end
+
+    if MapTracker and MapTracker.Initialize then
+        MapTracker:Initialize()
+    end
+
+    if Phase and Phase.Reset then
+        Phase:Reset()
+    end
+
+    if TeamCommListener and TeamCommListener.Initialize then
+        TeamCommListener.isInitialized = false
+        TeamCommListener:Initialize()
+    end
+
+    if Area then
+        Area.lastAreaValidState = nil
+        if AddonControlService:IsAddonEnabled() then
+            Area:CheckAndUpdateAreaValid()
+        else
+            Area.detectionPaused = true
+        end
+    end
+
+    if MainPanel and MainPanel.RefreshTrackedMapConfiguration then
+        MainPanel:RefreshTrackedMapConfiguration()
+    elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+        UIRefreshCoordinator:RefreshMainTable(true)
+    end
+
     RefreshSettingsState()
     return true
 end
@@ -137,7 +183,6 @@ function AddonControlService:ApplyAddonEnabled(enabled)
             TimerManager:Initialize()
         end
         if Area then
-            Area.detectionPaused = false
             Area.lastAreaValidState = nil
             Area:CheckAndUpdateAreaValid()
         end
@@ -180,53 +225,6 @@ function AddonControlService:ApplyAddonEnabled(enabled)
     return true
 end
 
-function AddonControlService:SwitchExpansionVersion(expansionID)
-    if not expansionID then
-        return false
-    end
-
-    local currentExpansionID = Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID()
-        or (ExpansionConfig and ExpansionConfig.GetCurrentExpansionID and ExpansionConfig:GetCurrentExpansionID())
-        or nil
-
-    if expansionID == currentExpansionID then
-        return false
-    end
-
-    if Data and Data.SwitchExpansion then
-        if not Data:SwitchExpansion(expansionID) then
-            return false
-        end
-    elseif ExpansionConfig and ExpansionConfig.SetCurrentExpansionID then
-        if not ExpansionConfig:SetCurrentExpansionID(expansionID) then
-            return false
-        end
-    else
-        return false
-    end
-
-    self:ReinitializeAddon()
-    RefreshSettingsState()
-    return true
-end
-
-function AddonControlService:CycleExpansionVersion()
-    if not ExpansionConfig or not ExpansionConfig.IsSwitchEnabled or not ExpansionConfig:IsSwitchEnabled() then
-        return false
-    end
-    if not ExpansionConfig.GetCurrentExpansionID or not ExpansionConfig.GetNextExpansionID then
-        return false
-    end
-
-    local currentID = ExpansionConfig:GetCurrentExpansionID()
-    local nextID = ExpansionConfig:GetNextExpansionID(currentID)
-    if not nextID or nextID == currentID then
-        return false
-    end
-
-    return self:SwitchExpansionVersion(nextID)
-end
-
 function AddonControlService:SetMapTracked(expansionID, mapID, tracked)
     if not Data or not Data.SetMapTracked then
         return false
@@ -235,29 +233,7 @@ function AddonControlService:SetMapTracked(expansionID, mapID, tracked)
     if not changed then
         return false
     end
-    return ReinitializeAfterTrackedMapChange(self)
-end
-
-function AddonControlService:SetAllMapsTracked(expansionID, tracked)
-    if not Data or not Data.SetAllMapsTracked then
-        return false
-    end
-    local changed = Data:SetAllMapsTracked(expansionID, tracked == true)
-    if not changed then
-        return false
-    end
-    return ReinitializeAfterTrackedMapChange(self)
-end
-
-function AddonControlService:InvertTrackedMaps(expansionID)
-    if not Data or not Data.InvertTrackedMaps then
-        return false
-    end
-    local changed = Data:InvertTrackedMaps(expansionID)
-    if not changed then
-        return false
-    end
-    return ReinitializeAfterTrackedMapChange(self)
+    return RefreshTrackedMapRuntime()
 end
 
 function AddonControlService:SetMapVisibleForExpansion(expansionID, mapID, visible)

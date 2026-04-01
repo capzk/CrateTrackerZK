@@ -86,18 +86,13 @@ function UnifiedDataManager:RestoreTemporaryPhaseCache()
         if not expansionID and PhaseStateStore and PhaseStateStore.ParseScopedKey then
             expansionID = select(1, PhaseStateStore:ParseScopedKey(scopedKey));
         end
-        if mapId and record and record.phaseId and record.detectTime then
+        local mapData = Data and Data.GetMap and mapId and Data:GetMap(mapId) or nil;
+        if mapData and record and record.phaseId and record.detectTime then
             if now - record.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
                 local phaseData = self:GetOrCreatePhaseData(mapId, true, expansionID);
                 phaseData.phaseId = record.phaseId;
                 phaseData.source = self.PhaseSource.PHASE_DETECTION;
                 phaseData.detectTime = record.detectTime;
-                if Data and Data.GetMap then
-                    local mapData = Data:GetMap(mapId);
-                    if mapData then
-                        mapData.currentPhaseID = record.phaseId;
-                    end
-                end
             end
         end
     end

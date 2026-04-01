@@ -64,20 +64,6 @@ function RowViewModelBuilder:GetRemainingSeconds(mapData)
         return remaining
     end
 
-    if mapData.lastRefresh then
-        local now = time()
-        if mapData.nextRefresh and mapData.nextRefresh <= now then
-            Data:UpdateNextRefresh(mapData.id, mapData)
-        end
-        if mapData.nextRefresh then
-            remaining = mapData.nextRefresh - now
-            if remaining < 0 then
-                remaining = 0
-            end
-            return remaining
-        end
-    end
-
     return nil
 end
 
@@ -87,29 +73,9 @@ function RowViewModelBuilder:BuildRows()
     local now = time()
     for index, mapData in ipairs(maps) do
         if mapData then
-            local displayTime = UnifiedDataManager and UnifiedDataManager.GetDisplayTime and UnifiedDataManager:GetDisplayTime(mapData.id)
-            local remainingTime = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(mapData.id)
-            local nextRefreshTime = UnifiedDataManager and UnifiedDataManager.GetNextRefreshTime and UnifiedDataManager:GetNextRefreshTime(mapData.id)
-
-            if not displayTime and mapData.lastRefresh then
-                displayTime = {
-                    time = mapData.lastRefresh,
-                    source = "icon_detection",
-                    isPersistent = true,
-                }
-
-                if mapData.nextRefresh and mapData.nextRefresh <= now then
-                    Data:UpdateNextRefresh(mapData.id, mapData)
-                end
-
-                if mapData.nextRefresh then
-                    remainingTime = mapData.nextRefresh - now
-                    if remainingTime < 0 then
-                        remainingTime = 0
-                    end
-                end
-                nextRefreshTime = mapData.nextRefresh
-            end
+            local displayTime = UnifiedDataManager and UnifiedDataManager.GetDisplayTime and UnifiedDataManager:GetDisplayTime(mapData.id, now)
+            local remainingTime = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(mapData.id, now, displayTime)
+            local nextRefreshTime = UnifiedDataManager and UnifiedDataManager.GetNextRefreshTime and UnifiedDataManager:GetNextRefreshTime(mapData.id, now, displayTime)
 
             local frozenRemaining = GetFrozenRemaining(mapData)
             if frozenRemaining ~= nil then
@@ -125,11 +91,11 @@ function RowViewModelBuilder:BuildRows()
                 rowId = mapData.id,
                 mapId = mapData.mapID,
                 mapName = Data:GetMapDisplayName(mapData),
-                lastRefresh = displayTime and displayTime.time or mapData.lastRefresh,
-                nextRefresh = nextRefreshTime or mapData.nextRefresh,
+                lastRefresh = displayTime and displayTime.time or nil,
+                nextRefresh = nextRefreshTime,
                 remainingTime = remainingTime,
-                currentPhaseID = mapData.currentPhaseID,
-                lastRefreshPhase = mapData.lastRefreshPhase,
+                currentPhaseID = UnifiedDataManager and UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(mapData.id) or nil,
+                lastRefreshPhase = UnifiedDataManager and UnifiedDataManager.GetPersistentPhase and UnifiedDataManager:GetPersistentPhase(mapData.id) or nil,
                 phaseDisplayInfo = phaseDisplayInfo,
                 isHidden = GetHiddenState(mapData),
                 isFrozen = frozenRemaining ~= nil,

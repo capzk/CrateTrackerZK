@@ -99,8 +99,6 @@ local function OnShoutDetected(message)
     -- 写入临时时间并刷新界面（用于即时显示）
     if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
         UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE);
-    elseif Data and Data.SetLastRefresh then
-        Data:SetLastRefresh(targetMapData.id, currentTime);
     end
     if TimerManager and TimerManager.UpdateUI then
         TimerManager:UpdateUI();

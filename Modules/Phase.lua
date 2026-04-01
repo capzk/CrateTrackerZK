@@ -120,7 +120,7 @@ function Phase:UpdatePhaseInfo(currentMapID)
         local isPhaseChanged = false;  -- 区分真正的位面变化和首次检测
         local currentPhaseID = nil;
         local uiNeedsRefresh = false;
-        local previousPhaseID = targetMapData.currentPhaseID;
+        local previousPhaseID = UnifiedDataManager and UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
         
         if detectedPhaseID then
             if cachedPhaseID ~= detectedPhaseID then
@@ -144,9 +144,6 @@ function Phase:UpdatePhaseInfo(currentMapID)
             if UnifiedDataManager and UnifiedDataManager.SetPhase then
                 UnifiedDataManager:SetPhase(targetMapData.id, currentPhaseID, UnifiedDataManager.PhaseSource.PHASE_DETECTION, false);
             end
-            
-            -- 保留原有的currentPhaseID设置以保持向后兼容
-            targetMapData.currentPhaseID = currentPhaseID;
             if previousPhaseID ~= currentPhaseID then
                 uiNeedsRefresh = true;
             end

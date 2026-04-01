@@ -220,10 +220,6 @@ local function CollectTrackedExpansionIDs()
     return result
 end
 
-function ExpansionConfig:IsSwitchEnabled()
-    return self.enableSwitch == true
-end
-
 function ExpansionConfig:GetDisplayExpansionOrder()
     return IterateExpansionIDs(true)
 end
@@ -253,40 +249,6 @@ function ExpansionConfig:GetCurrentExpansionID()
     end
     local list = IterateExpansionIDs(false)
     return list[1]
-end
-
-function ExpansionConfig:GetCurrentExpansionLabel()
-    local expansionID = self:GetCurrentExpansionID()
-    local config = expansionID and self.expansions and self.expansions[expansionID]
-    return config and config.label or expansionID or "N/A"
-end
-
-function ExpansionConfig:SetCurrentExpansionID(expansionID)
-    if not IsValidExpansionID(expansionID) then
-        return false
-    end
-    local db = EnsureUIState()
-    db.expansionVersionID = expansionID
-    return true
-end
-
-function ExpansionConfig:GetNextExpansionID(currentID)
-    local list = IterateExpansionIDs(false)
-    if #list == 0 then
-        return nil
-    end
-    local currentIndex = 1
-    for index, expansionID in ipairs(list) do
-        if expansionID == currentID then
-            currentIndex = index
-            break
-        end
-    end
-    local nextIndex = currentIndex + 1
-    if nextIndex > #list then
-        nextIndex = 1
-    end
-    return list[nextIndex]
 end
 
 function ExpansionConfig:GetExpansionMaps(expansionID)
@@ -379,57 +341,6 @@ function ExpansionConfig:SetMapTracked(expansionID, mapID, tracked)
         trackedMaps[expansionID] = nil
     end
     return true
-end
-
-function ExpansionConfig:SetAllMapsTracked(expansionID, tracked)
-    if not IsValidExpansionID(expansionID) then
-        return false
-    end
-
-    local trackedMaps = EnsureTrackedMapsSelection()
-    local changed = false
-
-    if tracked == true then
-        trackedMaps[expansionID] = trackedMaps[expansionID] or {}
-        for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
-            if trackedMaps[expansionID][mapInfo.mapID] ~= true then
-                trackedMaps[expansionID][mapInfo.mapID] = true
-                changed = true
-            end
-        end
-        return changed
-    end
-
-    if trackedMaps[expansionID] ~= nil then
-        trackedMaps[expansionID] = nil
-        changed = true
-    end
-    return changed
-end
-
-function ExpansionConfig:InvertTrackedMaps(expansionID)
-    if not IsValidExpansionID(expansionID) then
-        return false
-    end
-
-    local trackedMaps = EnsureTrackedMapsSelection()
-    local original = trackedMaps[expansionID] or {}
-    local inverted = {}
-    local changed = false
-
-    for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
-        if original[mapInfo.mapID] ~= true then
-            inverted[mapInfo.mapID] = true
-        end
-        changed = true
-    end
-
-    if next(inverted) == nil then
-        trackedMaps[expansionID] = nil
-    else
-        trackedMaps[expansionID] = inverted
-    end
-    return changed
 end
 
 function ExpansionConfig:GetTrackedMapConfigs()
@@ -539,21 +450,6 @@ function ExpansionConfig:GetCurrentDefaultInterval()
         return defaultExpansion.interval
     end
     return 1100
-end
-
-function ExpansionConfig:GetCurrentMainCityMapIDs()
-    local expansionID = self:GetCurrentExpansionID()
-    local expansion = expansionID and self.expansions and self.expansions[expansionID]
-    local result = {}
-    if not expansion or not expansion.mainCityMapIDs then
-        return result
-    end
-    for _, mapID in ipairs(expansion.mainCityMapIDs) do
-        if type(mapID) == "number" then
-            result[#result + 1] = mapID
-        end
-    end
-    return result
 end
 
 function ExpansionConfig:IsMainCityMap(mapID)

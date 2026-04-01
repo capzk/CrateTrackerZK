@@ -3,17 +3,6 @@
 local RuntimeResetManager = BuildEnv("RuntimeResetManager");
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 
-local function ResetMapPhaseState()
-    if not Data or not Data.maps then
-        return;
-    end
-    for _, mapData in ipairs(Data.maps) do
-        if mapData then
-            mapData.currentPhaseID = nil;
-        end
-    end
-end
-
 function RuntimeResetManager:EnsureSavedVariables()
     if type(CRATETRACKERZK_UI_DB) ~= "table" then
         CRATETRACKERZK_UI_DB = {};
@@ -40,8 +29,6 @@ function RuntimeResetManager:ResetSharedRuntimeState()
         Area.lastAreaValidState = nil;
         Area.detectionPaused = false;
     end
-
-    ResetMapPhaseState();
 
     if Notification then
         Notification.firstNotificationTime = {};
