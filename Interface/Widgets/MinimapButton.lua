@@ -135,6 +135,21 @@ end
 
 function MinimapButton:CreateButton()
     if minimapButton then
+        EnsureUIState()
+        local db = EnsureMinimapDB()
+        local _, iconLib = GetLibraries()
+        if iconLib and iconLib.Refresh then
+            iconLib:Refresh("CrateTrackerZK", db)
+        end
+        if minimapButton.icon then
+            minimapButton.icon:SetTexture(GetIconPath())
+        end
+        self:UpdatePosition()
+        if db.hide then
+            self:Hide()
+        else
+            self:Show()
+        end
         CrateTrackerZKFloatingButton = minimapButton
         return minimapButton
     end

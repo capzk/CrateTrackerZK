@@ -166,7 +166,11 @@ function AddonControlService:ClearDataAndReinitialize()
         end
     end
 
-    return self:ReinitializeAddon()
+    local success = self:ReinitializeAddon()
+    if success then
+        RefreshSettingsState()
+    end
+    return success
 end
 
 function AddonControlService:ApplyAddonEnabled(enabled)
