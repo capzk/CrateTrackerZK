@@ -67,48 +67,6 @@ function SettingsPanelState:GetAutoTeamReportInterval()
     return 60
 end
 
-function SettingsPanelState:IsExpansionSwitchEnabled()
-    return ExpansionConfig and ExpansionConfig.IsSwitchEnabled and ExpansionConfig:IsSwitchEnabled()
-end
-
-function SettingsPanelState:GetCurrentExpansionID()
-    if Data and Data.GetCurrentExpansionID then
-        local expansionID = Data:GetCurrentExpansionID()
-        if expansionID then
-            return expansionID
-        end
-    end
-    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
-        return ExpansionConfig:GetCurrentExpansionID()
-    end
-    return nil
-end
-
-function SettingsPanelState:GetAvailableExpansions()
-    if ExpansionConfig and ExpansionConfig.GetAvailableExpansions then
-        return ExpansionConfig:GetAvailableExpansions() or {}
-    end
-    return {}
-end
-
-function SettingsPanelState:GetExpansionOptions()
-    return self:GetAvailableExpansions()
-end
-
-function SettingsPanelState:GetCurrentExpansionButtonText()
-    if not self:IsExpansionSwitchEnabled() then
-        return self:LT("SettingsToggleOff", "已关闭")
-    end
-    local expansionID = self:GetCurrentExpansionID()
-    local options = self:GetAvailableExpansions()
-    for _, option in ipairs(options) do
-        if option.id == expansionID then
-            return option.id
-        end
-    end
-    return expansionID or "N/A"
-end
-
 function SettingsPanelState:IsThemeSwitchEnabled()
     return ThemeConfig and ThemeConfig.IsSwitchEnabled and ThemeConfig:IsSwitchEnabled()
 end
@@ -141,23 +99,40 @@ function SettingsPanelState:GetMapDisplayName(mapID)
     return "Map " .. tostring(mapID)
 end
 
-function SettingsPanelState:GetExpansionMapOptions(expansionID)
+function SettingsPanelState:GetTrackedMapGroups()
     local result = {}
-    local targetExpansionID = expansionID or self:GetCurrentExpansionID()
-    local expansion = ExpansionConfig and ExpansionConfig.expansions and ExpansionConfig.expansions[targetExpansionID]
-    if not expansion then
-        return result
-    end
+    local expansions = ExpansionConfig and ExpansionConfig.GetAvailableExpansions and ExpansionConfig:GetAvailableExpansions() or {}
 
-    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps(targetExpansionID)) or {}
-    for _, mapID in ipairs(expansion.mapIDs or {}) do
-        if type(mapID) == "number" and not (ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(mapID)) then
-            result[#result + 1] = {
-                id = mapID,
-                label = self:GetMapDisplayName(mapID),
-                visible = hiddenMaps[mapID] ~= true,
-            }
+    for _, expansionInfo in ipairs(expansions) do
+        local group = {
+            id = expansionInfo.id,
+            label = expansionInfo.label or expansionInfo.id,
+            maps = {},
+            anyTracked = false,
+            allTracked = false,
+        }
+
+        local trackedCount = 0
+        local mapCount = 0
+        local maps = ExpansionConfig and ExpansionConfig.GetExpansionMaps and ExpansionConfig:GetExpansionMaps(expansionInfo.id) or {}
+        for _, mapInfo in ipairs(maps) do
+            if type(mapInfo.mapID) == "number" and not (ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(mapInfo.mapID)) then
+                local tracked = Data and Data.IsMapTracked and Data:IsMapTracked(expansionInfo.id, mapInfo.mapID) or false
+                mapCount = mapCount + 1
+                if tracked then
+                    trackedCount = trackedCount + 1
+                end
+                group.maps[#group.maps + 1] = {
+                    id = mapInfo.mapID,
+                    label = self:GetMapDisplayName(mapInfo.mapID),
+                    tracked = tracked,
+                }
+            end
         end
+
+        group.anyTracked = trackedCount > 0
+        group.allTracked = mapCount > 0 and trackedCount == mapCount
+        result[#result + 1] = group
     end
 
     return result
@@ -168,7 +143,6 @@ function SettingsPanelState:GetSettingsSnapshot()
     local teamEnabled = addonEnabled and self:IsTeamNotificationEnabled()
     local soundEnabled = addonEnabled and self:IsSoundAlertEnabled()
     local autoEnabled = addonEnabled and teamEnabled and self:IsAutoTeamReportEnabled()
-    local currentExpansionID = self:GetCurrentExpansionID()
 
     return {
         addonEnabled = addonEnabled,
@@ -182,9 +156,7 @@ function SettingsPanelState:GetSettingsSnapshot()
         autoReportIntervalInteractable = addonEnabled and teamEnabled and autoEnabled,
         themeEnabled = self:IsThemeSwitchEnabled(),
         themeText = self:GetCurrentThemeButtonText(),
-        currentExpansionID = currentExpansionID,
-        expansionOptions = self:GetAvailableExpansions(),
-        mapOptions = self:GetExpansionMapOptions(currentExpansionID),
+        mapGroups = self:GetTrackedMapGroups(),
     }
 end
 

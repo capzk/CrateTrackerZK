@@ -113,6 +113,19 @@ local function DeepCopy(value)
     return copy
 end
 
+local function GetMaxNumericIndex(values)
+    if type(values) ~= "table" then
+        return 0
+    end
+    local maxIndex = 0
+    for key in pairs(values) do
+        if type(key) == "number" and key > maxIndex then
+            maxIndex = key
+        end
+    end
+    return maxIndex
+end
+
 local function GetResolvedTheme()
     local active = ThemeConfig:GetActiveTheme()
     if active then
@@ -256,6 +269,13 @@ function ThemeConfig.GetDataRowColor(rowIndex)
     local theme = GetResolvedTheme()
     local rows = theme.table and theme.table.rows
     local rowColor = rows and rows[rowIndex]
+    if not rowColor and rows then
+        local maxIndex = GetMaxNumericIndex(rows)
+        if maxIndex > 0 then
+            local normalizedIndex = ((math.max(1, tonumber(rowIndex) or 1) - 1) % maxIndex) + 1
+            rowColor = rows[normalizedIndex]
+        end
+    end
     if rowColor then
         return RGBToWoW(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
     end

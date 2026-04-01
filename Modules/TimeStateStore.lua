@@ -2,8 +2,18 @@
 
 local TimeStateStore = BuildEnv("TimeStateStore")
 local AppContext = BuildEnv("AppContext")
+local Data = BuildEnv("Data")
 
-local function GetCurrentExpansionID()
+local function ResolveExpansionID(mapId, expansionID)
+    if expansionID then
+        return expansionID
+    end
+    if Data and Data.GetMap then
+        local mapData = Data:GetMap(mapId)
+        if mapData and mapData.expansionID then
+            return mapData.expansionID
+        end
+    end
     if AppContext and AppContext.GetCurrentExpansionID then
         local expansionID = AppContext:GetCurrentExpansionID()
         if expansionID then
@@ -13,8 +23,8 @@ local function GetCurrentExpansionID()
     return "default"
 end
 
-local function BuildScopedMapKey(mapId)
-    return tostring(GetCurrentExpansionID()) .. ":" .. tostring(mapId)
+local function BuildScopedMapKey(mapId, expansionID)
+    return tostring(ResolveExpansionID(mapId, expansionID)) .. ":" .. tostring(mapId)
 end
 
 local function CreateTimeData(mapId)
@@ -25,12 +35,12 @@ local function CreateTimeData(mapId)
     }
 end
 
-function TimeStateStore:GetScopedKey(mapId)
-    return BuildScopedMapKey(mapId)
+function TimeStateStore:GetScopedKey(mapId, expansionID)
+    return BuildScopedMapKey(mapId, expansionID)
 end
 
-function TimeStateStore:GetOrCreate(manager, mapId)
-    local scopedKey = BuildScopedMapKey(mapId)
+function TimeStateStore:GetOrCreate(manager, mapId, expansionID)
+    local scopedKey = BuildScopedMapKey(mapId, expansionID)
     manager.temporaryTimes = manager.temporaryTimes or {}
     if not manager.temporaryTimes[scopedKey] then
         manager.temporaryTimes[scopedKey] = CreateTimeData(mapId)
@@ -38,8 +48,8 @@ function TimeStateStore:GetOrCreate(manager, mapId)
     return manager.temporaryTimes[scopedKey]
 end
 
-function TimeStateStore:GetValidTemporary(manager, mapId, currentTime)
-    local scopedKey = BuildScopedMapKey(mapId)
+function TimeStateStore:GetValidTemporary(manager, mapId, currentTime, expansionID)
+    local scopedKey = BuildScopedMapKey(mapId, expansionID)
     local timeData = manager.temporaryTimes and manager.temporaryTimes[scopedKey]
     if not timeData or not timeData.temporaryTime then
         return nil
@@ -55,15 +65,15 @@ function TimeStateStore:GetValidTemporary(manager, mapId, currentTime)
     return nil
 end
 
-function TimeStateStore:ClearTemporary(manager, mapId)
-    local scopedKey = BuildScopedMapKey(mapId)
+function TimeStateStore:ClearTemporary(manager, mapId, expansionID)
+    local scopedKey = BuildScopedMapKey(mapId, expansionID)
     if manager.temporaryTimes and manager.temporaryTimes[scopedKey] then
         manager.temporaryTimes[scopedKey].temporaryTime = nil
     end
 end
 
-function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime)
-    local timeData = self:GetOrCreate(manager, mapId)
+function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime, expansionID)
+    local timeData = self:GetOrCreate(manager, mapId, expansionID)
     timeData.temporaryTime = {
         timestamp = timestamp,
         source = source,
@@ -72,8 +82,8 @@ function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime)
     return timeData
 end
 
-function TimeStateStore:SetPersistent(manager, mapId, timestamp, source, phaseId)
-    local timeData = self:GetOrCreate(manager, mapId)
+function TimeStateStore:SetPersistent(manager, mapId, timestamp, source, phaseId, expansionID)
+    local timeData = self:GetOrCreate(manager, mapId, expansionID)
     timeData.persistentTime = {
         timestamp = timestamp,
         source = source,

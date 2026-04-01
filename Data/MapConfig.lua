@@ -1,24 +1,23 @@
--- MapConfig.lua - 地图配置（支持按资料片版本切换）
+-- MapConfig.lua - 地图配置（支持按资料片自定义勾选追踪）
 
 local Data = BuildEnv("Data")
 local ExpansionConfig = BuildEnv("ExpansionConfig")
 
 local DEFAULT_INTERVAL = 1100
 
-local function BuildMapsFromExpansion()
-    if ExpansionConfig and ExpansionConfig.GetActiveMapConfigs then
-        local maps, expansionID = ExpansionConfig:GetActiveMapConfigs()
+local function BuildTrackedMaps()
+    if ExpansionConfig and ExpansionConfig.GetTrackedMapConfigs then
+        local maps = ExpansionConfig:GetTrackedMapConfigs()
         if maps then
-            return maps, expansionID
+            return maps
         end
     end
-    local expansionID = (ExpansionConfig and ExpansionConfig.GetCurrentExpansionID and ExpansionConfig:GetCurrentExpansionID()) or "unknown"
-    return {}, expansionID
+    return {}
 end
 
-local function BuildCratesFromExpansion()
-    if ExpansionConfig and ExpansionConfig.GetCurrentAirdropCrates then
-        local crates = ExpansionConfig:GetCurrentAirdropCrates()
+local function BuildTrackedCrates()
+    if ExpansionConfig and ExpansionConfig.GetTrackedAirdropCrates then
+        local crates = ExpansionConfig:GetTrackedAirdropCrates()
         if crates then
             return crates
         end
@@ -26,9 +25,9 @@ local function BuildCratesFromExpansion()
     return {}
 end
 
-local function BuildVignetteIDsFromExpansion()
-    if ExpansionConfig and ExpansionConfig.GetCurrentAirdropPlaneVignetteIDs then
-        local ids = ExpansionConfig:GetCurrentAirdropPlaneVignetteIDs()
+local function BuildTrackedVignetteIDs()
+    if ExpansionConfig and ExpansionConfig.GetTrackedAirdropPlaneVignetteIDs then
+        local ids = ExpansionConfig:GetTrackedAirdropPlaneVignetteIDs()
         if ids then
             return ids
         end
@@ -51,14 +50,11 @@ local function ResolveDefaultInterval(crates, maps)
 end
 
 Data.MAP_CONFIG = {
-    version = "2.0.0",
+    version = "3.0.0",
     activeExpansion = nil,
-
     current_maps = {},
     airdrop_plane_vignette_ids = {},
-
     airdrop_crates = {},
-
     defaults = {
         interval = DEFAULT_INTERVAL,
         enabled = true,
@@ -66,13 +62,13 @@ Data.MAP_CONFIG = {
 }
 
 function Data:ReloadMapConfigForExpansion()
-    local maps, expansionID = BuildMapsFromExpansion()
-    local crates = BuildCratesFromExpansion()
-    local vignetteIDs = BuildVignetteIDsFromExpansion()
+    local maps = BuildTrackedMaps()
+    local crates = BuildTrackedCrates()
+    local vignetteIDs = BuildTrackedVignetteIDs()
     local defaultInterval = ResolveDefaultInterval(crates, maps)
 
     self.MAP_CONFIG.current_maps = maps or {}
-    self.MAP_CONFIG.activeExpansion = expansionID
+    self.MAP_CONFIG.activeExpansion = nil
     self.MAP_CONFIG.airdrop_crates = crates or {}
     self.MAP_CONFIG.airdrop_plane_vignette_ids = vignetteIDs or {}
     self.MAP_CONFIG.defaults.interval = defaultInterval

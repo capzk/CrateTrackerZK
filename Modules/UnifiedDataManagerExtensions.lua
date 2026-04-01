@@ -1,24 +1,12 @@
 -- UnifiedDataManagerExtensions.lua - 清理与格式化职责拆分
 
 local UnifiedDataManager = BuildEnv("UnifiedDataManager");
-local AppContext = BuildEnv("AppContext");
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local TimeFormatter = BuildEnv("TimeFormatter");
 local L = CrateTrackerZK and CrateTrackerZK.L or {};
-local ExpansionConfig = BuildEnv("ExpansionConfig");
 local Data = BuildEnv("Data");
 local Logger = BuildEnv("Logger");
 local StateBuckets = BuildEnv("StateBuckets");
-
-local function GetCurrentExpansionID()
-    if AppContext and AppContext.GetCurrentExpansionID then
-        local id = AppContext:GetCurrentExpansionID();
-        if id then
-            return id;
-        end
-    end
-    return "default";
-end
 
 local function GetPhaseCacheStore()
     if StateBuckets and StateBuckets.GetPhaseCache then
@@ -94,9 +82,13 @@ function UnifiedDataManager:RestoreTemporaryPhaseCache()
     local now = time();
     for scopedKey, record in pairs(phaseCache) do
         local mapId = tonumber(record and record.mapId) or tonumber(tostring(scopedKey):match(":(%d+)$")) or tonumber(scopedKey);
+        local expansionID = record and record.expansionID or nil;
+        if not expansionID and PhaseStateStore and PhaseStateStore.ParseScopedKey then
+            expansionID = select(1, PhaseStateStore:ParseScopedKey(scopedKey));
+        end
         if mapId and record and record.phaseId and record.detectTime then
             if now - record.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
-                local phaseData = self:GetOrCreatePhaseData(mapId, true);
+                local phaseData = self:GetOrCreatePhaseData(mapId, true, expansionID);
                 phaseData.phaseId = record.phaseId;
                 phaseData.source = self.PhaseSource.PHASE_DETECTION;
                 phaseData.detectTime = record.detectTime;

@@ -29,6 +29,8 @@ if not Area then
     Area = BuildEnv('Area')
 end
 
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
+
 TimerManager.detectionSources = {
     MAP_ICON = "map_icon",
     TEAM_MESSAGE = "team_message"
@@ -106,8 +108,8 @@ function TimerManager:GetSourceDisplayName(source)
 end
 
 function TimerManager:UpdateUI()
-    if MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable();
+    if UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+        UIRefreshCoordinator:RefreshMainTable();
     end
 end
 
@@ -156,8 +158,7 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
 
     -- 如果地图被隐藏，暂停该地图的空投检测
-    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
-    if hiddenMaps[targetMapData.mapID] then
+    if Data and Data.IsMapHidden and Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID) then
         SafeDebugLimited("detection_loop:hidden_map_" .. tostring(targetMapData.mapID), "地图被隐藏，跳过空投检测", Data:GetMapDisplayName(targetMapData));
         -- 清除该地图的检测状态，避免残留
         self.detectionState[targetMapData.id] = nil;
@@ -326,25 +327,33 @@ function TimerManager:DetectMapIcons(currentMapID)
         end
         
         if success then
-            targetMapData.currentAirdropObjectGUID = objectGUID;
-            targetMapData.currentAirdropTimestamp = eventTimestamp;
-            
-            -- 从空投的 objectGUID 提取位面ID并存储（保持向后兼容）
-            if phaseId then
-                targetMapData.lastRefreshPhase = phaseId;
-                targetMapData.currentPhaseID = phaseId;
-                Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s", 
-                    Data:GetMapDisplayName(targetMapData), phaseId));
-            else
-                Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s", 
-                    Data:GetMapDisplayName(targetMapData), objectGUID));
-            end
-            
-            Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s（%s）", 
+            Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s（%s）",
                 Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
                 UnifiedDataManager:FormatDateTime(eventTimestamp),
                 usedTemporary and "来自团队消息" or "本地检测"));
-            Data:SaveMapData(targetMapData.id);
+            if Data and Data.PersistAirdropState then
+                Data:PersistAirdropState(targetMapData.id, {
+                    lastRefresh = eventTimestamp,
+                    currentAirdropObjectGUID = objectGUID,
+                    currentAirdropTimestamp = eventTimestamp,
+                    lastRefreshPhase = phaseId,
+                    currentPhaseID = phaseId or false,
+                });
+            else
+                targetMapData.currentAirdropObjectGUID = objectGUID;
+                targetMapData.currentAirdropTimestamp = eventTimestamp;
+                targetMapData.lastRefreshPhase = phaseId;
+                targetMapData.currentPhaseID = phaseId;
+                Data:SaveMapData(targetMapData.id);
+            end
+
+            if phaseId then
+                Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s",
+                    Data:GetMapDisplayName(targetMapData), phaseId));
+            else
+                Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s",
+                    Data:GetMapDisplayName(targetMapData), objectGUID));
+            end
             
             -- 清除临时时间，避免影响后续事件
             UnifiedDataManager:ClearTemporaryTime(targetMapData.id);

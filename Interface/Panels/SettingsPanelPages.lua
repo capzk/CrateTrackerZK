@@ -2,101 +2,147 @@ local SettingsPanelPages = BuildEnv("CrateTrackerZKSettingsPanelPages")
 local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
 local SettingsPanelFactory = BuildEnv("CrateTrackerZKSettingsPanelFactory")
 
-function SettingsPanelPages:RefreshExpansionSelectors(controls, expansionOptions, currentExpansionID, onRefresh)
-    local selectorGroup = controls and controls.expansionSelectors
-    if not selectorGroup then
-        return
-    end
+local function CreateMapGroupFrame(parent, lt, onRefresh)
+    local group = CreateFrame("Frame", nil, parent)
+    group:SetSize(520, 40)
 
-    local previous = nil
-    for index, option in ipairs(expansionOptions or {}) do
-        local checkbox = selectorGroup.checkboxes[index]
-        if not checkbox then
-            checkbox = CreateFrame("CheckButton", nil, selectorGroup, "UICheckButtonTemplate")
-            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
-            label:SetJustifyH("LEFT")
-            checkbox.label = label
-            checkbox:SetScript("OnClick", function(self)
-                if self:GetChecked() ~= true then
-                    self:SetChecked(true)
-                    return
-                end
-                if SettingsPanelActions and SettingsPanelActions.SetExpansionVersion then
-                    SettingsPanelActions:SetExpansionVersion(self.expansionID)
-                end
-                if onRefresh then
-                    onRefresh()
-                end
-            end)
-            selectorGroup.checkboxes[index] = checkbox
-        end
+    local divider = group:CreateTexture(nil, "ARTWORK")
+    divider:SetHeight(1)
+    divider:SetColorTexture(1, 1, 1, 0.12)
+    divider:SetPoint("TOPLEFT", group, "TOPLEFT", 0, 0)
+    divider:SetPoint("TOPRIGHT", group, "TOPRIGHT", -12, 0)
+    group.divider = divider
 
-        checkbox:ClearAllPoints()
-        if previous then
-            checkbox:SetPoint("LEFT", previous, "RIGHT", 64, 0)
-        else
-            checkbox:SetPoint("TOPLEFT", selectorGroup.anchor, "BOTTOMLEFT", 0, -12)
-        end
-        checkbox.expansionID = option.id
-        checkbox.label:SetText(option.label or option.id)
-        checkbox:SetChecked(option.id == currentExpansionID)
-        checkbox:Show()
-        previous = checkbox
-    end
+    local title = group:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    title:SetPoint("TOPLEFT", group, "TOPLEFT", 0, -12)
+    title:SetJustifyH("LEFT")
+    group.title = title
 
-    for index = #(expansionOptions or {}) + 1, #selectorGroup.checkboxes do
-        selectorGroup.checkboxes[index]:Hide()
-    end
+    group.checkboxes = {}
+    return group
 end
 
-function SettingsPanelPages:RefreshVersionMapList(controls, mapOptions, currentExpansionID, onRefresh)
-    local mapList = controls and controls.versionMapList
-    if not mapList then
+local function CreateTrackedMapCheckbox(parent, onRefresh)
+    local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
+    label:SetJustifyH("LEFT")
+    if label.SetWordWrap then
+        label:SetWordWrap(false)
+    end
+    checkbox.label = label
+    checkbox:SetScript("OnClick", function(self)
+        if SettingsPanelActions and SettingsPanelActions.SetTrackedMap then
+            SettingsPanelActions:SetTrackedMap(self.expansionID, self.mapID, self:GetChecked() == true)
+        end
+        if onRefresh then
+            onRefresh()
+        end
+    end)
+    return checkbox
+end
+
+local function LayoutMapSelectionPanel(panel)
+    if not panel or not panel.scroll or not panel.content then
+        return
+    end
+    local viewWidth = panel.scroll:GetWidth() or panel.width or 520
+    local contentWidth = math.max(320, math.floor(viewWidth - 28))
+    panel.width = contentWidth
+    panel.content:SetWidth(contentWidth)
+end
+
+function SettingsPanelPages:RefreshTrackedMapGroups(controls, mapGroups, lt, onRefresh)
+    local panel = controls and controls.mapSelectionPanel
+    if not panel then
         return
     end
 
-    mapList.expansionID = currentExpansionID
+    LayoutMapSelectionPanel(panel)
+
+    for _, group in ipairs(panel.groups) do
+        group:Hide()
+        for _, checkbox in ipairs(group.checkboxes) do
+            checkbox:Hide()
+        end
+    end
+
     local previous = nil
-    for _, checkbox in ipairs(mapList.checkboxes) do
-        checkbox:Hide()
-    end
+    local totalHeight = 0
 
-    for index, option in ipairs(mapOptions or {}) do
-        local checkbox = mapList.checkboxes[index]
-        if not checkbox then
-            checkbox = CreateFrame("CheckButton", nil, mapList, "UICheckButtonTemplate")
-            local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-            label:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
-            label:SetJustifyH("LEFT")
-            checkbox.label = label
-            checkbox:SetScript("OnClick", function(self)
-                if SettingsPanelActions and SettingsPanelActions.SetMapVisibleForExpansion then
-                    SettingsPanelActions:SetMapVisibleForExpansion(mapList.expansionID, self.mapID, self:GetChecked() == true)
-                end
-                if onRefresh then
-                    onRefresh()
-                end
-            end)
-            mapList.checkboxes[index] = checkbox
+    for index, groupInfo in ipairs(mapGroups or {}) do
+        local group = panel.groups[index]
+        if not group then
+            group = CreateMapGroupFrame(panel.content, lt, onRefresh)
+            panel.groups[index] = group
         end
 
-        checkbox:ClearAllPoints()
-        checkbox:SetPoint("TOPLEFT", previous or mapList.anchor, previous and "BOTTOMLEFT" or "BOTTOMLEFT", 0, previous and -8 or -12)
-        checkbox.mapID = option.id
-        checkbox.label:SetText(option.label)
-        checkbox:SetChecked(option.visible == true)
-        checkbox:Show()
-        previous = checkbox
-    end
-
-    if mapList.emptyText then
-        if #(mapOptions or {}) == 0 then
-            mapList.emptyText:Show()
+        group:ClearAllPoints()
+        if previous then
+            group:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -14)
         else
-            mapList.emptyText:Hide()
+            group:SetPoint("TOPLEFT", panel.content, "TOPLEFT", 0, 0)
+        end
+        group:SetWidth(panel.width)
+
+        group.divider:SetShown(index > 1)
+        group.title:SetText(groupInfo.label or groupInfo.id or "N/A")
+
+        local columnGap = 24
+        local columnWidth = math.max(180, math.floor((panel.width - columnGap) / 2))
+        local rowHeight = 30
+        local baseOffsetY = -40
+        for mapIndex, mapInfo in ipairs(groupInfo.maps or {}) do
+            local checkbox = group.checkboxes[mapIndex]
+            if not checkbox then
+                checkbox = CreateTrackedMapCheckbox(group, onRefresh)
+                group.checkboxes[mapIndex] = checkbox
+            end
+
+            local rowIndex = math.floor((mapIndex - 1) / 2)
+            local columnIndex = (mapIndex - 1) % 2
+            local xOffset = columnIndex * (columnWidth + columnGap)
+            local yOffset = baseOffsetY - (rowIndex * rowHeight)
+
+            checkbox:ClearAllPoints()
+            checkbox:SetPoint("TOPLEFT", group, "TOPLEFT", xOffset, yOffset)
+            checkbox.expansionID = groupInfo.id
+            checkbox.mapID = mapInfo.id
+            checkbox.label:SetWidth(columnWidth - 28)
+            checkbox.label:SetText(mapInfo.label or tostring(mapInfo.id))
+            checkbox:SetChecked(mapInfo.tracked == true)
+            checkbox:Show()
+        end
+
+        for mapIndex = #(groupInfo.maps or {}) + 1, #group.checkboxes do
+            group.checkboxes[mapIndex]:Hide()
+        end
+
+        local rowCount = math.max(1, math.ceil(#(groupInfo.maps or {}) / 2))
+        local groupHeight = 40 + (rowCount * rowHeight)
+        if index > 1 then
+            groupHeight = groupHeight + 10
+        end
+        group:SetHeight(groupHeight)
+        group:Show()
+
+        previous = group
+        totalHeight = totalHeight + groupHeight
+        if index < #(mapGroups or {}) then
+            totalHeight = totalHeight + 14
         end
     end
+
+    if panel.emptyText then
+        if #(mapGroups or {}) == 0 then
+            panel.emptyText:Show()
+        else
+            panel.emptyText:Hide()
+        end
+    end
+
+    local minHeight = panel.scroll:GetHeight() or panel.minHeight or 260
+    panel.content:SetHeight(math.max(minHeight, totalHeight))
 end
 
 function SettingsPanelPages:BuildMainPage(parent, pageKey, pages, controls, lt, onRefresh)
@@ -112,28 +158,36 @@ function SettingsPanelPages:BuildMainPage(parent, pageKey, pages, controls, lt, 
         end
     end)
 
-    controls.expansionLabel = SettingsPanelFactory:CreateSectionLabel(page, controls.addonToggle, lt("SettingsExpansionVersion", "地图版本"))
+    controls.mapSelectionLabel = SettingsPanelFactory:CreateSectionLabel(page, controls.addonToggle, lt("SettingsMapSelection", "地图选择"))
 
-    local selectorGroup = CreateFrame("Frame", nil, page)
-    selectorGroup:SetPoint("TOPLEFT", controls.expansionLabel, "BOTTOMLEFT", 0, 0)
-    selectorGroup:SetSize(520, 28)
-    selectorGroup.anchor = controls.expansionLabel
-    selectorGroup.checkboxes = {}
-    controls.expansionSelectors = selectorGroup
+    local scroll = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", controls.mapSelectionLabel, "BOTTOMLEFT", 0, -10)
+    scroll:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -28, 0)
 
-    controls.versionMapListLabel = SettingsPanelFactory:CreateSectionLabel(page, selectorGroup, lt("SettingsMapList", "地图列表"))
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(520, 260)
+    scroll:SetScrollChild(content)
 
-    local mapList = CreateFrame("Frame", nil, page)
-    mapList:SetPoint("TOPLEFT", controls.versionMapListLabel, "BOTTOMLEFT", 0, 0)
-    mapList:SetSize(520, 260)
-    mapList.anchor = controls.versionMapListLabel
-    mapList.checkboxes = {}
-    controls.versionMapList = mapList
+    local panel = {
+        scroll = scroll,
+        content = content,
+        groups = {},
+        width = 520,
+        minHeight = 260,
+    }
+    controls.mapSelectionPanel = panel
 
-    local emptyText = mapList:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    emptyText:SetPoint("TOPLEFT", mapList, "TOPLEFT", 0, -12)
+    local emptyText = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    emptyText:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     emptyText:SetText("-")
-    mapList.emptyText = emptyText
+    panel.emptyText = emptyText
+
+    scroll:SetScript("OnSizeChanged", function()
+        LayoutMapSelectionPanel(panel)
+        if onRefresh then
+            onRefresh()
+        end
+    end)
 end
 
 function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, controls, lt, onRefresh, onApplyInterval)

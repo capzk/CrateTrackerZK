@@ -249,13 +249,8 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.theme.label, true)
     end
 
-    if SettingsPanelPages and SettingsPanelPages.RefreshExpansionSelectors then
-        SettingsPanelPages:RefreshExpansionSelectors(controls, snapshot.expansionOptions or {}, snapshot.currentExpansionID, function()
-            SettingsPanelView:RefreshState()
-        end)
-    end
-    if SettingsPanelPages and SettingsPanelPages.RefreshVersionMapList then
-        SettingsPanelPages:RefreshVersionMapList(controls, snapshot.mapOptions or {}, snapshot.currentExpansionID, function()
+    if SettingsPanelPages and SettingsPanelPages.RefreshTrackedMapGroups then
+        SettingsPanelPages:RefreshTrackedMapGroups(controls, snapshot.mapGroups or {}, LT, function()
             SettingsPanelView:RefreshState()
         end)
     end

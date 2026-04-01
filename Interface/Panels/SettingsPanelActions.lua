@@ -3,13 +3,8 @@
 local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
 local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
 local AddonControlService = BuildEnv("AddonControlService")
-local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
-local MainPanel = BuildEnv("MainPanel")
-local Data = BuildEnv("Data")
-local ExpansionConfig = BuildEnv("ExpansionConfig")
-local ThemeConfig = BuildEnv("ThemeConfig")
 
 function SettingsPanelActions:SetAddonEnabled(enabled)
     if AddonControlService and AddonControlService.ApplyAddonEnabled then
@@ -37,26 +32,21 @@ function SettingsPanelActions:SetAutoTeamReportEnabled(enabled)
     end
 end
 
-function SettingsPanelActions:CycleExpansionVersion()
-    if AddonControlService and AddonControlService.CycleExpansionVersion then
-        AddonControlService:CycleExpansionVersion()
+function SettingsPanelActions:SetTrackedMap(expansionID, mapID, tracked)
+    if AddonControlService and AddonControlService.SetMapTracked then
+        AddonControlService:SetMapTracked(expansionID, mapID, tracked == true)
     end
 end
 
-function SettingsPanelActions:SetExpansionVersion(expansionID)
-    local currentExpansionID = SettingsPanelState and SettingsPanelState.GetCurrentExpansionID and SettingsPanelState:GetCurrentExpansionID() or nil
-    if not expansionID or expansionID == currentExpansionID then
-        return
-    end
-
-    if AddonControlService and AddonControlService.SwitchExpansionVersion then
-        AddonControlService:SwitchExpansionVersion(expansionID)
+function SettingsPanelActions:SelectAllMapsForExpansion(expansionID)
+    if AddonControlService and AddonControlService.SetAllMapsTracked then
+        AddonControlService:SetAllMapsTracked(expansionID, true)
     end
 end
 
-function SettingsPanelActions:SetMapVisibleForExpansion(expansionID, mapID, visible)
-    if AddonControlService and AddonControlService.SetMapVisibleForExpansion then
-        AddonControlService:SetMapVisibleForExpansion(expansionID, mapID, visible)
+function SettingsPanelActions:InvertTrackedMapsForExpansion(expansionID)
+    if AddonControlService and AddonControlService.InvertTrackedMaps then
+        AddonControlService:InvertTrackedMaps(expansionID)
     end
 end
 

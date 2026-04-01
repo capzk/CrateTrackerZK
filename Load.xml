@@ -10,6 +10,7 @@
     <Script file="Shared/Foundation/Utils.lua"/>
     <Script file="Shared/Foundation/Logger.lua"/>
     <Script file="Shared/Foundation/AppContext.lua"/>
+    <Script file="Shared/Foundation/AppSettingsStore.lua"/>
     <Script file="Shared/Foundation/StateBuckets.lua"/>
     <Script file="Shared/Foundation/Analytics.lua"/>
     <!-- 本地化管理模块（在本地化文件之前加载） -->
@@ -36,6 +37,7 @@
     
     <!-- 数据管理（代号系统配置优先） -->
         <Script file="Data/MapConfig.lua"/>
+        <Script file="Data/PersistentMapStateStore.lua"/>
         <!-- 时间数据管理模块（在Data.lua之前加载） -->
         <Script file="Modules/TimeStateStore.lua"/>
         <Script file="Modules/PhaseStateStore.lua"/>
@@ -46,6 +48,14 @@
         <Script file="Modules/AirdropEventService.lua"/>
     
     <!-- 功能模块 -->
+    <Script file="Modules/UIRefreshCoordinator.lua"/>
+    <Script file="Modules/NotificationSettingsStore.lua"/>
+    <Script file="Modules/NotificationDedupService.lua"/>
+    <Script file="Modules/NotificationOutputService.lua"/>
+    <Script file="Modules/NotificationQueryService.lua"/>
+    <Script file="Modules/TeamCommParserRegistry.lua"/>
+    <Script file="Modules/TeamCommMapCache.lua"/>
+    <Script file="Modules/TeamCommMessageService.lua"/>
     <Script file="Modules/Notification.lua"/>
     <Script file="Modules/RuntimeResetManager.lua"/>
     <Script file="Modules/TeamCommListener.lua"/>

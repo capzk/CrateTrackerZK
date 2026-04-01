@@ -79,10 +79,9 @@ function MainFrameMetrics:GetCompactVisibleMapCount()
     if Data and Data.GetAllMaps then
         local maps = Data:GetAllMaps()
         if maps and #maps > 0 then
-            local hiddenMaps = (Data.GetHiddenMaps and Data:GetHiddenMaps()) or {}
             local visibleCount = 0
             for _, mapData in ipairs(maps) do
-                if mapData and mapData.mapID and not hiddenMaps[mapData.mapID] then
+                if mapData and mapData.mapID and not (Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID)) then
                     visibleCount = visibleCount + 1
                 end
             end

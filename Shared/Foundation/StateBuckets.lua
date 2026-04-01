@@ -36,9 +36,6 @@ end
 
 function StateBuckets:GetExpansionUIBucket(expansionID)
     local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or {}
-    uiDB.hiddenMaps = nil
-    uiDB.hiddenRemaining = nil
-    uiDB.phaseCache = nil
 
     if type(uiDB.expansionUIData) ~= "table" then
         uiDB.expansionUIData = {}
@@ -57,9 +54,6 @@ function StateBuckets:GetExpansionUIBucket(expansionID)
     if type(bucket.hiddenRemaining) ~= "table" then
         bucket.hiddenRemaining = {}
     end
-    if type(bucket.phaseCache) ~= "table" then
-        bucket.phaseCache = {}
-    end
 
     return bucket, expansionID
 end
@@ -74,9 +68,12 @@ function StateBuckets:GetHiddenRemaining(expansionID)
     return bucket.hiddenRemaining
 end
 
-function StateBuckets:GetPhaseCache(expansionID)
-    local bucket = self:GetExpansionUIBucket(expansionID)
-    return bucket.phaseCache
+function StateBuckets:GetPhaseCache()
+    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or {}
+    if type(uiDB.phaseCache) ~= "table" then
+        uiDB.phaseCache = {}
+    end
+    return uiDB.phaseCache
 end
 
 return StateBuckets

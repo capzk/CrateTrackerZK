@@ -20,6 +20,7 @@ if not Area then Area = BuildEnv("Area") end
 if not Logger then Logger = BuildEnv("Logger") end
 if not UnifiedDataManager then UnifiedDataManager = BuildEnv("UnifiedDataManager") end
 if not TimerManager then TimerManager = BuildEnv("TimerManager") end
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 
 ShoutDetector.isInitialized = false;
 ShoutDetector.compiledShouts = ShoutDetector.compiledShouts or {};
@@ -53,8 +54,10 @@ local function IsMapHidden(targetMapData)
     if not targetMapData then
         return false;
     end
-    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
-    return hiddenMaps[targetMapData.mapID] == true;
+    if Data and Data.IsMapHidden then
+        return Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID);
+    end
+    return false;
 end
 
 local function OnShoutDetected(message)
@@ -101,8 +104,8 @@ local function OnShoutDetected(message)
     end
     if TimerManager and TimerManager.UpdateUI then
         TimerManager:UpdateUI();
-    elseif MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable();
+    elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+        UIRefreshCoordinator:RefreshMainTable();
     end
 end
 

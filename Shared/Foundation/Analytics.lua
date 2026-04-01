@@ -3,24 +3,21 @@
 local ADDON_NAME = "CrateTrackerZK"
 local CrateTrackerZK = BuildEnv(ADDON_NAME)
 local Analytics = BuildEnv("CrateTrackerZKAnalytics")
+local ExpansionConfig = BuildEnv("ExpansionConfig")
 
-local function GetCurrentExpansionID()
-    if Data and Data.GetCurrentExpansionID then
-        local expansionID = Data:GetCurrentExpansionID()
-        if expansionID then
-            return expansionID
+local function GetTrackedExpansionLookup()
+    local lookup = {}
+    if ExpansionConfig and ExpansionConfig.GetTrackedExpansionIDs then
+        for _, expansionID in ipairs(ExpansionConfig:GetTrackedExpansionIDs() or {}) do
+            lookup[expansionID] = true
         end
     end
-    if AppContext and AppContext.GetCurrentExpansionID then
-        local expansionID = AppContext:GetCurrentExpansionID()
-        if expansionID then
-            return expansionID
-        end
-    end
-    if ExpansionConfig and ExpansionConfig.GetCurrentExpansionID then
-        return ExpansionConfig:GetCurrentExpansionID()
-    end
-    return nil
+    return lookup
+end
+
+local function BuildAnalyticsExpansionSwitchKey(expansionID)
+    local normalized = tostring(expansionID or "unknown"):gsub("[^%w]+", "_"):lower()
+    return "map_version_" .. normalized
 end
 
 function Analytics:GetClient()
@@ -42,11 +39,15 @@ function Analytics:RecordSessionState()
         return false
     end
 
-    local expansionID = GetCurrentExpansionID()
+    local trackedExpansionLookup = GetTrackedExpansionLookup()
 
     analytics:Switch("addon_loaded", true)
-    analytics:Switch("map_version_11_0", expansionID == "11.0")
-    analytics:Switch("map_version_12_0", expansionID == "12.0")
+    for _, expansionInfo in ipairs(ExpansionConfig and ExpansionConfig.GetAvailableExpansions and ExpansionConfig:GetAvailableExpansions() or {}) do
+        analytics:Switch(
+            BuildAnalyticsExpansionSwitchKey(expansionInfo.id),
+            trackedExpansionLookup[expansionInfo.id] == true
+        )
+    end
 
     return true
 end

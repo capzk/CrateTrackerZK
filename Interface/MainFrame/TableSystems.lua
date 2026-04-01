@@ -240,8 +240,6 @@ end
 local function BuildTickContext(now)
     return {
         now = now or time(),
-        hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {},
-        hiddenRemaining = (Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {},
     }
 end
 
@@ -255,8 +253,7 @@ local function ShouldRealtimeUpdate(rowId, context)
         return false
     end
 
-    local hiddenMaps = (context and context.hiddenMaps) or ((Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {})
-    if hiddenMaps and hiddenMaps[mapData.mapID] == true then
+    if Data and Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID) then
         return false
     end
 
@@ -276,12 +273,10 @@ local function GetRemaining(rowId, context)
     if not mapData then return nil, false end
 
     local now = (context and context.now) or time()
-    local hiddenMaps = (context and context.hiddenMaps) or ((Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {})
-    local hiddenRemaining = (context and context.hiddenRemaining) or ((Data and Data.GetHiddenRemaining and Data:GetHiddenRemaining()) or {})
-    local isHidden = hiddenMaps and hiddenMaps[mapData.mapID] == true
+    local isHidden = Data and Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID)
 
     if isHidden then
-        local frozen = hiddenRemaining and hiddenRemaining[mapData.mapID]
+        local frozen = Data and Data.GetHiddenRemainingValue and Data:GetHiddenRemainingValue(mapData.expansionID, mapData.mapID)
         if frozen and frozen < 0 then frozen = 0 end
         return frozen, true
     end

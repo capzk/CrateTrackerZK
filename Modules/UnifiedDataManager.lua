@@ -47,16 +47,6 @@ UnifiedDataManager.TEMPORARY_PHASE_EXPIRE = 1800  -- 30分钟
 -- 采用临时时间用于持久化的最大时间偏移（秒）
 UnifiedDataManager.TEMPORARY_TIME_ADOPTION_WINDOW = 120  -- 2分钟
 
-local function GetCurrentExpansionID()
-    if AppContext and AppContext.GetCurrentExpansionID then
-        local id = AppContext:GetCurrentExpansionID();
-        if id then
-            return id;
-        end
-    end
-    return "default";
-end
-
 local function GetPhaseCacheStore()
     if StateBuckets and StateBuckets.GetPhaseCache then
         return StateBuckets:GetPhaseCache();
@@ -65,6 +55,25 @@ local function GetPhaseCacheStore()
         return Data:GetPhaseCache();
     end
     return {};
+end
+
+local function ResolveMapExpansionID(mapId, expansionID)
+    if expansionID then
+        return expansionID;
+    end
+    if Data and Data.GetMap then
+        local mapData = Data:GetMap(mapId);
+        if mapData and mapData.expansionID then
+            return mapData.expansionID;
+        end
+    end
+    if AppContext and AppContext.GetCurrentExpansionID then
+        local id = AppContext:GetCurrentExpansionID();
+        if id then
+            return id;
+        end
+    end
+    return "default";
 end
 
 -- 初始化
@@ -110,17 +119,17 @@ function UnifiedDataManager:CalculateNextRefreshTime(lastRefresh, interval, curr
 end
 
 -- 获取或创建时间数据
-function UnifiedDataManager:GetOrCreateTimeData(mapId)
+function UnifiedDataManager:GetOrCreateTimeData(mapId, expansionID)
     if TimeStateStore and TimeStateStore.GetOrCreate then
-        return TimeStateStore:GetOrCreate(self, mapId);
+        return TimeStateStore:GetOrCreate(self, mapId, ResolveMapExpansionID(mapId, expansionID));
     end
     return nil;
 end
 
 -- 获取或创建位面数据
-function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary)
+function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary, expansionID)
     if PhaseStateStore and PhaseStateStore.GetOrCreate then
-        return PhaseStateStore:GetOrCreate(self, mapId, isTemporary);
+        return PhaseStateStore:GetOrCreate(self, mapId, isTemporary, ResolveMapExpansionID(mapId, expansionID));
     end
     return nil;
 end
@@ -156,14 +165,15 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
         return false;
     end
     
-    local timeData = self:GetOrCreateTimeData(mapId);
+    local expansionID = ResolveMapExpansionID(mapId);
+    local timeData = self:GetOrCreateTimeData(mapId, expansionID);
     if not timeData then
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建时间数据：mapId=%s", tostring(mapId)));
         return false;
     end
 
     if TimeStateStore and TimeStateStore.SetTemporary then
-        TimeStateStore:SetTemporary(self, mapId, timestamp, source, time());
+        TimeStateStore:SetTemporary(self, mapId, timestamp, source, time(), expansionID);
     end
     
     Logger:Debug("UnifiedDataManager", "临时时间", string.format("设置临时时间成功：地图ID=%d，时间=%d，来源=%s", 
@@ -175,7 +185,7 @@ end
 -- 获取未过期的临时时间（不清除）
 function UnifiedDataManager:GetValidTemporaryTime(mapId)
     if TimeStateStore and TimeStateStore.GetValidTemporary then
-        return TimeStateStore:GetValidTemporary(self, mapId, time());
+        return TimeStateStore:GetValidTemporary(self, mapId, time(), ResolveMapExpansionID(mapId));
     end
     return nil;
 end
@@ -183,7 +193,7 @@ end
 -- 清除指定地图的临时时间
 function UnifiedDataManager:ClearTemporaryTime(mapId)
     if TimeStateStore and TimeStateStore.ClearTemporary then
-        TimeStateStore:ClearTemporary(self, mapId);
+        TimeStateStore:ClearTemporary(self, mapId, ResolveMapExpansionID(mapId));
     end
 end
 
@@ -216,18 +226,14 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId)
         return false;
     end
     
-    local timeData = self:GetOrCreateTimeData(mapId);
+    local expansionID = ResolveMapExpansionID(mapId);
+    local timeData = self:GetOrCreateTimeData(mapId, expansionID);
     if TimeStateStore and TimeStateStore.SetPersistent then
-        TimeStateStore:SetPersistent(self, mapId, timestamp, source, phaseId);
+        TimeStateStore:SetPersistent(self, mapId, timestamp, source, phaseId, expansionID);
     end
 
     if timeData and timeData.temporaryTime then
         Logger:Debug("UnifiedDataManager", "优先级", string.format("持久化时间优先级更高，清除临时时间：地图ID=%d", mapId));
-    end
-    
-    -- 调用Data模块进行持久化存储
-    if Data and Data.SetLastRefresh then
-        Data:SetLastRefresh(mapId, timestamp);
     end
     
     Logger:Debug("UnifiedDataManager", "持久化时间", string.format("设置持久化时间：地图ID=%d，时间=%d，来源=%s", 
@@ -242,7 +248,7 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
         return nil;
     end
     
-    local scopedKey = TimeStateStore and TimeStateStore.GetScopedKey and TimeStateStore:GetScopedKey(mapId) or nil;
+    local scopedKey = TimeStateStore and TimeStateStore.GetScopedKey and TimeStateStore:GetScopedKey(mapId, ResolveMapExpansionID(mapId)) or nil;
     local timeData = scopedKey and self.temporaryTimes[scopedKey] or nil;
     local now = currentTime or time();
 
@@ -267,13 +273,13 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
     end
 
     -- 如果本地没有持久化记录，回退到Data模块的持久化时间
-    if not persistentRecord and Data and Data.GetMap then
-        local mapData = Data:GetMap(mapId);
-        if mapData and mapData.lastRefresh then
+    if not persistentRecord and Data and Data.GetPersistentSnapshot then
+        local persistentSnapshot = Data:GetPersistentSnapshot(mapId);
+        if persistentSnapshot and persistentSnapshot.lastRefresh then
             persistentRecord = {
-                timestamp = mapData.lastRefresh,
+                timestamp = persistentSnapshot.lastRefresh,
                 source = self.TimeSource.ICON_DETECTION,
-                phaseId = mapData.lastRefreshPhase
+                phaseId = persistentSnapshot.lastRefreshPhase
             };
         end
     end
@@ -329,14 +335,15 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
         return false;
     end
     
-    local phaseData = self:GetOrCreatePhaseData(mapId, true);
+    local expansionID = ResolveMapExpansionID(mapId);
+    local phaseData = self:GetOrCreatePhaseData(mapId, true, expansionID);
     if not phaseData then
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建临时位面数据：mapId=%s", tostring(mapId)));
         return false;
     end
 
     if PhaseStateStore and PhaseStateStore.SetTemporary then
-        PhaseStateStore:SetTemporary(self, mapId, phaseId, source, time(), GetPhaseCacheStore());
+        PhaseStateStore:SetTemporary(self, mapId, phaseId, source, time(), GetPhaseCacheStore(), expansionID);
     end
 
     Logger:Debug("UnifiedDataManager", "临时位面", string.format("设置临时位面成功：地图ID=%d，位面ID=%s，来源=%s", 
@@ -352,14 +359,15 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
         return false;
     end
     
-    local phaseData = self:GetOrCreatePhaseData(mapId, false);
+    local expansionID = ResolveMapExpansionID(mapId);
+    local phaseData = self:GetOrCreatePhaseData(mapId, false, expansionID);
     if not phaseData then
         Logger:Error("UnifiedDataManager", "错误", string.format("无法创建持久化位面数据：mapId=%s", tostring(mapId)));
         return false;
     end
 
     if PhaseStateStore and PhaseStateStore.SetPersistent then
-        PhaseStateStore:SetPersistent(self, mapId, phaseId, source, time());
+        PhaseStateStore:SetPersistent(self, mapId, phaseId, source, time(), expansionID);
     end
     
     Logger:Debug("UnifiedDataManager", "持久化位面", string.format("设置持久化位面成功：地图ID=%d，位面ID=%s，来源=%s", 
@@ -376,7 +384,7 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     
     -- 优先使用临时位面（如果存在且未过期）
     if PhaseStateStore and PhaseStateStore.GetCurrent then
-        return PhaseStateStore:GetCurrent(self, mapId, time());
+        return PhaseStateStore:GetCurrent(self, mapId, time(), ResolveMapExpansionID(mapId));
     end
     return nil;
 end
@@ -388,7 +396,7 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
     end
     
     if PhaseStateStore and PhaseStateStore.GetPersistent then
-        return PhaseStateStore:GetPersistent(self, mapId);
+        return PhaseStateStore:GetPersistent(self, mapId, ResolveMapExpansionID(mapId));
     end
     return nil;
 end
@@ -531,7 +539,7 @@ function UnifiedDataManager:MigrateExistingData()
     
     for _, mapData in ipairs(maps) do
         if mapData and mapData.lastRefresh then
-            local timeData = self:GetOrCreateTimeData(mapData.id);
+            local timeData = self:GetOrCreateTimeData(mapData.id, mapData.expansionID);
             
             -- 将现有的持久化时间迁移到新系统
             timeData.persistentTime = {
@@ -542,7 +550,7 @@ function UnifiedDataManager:MigrateExistingData()
             
             -- 迁移位面数据
             if mapData.lastRefreshPhase then
-                local phaseData = self:GetOrCreatePhaseData(mapData.id, false);
+                local phaseData = self:GetOrCreatePhaseData(mapData.id, false, mapData.expansionID);
                 phaseData.phaseId = mapData.lastRefreshPhase;
                 phaseData.source = self.PhaseSource.ICON_DETECTION;
                 phaseData.detectTime = mapData.lastRefresh;

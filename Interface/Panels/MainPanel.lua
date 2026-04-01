@@ -234,11 +234,10 @@ function MainPanel:HideMap(mapId)
     if not mapData then return end
 
     local remaining = self:GetRemainingSeconds(mapData)
-    local hiddenMaps = RowViewModelBuilder and RowViewModelBuilder.GetHiddenMaps and RowViewModelBuilder:GetHiddenMaps() or {}
-    local hiddenRemaining = RowViewModelBuilder and RowViewModelBuilder.GetHiddenRemaining and RowViewModelBuilder:GetHiddenRemaining() or {}
-    hiddenMaps[mapData.mapID] = true
     if remaining and remaining < 0 then remaining = 0 end
-    hiddenRemaining[mapData.mapID] = remaining
+    if Data and Data.SetMapHiddenState then
+        Data:SetMapHiddenState(mapData.expansionID, mapData.mapID, true, remaining)
+    end
 
     self:UpdateTable(true)
 end
@@ -248,10 +247,9 @@ function MainPanel:RestoreMap(mapId)
     local mapData = Data:GetMap(mapId)
     if not mapData then return end
 
-    local hiddenMaps = RowViewModelBuilder and RowViewModelBuilder.GetHiddenMaps and RowViewModelBuilder:GetHiddenMaps() or {}
-    local hiddenRemaining = RowViewModelBuilder and RowViewModelBuilder.GetHiddenRemaining and RowViewModelBuilder:GetHiddenRemaining() or {}
-    hiddenMaps[mapData.mapID] = nil
-    hiddenRemaining[mapData.mapID] = nil
+    if Data and Data.SetMapHiddenState then
+        Data:SetMapHiddenState(mapData.expansionID, mapData.mapID, false)
+    end
 
     self:UpdateTable(true)
 end

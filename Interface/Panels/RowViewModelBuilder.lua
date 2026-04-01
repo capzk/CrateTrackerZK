@@ -1,54 +1,50 @@
 -- RowViewModelBuilder.lua - 主面板行数据组装器
 
 local RowViewModelBuilder = BuildEnv("RowViewModelBuilder")
-local StateBuckets = BuildEnv("StateBuckets")
 local Data = BuildEnv("Data")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 
-local function GetHiddenMaps()
+local function GetHiddenMaps(expansionID)
     if Data and Data.GetHiddenMaps then
-        return Data:GetHiddenMaps()
-    end
-    if StateBuckets and StateBuckets.GetHiddenMaps then
-        return StateBuckets:GetHiddenMaps()
+        return Data:GetHiddenMaps(expansionID)
     end
     return {}
 end
 
-local function GetHiddenRemaining()
+local function GetHiddenRemaining(expansionID)
     if Data and Data.GetHiddenRemaining then
-        return Data:GetHiddenRemaining()
-    end
-    if StateBuckets and StateBuckets.GetHiddenRemaining then
-        return StateBuckets:GetHiddenRemaining()
+        return Data:GetHiddenRemaining(expansionID)
     end
     return {}
 end
 
-local function GetHiddenState(mapData, hiddenMaps)
-    if not mapData or not hiddenMaps then
+local function GetHiddenState(mapData)
+    if not mapData then
         return false
     end
-    return hiddenMaps[mapData.mapID] == true
+    if Data and Data.IsMapHidden then
+        return Data:IsMapHidden(mapData.expansionID, mapData.mapID)
+    end
+    return false
 end
 
-local function GetFrozenRemaining(mapData, hiddenRemaining)
-    if not mapData or not hiddenRemaining then
+local function GetFrozenRemaining(mapData)
+    if not mapData then
         return nil
     end
-    local value = hiddenRemaining[mapData.mapID]
+    local value = Data and Data.GetHiddenRemainingValue and Data:GetHiddenRemainingValue(mapData.expansionID, mapData.mapID) or nil
     if value and value < 0 then
         value = 0
     end
     return value
 end
 
-function RowViewModelBuilder:GetHiddenMaps()
-    return GetHiddenMaps()
+function RowViewModelBuilder:GetHiddenMaps(expansionID)
+    return GetHiddenMaps(expansionID)
 end
 
-function RowViewModelBuilder:GetHiddenRemaining()
-    return GetHiddenRemaining()
+function RowViewModelBuilder:GetHiddenRemaining(expansionID)
+    return GetHiddenRemaining(expansionID)
 end
 
 function RowViewModelBuilder:GetRemainingSeconds(mapData)
@@ -56,10 +52,8 @@ function RowViewModelBuilder:GetRemainingSeconds(mapData)
         return nil
     end
 
-    local hiddenMaps = GetHiddenMaps()
-    local hiddenRemaining = GetHiddenRemaining()
-    if GetHiddenState(mapData, hiddenMaps) then
-        return GetFrozenRemaining(mapData, hiddenRemaining)
+    if GetHiddenState(mapData) then
+        return GetFrozenRemaining(mapData)
     end
 
     local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(mapData.id)
@@ -91,9 +85,6 @@ function RowViewModelBuilder:BuildRows()
     local rows = {}
     local maps = Data and Data.GetAllMaps and Data:GetAllMaps() or {}
     local now = time()
-    local hiddenMaps = GetHiddenMaps()
-    local hiddenRemaining = GetHiddenRemaining()
-
     for index, mapData in ipairs(maps) do
         if mapData then
             local displayTime = UnifiedDataManager and UnifiedDataManager.GetDisplayTime and UnifiedDataManager:GetDisplayTime(mapData.id)
@@ -120,7 +111,7 @@ function RowViewModelBuilder:BuildRows()
                 nextRefreshTime = mapData.nextRefresh
             end
 
-            local frozenRemaining = (mapData.mapID and hiddenRemaining[mapData.mapID]) or nil
+            local frozenRemaining = GetFrozenRemaining(mapData)
             if frozenRemaining ~= nil then
                 remainingTime = frozenRemaining
             end
@@ -140,7 +131,7 @@ function RowViewModelBuilder:BuildRows()
                 currentPhaseID = mapData.currentPhaseID,
                 lastRefreshPhase = mapData.lastRefreshPhase,
                 phaseDisplayInfo = phaseDisplayInfo,
-                isHidden = hiddenMaps and hiddenMaps[mapData.mapID] or false,
+                isHidden = GetHiddenState(mapData),
                 isFrozen = frozenRemaining ~= nil,
                 timeSource = displayTime and displayTime.source or nil,
                 isPersistent = displayTime and displayTime.isPersistent or false,

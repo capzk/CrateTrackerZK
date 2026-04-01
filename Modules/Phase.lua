@@ -2,22 +2,19 @@
 
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
-local AppContext = BuildEnv("AppContext");
 local L = CrateTrackerZK.L;
 local Phase = BuildEnv("Phase");
 local Area = BuildEnv("Area");
 local MapTracker = BuildEnv("MapTracker");
 local ExpansionConfig = BuildEnv("ExpansionConfig");
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator");
 
 Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
 
-local function GetExpansionAwareCacheKey(mapID)
-    local expansionID = (AppContext and AppContext.GetCurrentExpansionID and AppContext:GetCurrentExpansionID())
-        or (Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID())
-        or "default";
-    return tostring(expansionID) .. ":" .. tostring(mapID);
+local function GetExpansionAwareCacheKey(expansionID, mapID)
+    return tostring(expansionID or "default") .. ":" .. tostring(mapID);
 end
 
 local function SafeSplitGuid(guid)
@@ -110,14 +107,13 @@ function Phase:UpdatePhaseInfo(currentMapID)
     
     if targetMapData then
         -- 隐藏地图：暂停位面检测
-        local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
-        if hiddenMaps[targetMapData.mapID] then
+        if Data and Data.IsMapHidden and Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID) then
             return;
         end
 
         local detectedPhaseID = self:GetLayerFromNPC();
         -- 使用 版本+mapID 作为缓存key，确保不同版本数据隔离
-        local cacheKey = GetExpansionAwareCacheKey(targetMapData.mapID);
+        local cacheKey = GetExpansionAwareCacheKey(targetMapData.expansionID, targetMapData.mapID);
         local cachedPhaseID = self.phaseCache[cacheKey];
         
         local shouldUpdate = false;
@@ -203,8 +199,8 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 end
             end
             
-            if uiNeedsRefresh and MainPanel and MainPanel.UpdateTable then
-                MainPanel:UpdateTable();
+            if uiNeedsRefresh and UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+                UIRefreshCoordinator:RefreshMainTable();
             end
         end
     end

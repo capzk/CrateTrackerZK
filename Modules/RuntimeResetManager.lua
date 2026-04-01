@@ -103,6 +103,8 @@ end
 function RuntimeResetManager:ResetCommandRuntimeState()
     if Data then
         Data.maps = {};
+        Data.mapsById = {};
+        Data.mapsByMapID = {};
     end
 
     if TimerManager then

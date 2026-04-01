@@ -6,6 +6,10 @@ local L = CrateTrackerZK.L;
 local AirdropEventService = BuildEnv("AirdropEventService");
 local Notification = BuildEnv('Notification');
 local Area = BuildEnv("Area");
+local NotificationSettingsStore = BuildEnv("NotificationSettingsStore");
+local NotificationDedupService = BuildEnv("NotificationDedupService");
+local NotificationOutputService = BuildEnv("NotificationOutputService");
+local NotificationQueryService = BuildEnv("NotificationQueryService");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
@@ -29,43 +33,15 @@ end
 function Notification:Initialize()
     if self.isInitialized then return end
     self.isInitialized = true;
-    
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.teamNotificationEnabled ~= nil then
-        self.teamNotificationEnabled = CRATETRACKERZK_UI_DB.teamNotificationEnabled;
-    else
-        self.teamNotificationEnabled = true;
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.teamNotificationEnabled = true;
-        end
+    if NotificationSettingsStore and NotificationSettingsStore.Load then
+        local settings = NotificationSettingsStore:Load();
+        self.teamNotificationEnabled = settings.teamNotificationEnabled;
+        self.soundAlertEnabled = settings.soundAlertEnabled;
+        self.autoTeamReportEnabled = settings.autoTeamReportEnabled;
+        self.autoTeamReportInterval = settings.autoTeamReportInterval;
     end
-
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.soundAlertEnabled ~= nil then
-        self.soundAlertEnabled = CRATETRACKERZK_UI_DB.soundAlertEnabled == true;
-    else
-        self.soundAlertEnabled = true;
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.soundAlertEnabled = true;
-        end
-    end
-
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportEnabled ~= nil then
-        self.autoTeamReportEnabled = CRATETRACKERZK_UI_DB.autoTeamReportEnabled == true;
-    else
-        self.autoTeamReportEnabled = false;
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
-        end
-    end
-
-    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.autoTeamReportInterval ~= nil then
-        local value = tonumber(CRATETRACKERZK_UI_DB.autoTeamReportInterval);
-        if value and value > 0 then
-            self.autoTeamReportInterval = math.floor(value);
-        end
-    else
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.autoTeamReportInterval = self.autoTeamReportInterval;
-        end
+    if NotificationDedupService and NotificationDedupService.EnsureState then
+        NotificationDedupService:EnsureState(self);
     end
     
     DebugPrint("[通知] 通知模块已初始化");
@@ -82,8 +58,8 @@ end
 function Notification:SetTeamNotificationEnabled(enabled)
     self.teamNotificationEnabled = enabled;
     
-    if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.teamNotificationEnabled = enabled;
+    if NotificationSettingsStore and NotificationSettingsStore.SetTeamNotificationEnabled then
+        NotificationSettingsStore:SetTeamNotificationEnabled(enabled);
     end
     
     local statusText = enabled and L["Enabled"] or L["Disabled"];
@@ -91,8 +67,8 @@ function Notification:SetTeamNotificationEnabled(enabled)
 
     if not enabled then
         self.autoTeamReportEnabled = false;
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
+        if NotificationSettingsStore and NotificationSettingsStore.SetAutoTeamReportEnabled then
+            NotificationSettingsStore:SetAutoTeamReportEnabled(false);
         end
     end
     if CrateTrackerZK then
@@ -106,8 +82,8 @@ end
 
 function Notification:SetSoundAlertEnabled(enabled)
     self.soundAlertEnabled = enabled == true;
-    if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.soundAlertEnabled = self.soundAlertEnabled;
+    if NotificationSettingsStore and NotificationSettingsStore.SetSoundAlertEnabled then
+        NotificationSettingsStore:SetSoundAlertEnabled(self.soundAlertEnabled);
     end
 end
 
@@ -134,14 +110,14 @@ end
 function Notification:SetAutoTeamReportEnabled(enabled)
     if enabled and not self:IsTeamNotificationEnabled() then
         self.autoTeamReportEnabled = false;
-        if CRATETRACKERZK_UI_DB then
-            CRATETRACKERZK_UI_DB.autoTeamReportEnabled = false;
+        if NotificationSettingsStore and NotificationSettingsStore.SetAutoTeamReportEnabled then
+            NotificationSettingsStore:SetAutoTeamReportEnabled(false);
         end
         return;
     end
     self.autoTeamReportEnabled = enabled == true;
-    if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.autoTeamReportEnabled = self.autoTeamReportEnabled;
+    if NotificationSettingsStore and NotificationSettingsStore.SetAutoTeamReportEnabled then
+        NotificationSettingsStore:SetAutoTeamReportEnabled(self.autoTeamReportEnabled);
     end
     if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
         CrateTrackerZK:RestartAutoTeamReportTicker();
@@ -154,8 +130,8 @@ function Notification:SetAutoTeamReportInterval(seconds)
         return nil;
     end
     self.autoTeamReportInterval = value;
-    if CRATETRACKERZK_UI_DB then
-        CRATETRACKERZK_UI_DB.autoTeamReportInterval = value;
+    if NotificationSettingsStore and NotificationSettingsStore.SetAutoTeamReportInterval then
+        NotificationSettingsStore:SetAutoTeamReportInterval(value);
     end
     if CrateTrackerZK and CrateTrackerZK.RestartAutoTeamReportTicker then
         CrateTrackerZK:RestartAutoTeamReportTicker();
@@ -165,123 +141,57 @@ end
 
 -- 更新首次通知时间（团队消息同步）
 function Notification:UpdateFirstNotificationTime(mapName, notificationTime)
-    if not mapName or not notificationTime then
-        return;
-    end
-    
-    if not self.firstNotificationTime[mapName] or notificationTime < self.firstNotificationTime[mapName] then
-        self.firstNotificationTime[mapName] = notificationTime;
-        Logger:Debug("Notification", "更新", string.format("更新首次通知时间：地图=%s，时间=%s", 
-            mapName, UnifiedDataManager:FormatDateTime(notificationTime)));
+    if NotificationDedupService and NotificationDedupService.UpdateFirstNotificationTime then
+        return NotificationDedupService:UpdateFirstNotificationTime(self, mapName, notificationTime);
     end
 end
 
 -- 检查30秒限制
 function Notification:CanSendNotification(mapName)
-    if not mapName then
-        return false;
+    if NotificationDedupService and NotificationDedupService.CanSendNotification then
+        return NotificationDedupService:CanSendNotification(self, mapName);
     end
-    
-    local currentTime = time();
-    local firstNotificationTime = self.firstNotificationTime[mapName];
-    
-    if not firstNotificationTime then
-        return true;
-    end
-
-    local isAllowed = nil;
-    if AirdropEventService and AirdropEventService.HasRecentTimestamp then
-        isAllowed = AirdropEventService:HasRecentTimestamp(firstNotificationTime, currentTime, self.NOTIFICATION_WINDOW);
-    else
-        isAllowed = (currentTime - firstNotificationTime) <= self.NOTIFICATION_WINDOW;
-    end
-
-    if not isAllowed then
-        local timeSinceFirstNotification = currentTime - firstNotificationTime;
-        Logger:Debug("Notification", "限制", string.format("距离首次通知已超过30秒（%d秒），不允许发送：地图=%s", 
-            timeSinceFirstNotification, mapName));
-        return false;
-    end
-    
-    return true;
+    return false;
 end
 
 function Notification:ResetMapNotificationState(mapName)
-    self.firstNotificationTime = self.firstNotificationTime or {};
-    self.playerSentNotification = self.playerSentNotification or {};
-    if AirdropEventService and AirdropEventService.ResetNotificationState then
-        return AirdropEventService:ResetNotificationState(
-            self.firstNotificationTime,
-            self.playerSentNotification,
-            mapName
-        );
+    if NotificationDedupService and NotificationDedupService.ResetMapNotificationState then
+        return NotificationDedupService:ResetMapNotificationState(self, mapName);
     end
-    if not mapName then
-        return false;
-    end
-    self.firstNotificationTime[mapName] = nil;
-    self.playerSentNotification[mapName] = nil;
-    return true;
+    return false;
 end
 
 function Notification:MarkPlayerSentNotification(mapName)
-    if not mapName then
-        return;
-    end
-    
-    if not self.playerSentNotification[mapName] then
-        self.playerSentNotification[mapName] = true;
-        Logger:Debug("Notification", "标记", string.format("标记玩家已发送通知：地图=%s", mapName));
+    if NotificationDedupService and NotificationDedupService.MarkPlayerSentNotification then
+        return NotificationDedupService:MarkPlayerSentNotification(self, mapName);
     end
 end
 
 function Notification:HasPlayerSentNotification(mapName)
-    return self.playerSentNotification[mapName] == true;
+    if NotificationDedupService and NotificationDedupService.HasPlayerSentNotification then
+        return NotificationDedupService:HasPlayerSentNotification(self, mapName);
+    end
+    return false;
 end
 
 function Notification:RecordShout(mapName, timestamp)
-    if not mapName then return end
-    self.lastShoutTime = self.lastShoutTime or {};
-    self.lastShoutTime[mapName] = timestamp or time();
-    Logger:Debug("Notification", "记录", string.format("记录喊话时间：地图=%s，时间=%s",
-        mapName, UnifiedDataManager:FormatDateTime(self.lastShoutTime[mapName])));
+    if NotificationDedupService and NotificationDedupService.RecordShout then
+        return NotificationDedupService:RecordShout(self, mapName, timestamp);
+    end
 end
 
 function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
-    if not mapName then return false, nil end
-    self.lastShoutTime = self.lastShoutTime or {};
-    local lastTime = self.lastShoutTime[mapName];
-    if not lastTime then return false, nil end
-    windowSeconds = windowSeconds or self.SHOUT_DEDUP_WINDOW or 20;
-    currentTime = currentTime or time();
-    local isRecent = AirdropEventService and AirdropEventService.HasRecentTimestamp
-        and AirdropEventService:HasRecentTimestamp(lastTime, currentTime, windowSeconds)
-        or ((currentTime - lastTime) <= windowSeconds);
-    return isRecent, lastTime;
-end
-
-local function TryPlaySound(path)
-    if not path or path == "" or not PlaySoundFile then
-        return false;
+    if NotificationDedupService and NotificationDedupService.IsRecentShout then
+        return NotificationDedupService:IsRecentShout(self, mapName, windowSeconds, currentTime);
     end
-    local ok, result = pcall(PlaySoundFile, path, "Master");
-    if ok and result then
-        return true;
-    end
-    local ok2, result2 = pcall(PlaySoundFile, path);
-    return ok2 and result2 == true;
+    return false, nil;
 end
 
 function Notification:PlayAirdropAlertSound()
-    if not self:IsSoundAlertEnabled() then
-        return false;
+    if NotificationOutputService and NotificationOutputService.PlayAirdropAlertSound then
+        return NotificationOutputService:PlayAirdropAlertSound(self);
     end
-    local soundPath = self.airdropAlertSoundFile;
-    local played = TryPlaySound(soundPath);
-    if not played then
-        Logger:Warn("Notification", "通知", string.format("空投提示音播放失败：%s", tostring(soundPath)));
-    end
-    return played;
+    return false;
 end
 
 function Notification:NotifyAirdropDetected(mapName, detectionSource)
@@ -343,10 +253,8 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local message = string.format(L["AirdropDetected"], mapName);
 
-    if C_Timer and C_Timer.After then
-        C_Timer.After(1, function()
-            self:PlayAirdropAlertSound();
-        end);
+    if NotificationOutputService and NotificationOutputService.PlayDelayedAlertSound then
+        NotificationOutputService:PlayDelayedAlertSound(self);
     else
         self:PlayAirdropAlertSound();
     end
@@ -356,69 +264,26 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     Logger:Debug("Notification", "调试", string.format("团队通知检查：chatType=%s, teamNotificationEnabled=%s, IsInRaid=%s, IsInGroup=%s", 
         tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
     
-    if chatType and self.teamNotificationEnabled then
-        if IsInRaid() then
-            local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player");
-            local raidChatType = hasPermission and "RAID_WARNING" or "RAID";
-            Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"));
-            pcall(function()
-                SendChatMessage(message, raidChatType);
-            end);
-        else
-            Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType));
-            pcall(function()
-                SendChatMessage(message, chatType);
-            end);
-        end
-    else
-        Logger:Info("Notification", "通知", message);
-        if chatType and not self.teamNotificationEnabled then
+    if NotificationOutputService and NotificationOutputService.SendMessage then
+        local sentToTeam = NotificationOutputService:SendMessage(self, message, chatType);
+        if chatType and not self.teamNotificationEnabled and not sentToTeam then
             Logger:Debug("Notification", "通知", string.format("团队通知已禁用，仅发送系统消息：地图=%s", mapName));
         end
     end
 end
 
 function Notification:GetTeamChatType()
-    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then return "INSTANCE_CHAT" end
-    if IsInRaid() then return "RAID" end
-    if IsInGroup() then return "PARTY" end
+    if NotificationOutputService and NotificationOutputService.GetTeamChatType then
+        return NotificationOutputService:GetTeamChatType();
+    end
     return nil;
 end
 
-local function BuildAutoTeamReportMessage(mapName, remaining)
-    local format = (L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!";
-    local timeText = (UnifiedDataManager and UnifiedDataManager.FormatTime and UnifiedDataManager:FormatTime(remaining, true)) or "--:--";
-    return string.format(format, mapName, timeText);
-end
-
 function Notification:GetNearestAirdropInfo()
-    if not Data or not Data.GetAllMaps then
-        return nil;
+    if NotificationQueryService and NotificationQueryService.GetNearestAirdropInfo then
+        return NotificationQueryService:GetNearestAirdropInfo();
     end
-    if not UnifiedDataManager or not UnifiedDataManager.GetRemainingTime then
-        return nil;
-    end
-
-    local hiddenMaps = (Data and Data.GetHiddenMaps and Data:GetHiddenMaps()) or {};
-    local bestMap = nil;
-    local bestRemaining = nil;
-
-    for _, mapData in ipairs(Data:GetAllMaps() or {}) do
-        if mapData and not (hiddenMaps and hiddenMaps[mapData.mapID]) then
-            local remaining = UnifiedDataManager:GetRemainingTime(mapData.id);
-            if remaining and remaining >= 0 then
-                if not bestRemaining or remaining < bestRemaining then
-                    bestRemaining = remaining;
-                    bestMap = mapData;
-                end
-            end
-        end
-    end
-
-    if not bestMap then
-        return nil;
-    end
-    return bestMap, bestRemaining;
+    return nil;
 end
 
 function Notification:SendAutoTeamReport()
@@ -444,13 +309,15 @@ function Notification:SendAutoTeamReport()
         return false;
     end
 
-    local message = BuildAutoTeamReportMessage(mapName, remaining);
+    local message = NotificationQueryService and NotificationQueryService.BuildAutoTeamReportMessage
+        and NotificationQueryService:BuildAutoTeamReportMessage(mapName, remaining)
+        or string.format((L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!", mapName, UnifiedDataManager:FormatTime(remaining, true));
     local chatType = self:GetTeamChatType();
     if chatType then
         -- 自动通知固定使用普通团队/小队频道，避免触发团队警告音效
-        pcall(function()
-            SendChatMessage(message, chatType);
-        end);
+        if NotificationOutputService and NotificationOutputService.SendManualMessage then
+            NotificationOutputService:SendManualMessage(message, chatType);
+        end
     else
         if Logger and Logger.Info then
             Logger:Info("Notification", "通知", message);
@@ -492,7 +359,9 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
             systemMessage = message;
         else
             if clickButton == "RightButton" then
-                message = BuildAutoTeamReportMessage(displayName, remaining);
+                message = NotificationQueryService and NotificationQueryService.BuildAutoTeamReportMessage
+                    and NotificationQueryService:BuildAutoTeamReportMessage(displayName, remaining)
+                    or string.format((L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!", displayName, UnifiedDataManager:FormatTime(remaining, true));
             else
                 message = string.format(L["TimeRemaining"], displayName, UnifiedDataManager:FormatTime(remaining, true));
             end
@@ -504,9 +373,10 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     
     if chatType then
         Logger:Debug("Notification", "通知", string.format("发送小队/团队通知（手动）：类型=%s", chatType));
-        local success, err = pcall(function()
-            SendChatMessage(message, chatType);
-        end);
+        local success, err = false, nil;
+        if NotificationOutputService and NotificationOutputService.SendManualMessage then
+            success, err = NotificationOutputService:SendManualMessage(message, chatType);
+        end
         if not success then
             Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
         end

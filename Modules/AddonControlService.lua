@@ -9,8 +9,13 @@ local Data = BuildEnv("Data")
 local Notification = BuildEnv("Notification")
 local MainPanel = BuildEnv("MainPanel")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
+local AppSettingsStore = BuildEnv("AppSettingsStore")
 
 local function EnsureUIConfig()
+    if AppSettingsStore and AppSettingsStore.GetUIState then
+        return AppSettingsStore:GetUIState()
+    end
     if AppContext and AppContext.EnsureUIState then
         return AppContext:EnsureUIState()
     end
@@ -26,7 +31,18 @@ local function RefreshSettingsState()
     end
 end
 
+local function ReinitializeAfterTrackedMapChange(self)
+    if not self:ReinitializeAddon() then
+        return false
+    end
+    RefreshSettingsState()
+    return true
+end
+
 function AddonControlService:IsAddonEnabled()
+    if AppSettingsStore and AppSettingsStore.GetBoolean then
+        return AppSettingsStore:GetBoolean("addonEnabled", true)
+    end
     local uiDB = EnsureUIConfig()
     if uiDB.addonEnabled == nil then
         return true
@@ -35,6 +51,9 @@ function AddonControlService:IsAddonEnabled()
 end
 
 function AddonControlService:SetAddonEnabledFlag(enabled)
+    if AppSettingsStore and AppSettingsStore.SetBoolean then
+        return AppSettingsStore:SetBoolean("addonEnabled", enabled == true)
+    end
     local uiDB = EnsureUIConfig()
     uiDB.addonEnabled = enabled == true
     return uiDB.addonEnabled
@@ -67,6 +86,8 @@ function AddonControlService:ClearDataAndReinitialize()
     else
         if Data then
             Data.maps = {}
+            Data.mapsById = {}
+            Data.mapsByMapID = {}
         end
         if TimerManager then
             TimerManager.isInitialized = false
@@ -206,15 +227,47 @@ function AddonControlService:CycleExpansionVersion()
     return self:SwitchExpansionVersion(nextID)
 end
 
+function AddonControlService:SetMapTracked(expansionID, mapID, tracked)
+    if not Data or not Data.SetMapTracked then
+        return false
+    end
+    local changed = Data:SetMapTracked(expansionID, mapID, tracked == true)
+    if not changed then
+        return false
+    end
+    return ReinitializeAfterTrackedMapChange(self)
+end
+
+function AddonControlService:SetAllMapsTracked(expansionID, tracked)
+    if not Data or not Data.SetAllMapsTracked then
+        return false
+    end
+    local changed = Data:SetAllMapsTracked(expansionID, tracked == true)
+    if not changed then
+        return false
+    end
+    return ReinitializeAfterTrackedMapChange(self)
+end
+
+function AddonControlService:InvertTrackedMaps(expansionID)
+    if not Data or not Data.InvertTrackedMaps then
+        return false
+    end
+    local changed = Data:InvertTrackedMaps(expansionID)
+    if not changed then
+        return false
+    end
+    return ReinitializeAfterTrackedMapChange(self)
+end
+
 function AddonControlService:SetMapVisibleForExpansion(expansionID, mapID, visible)
     if not expansionID or type(mapID) ~= "number" then
         return false
     end
 
-    local currentExpansionID = Data and Data.GetCurrentExpansionID and Data:GetCurrentExpansionID() or nil
-    if currentExpansionID == expansionID and Data and Data.GetMapByMapID then
-        local mapData = Data:GetMapByMapID(mapID)
-        if mapData and mapData.id then
+    if Data and Data.GetMapByMapID then
+        local mapData = Data:GetMapByMapID(mapID, expansionID)
+        if mapData and mapData.id and mapData.expansionID == expansionID then
             if visible then
                 if MainPanel and MainPanel.RestoreMap then
                     MainPanel:RestoreMap(mapData.id)
@@ -228,26 +281,11 @@ function AddonControlService:SetMapVisibleForExpansion(expansionID, mapID, visib
         end
     end
 
-    if not Data or not Data.GetHiddenMaps or not Data.GetHiddenRemaining then
+    if not Data or not Data.SetMapHiddenState then
         return false
     end
 
-    local hiddenMaps = Data:GetHiddenMaps(expansionID)
-    local hiddenRemaining = Data:GetHiddenRemaining(expansionID)
-    if type(hiddenMaps) ~= "table" or type(hiddenRemaining) ~= "table" then
-        return false
-    end
-
-    if visible then
-        hiddenMaps[mapID] = nil
-        hiddenRemaining[mapID] = nil
-    else
-        hiddenMaps[mapID] = true
-    end
-
-    if currentExpansionID == expansionID and MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable(true)
-    end
+    Data:SetMapHiddenState(expansionID, mapID, visible ~= true)
 
     RefreshSettingsState()
     return true
@@ -290,8 +328,8 @@ function AddonControlService:CycleTheme()
 
     if MainPanel and MainPanel.RefreshTheme then
         MainPanel:RefreshTheme()
-    elseif MainPanel and MainPanel.UpdateTable then
-        MainPanel:UpdateTable()
+    elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+        UIRefreshCoordinator:RefreshMainTable()
     end
 
     RefreshSettingsState()
