@@ -27,6 +27,7 @@ function RuntimeResetManager:ResetSharedRuntimeState()
 
     if Area then
         Area.lastAreaValidState = nil;
+        Area.lastAccessMode = nil;
         Area.detectionPaused = false;
     end
 

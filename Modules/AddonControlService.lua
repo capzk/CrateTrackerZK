@@ -68,6 +68,7 @@ local function RefreshTrackedMapRuntime()
 
     if Area then
         Area.lastAreaValidState = nil
+        Area.lastAccessMode = nil
         if AddonControlService:IsAddonEnabled() then
             Area:CheckAndUpdateAreaValid()
         else
@@ -188,6 +189,7 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         end
         if Area then
             Area.lastAreaValidState = nil
+            Area.lastAccessMode = nil
             Area:CheckAndUpdateAreaValid()
         end
         if TeamCommListener then

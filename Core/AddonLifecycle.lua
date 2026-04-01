@@ -25,6 +25,7 @@ local function ResetRuntimeState()
     end
     if Area then
         Area.lastAreaValidState = nil
+        Area.lastAccessMode = nil
         Area.detectionPaused = false
     end
     if Notification then
@@ -110,6 +111,7 @@ function AddonLifecycle:OnLogin()
         else
             Area.detectionPaused = true
             Area.lastAreaValidState = nil
+            Area.lastAccessMode = nil
         end
     end
 

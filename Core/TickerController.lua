@@ -38,9 +38,9 @@ function TickerController:StopPhaseTicker(owner)
     end
 end
 
-function TickerController:PauseAllDetections(owner)
+function TickerController:PauseLocalDetections(owner)
     owner = owner or CrateTrackerZK
-    Logger:Debug("Core", "状态", "暂停所有检测功能")
+    Logger:Debug("Core", "状态", "暂停本地空投与位面检测")
 
     self:StopPhaseTicker(owner)
 
@@ -49,6 +49,13 @@ function TickerController:PauseAllDetections(owner)
         owner.mapIconDetectionTicker = nil
         Logger:Debug("Core", "状态", "已停止地图图标检测")
     end
+end
+
+function TickerController:PauseAllDetections(owner)
+    owner = owner or CrateTrackerZK
+    Logger:Debug("Core", "状态", "暂停所有检测功能")
+
+    self:PauseLocalDetections(owner)
 
     if owner.cleanupTicker then
         owner.cleanupTicker:Cancel()
@@ -134,7 +141,7 @@ function TickerController:StartAutoTeamReportTicker(owner)
     if Notification.IsTeamNotificationEnabled and not Notification:IsTeamNotificationEnabled() then
         return
     end
-    if not CoreShared:IsAreaActive() then
+    if not CoreShared:CanUseTrackedMapFeatures() then
         return
     end
     if owner.autoReportTicker then
@@ -149,7 +156,7 @@ function TickerController:StartAutoTeamReportTicker(owner)
         if not CoreShared:IsAddonEnabled() then
             return
         end
-        if not CoreShared:IsAreaActive() then
+        if not CoreShared:CanUseTrackedMapFeatures() then
             return
         end
         if Notification and Notification.SendAutoTeamReport then

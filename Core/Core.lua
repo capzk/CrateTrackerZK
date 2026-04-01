@@ -30,6 +30,10 @@ function CrateTrackerZK:PauseAllDetections()
     return TickerController:PauseAllDetections(self)
 end
 
+function CrateTrackerZK:PauseLocalDetections()
+    return TickerController:PauseLocalDetections(self)
+end
+
 function CrateTrackerZK:ResumeAllDetections()
     return TickerController:ResumeAllDetections(self)
 end

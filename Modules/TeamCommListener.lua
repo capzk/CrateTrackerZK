@@ -55,6 +55,7 @@ TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
 
 TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW = 300;
+TeamCommListener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW = 15;
 
 local TEAM_CHAT_TYPES = {
     RAID = true,
@@ -117,8 +118,14 @@ function TeamCommListener:HandleChatEvent(event, message, sender)
     if not self.isInitialized then
         self:Initialize();
     end
-    if Area and Area.IsActive and not Area:IsActive() then
-        return;
+    if Area then
+        if Area.CanProcessTeamMessages then
+            if not Area:CanProcessTeamMessages() then
+                return;
+            end
+        elseif Area.IsActive and not Area:IsActive() then
+            return;
+        end
     end
     if IsInInstance and IsInInstance() then
         return;

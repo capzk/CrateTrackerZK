@@ -67,7 +67,7 @@ local function HandleMonsterChat(event, ...)
 end
 
 local function HandleTeamChat(event, ...)
-    if not CoreShared:IsAreaActive() then
+    if not CoreShared:CanProcessTeamMessages() then
         return
     end
     if TeamCommListener and TeamCommListener.HandleChatEvent then

@@ -295,8 +295,14 @@ function Notification:SendAutoTeamReport()
         return false;
     end
 
-    if Area and Area.IsActive and not Area:IsActive() then
-        return false;
+    if Area then
+        if Area.CanUseTrackedMapFeatures then
+            if not Area:CanUseTrackedMapFeatures() then
+                return false;
+            end
+        elseif Area.IsActive and not Area:IsActive() then
+            return false;
+        end
     end
 
     local mapData, remaining = self:GetNearestAirdropInfo();

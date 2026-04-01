@@ -33,6 +33,17 @@ function CoreShared:IsAreaActive()
     return Area and Area.lastAreaValidState == true and not Area.detectionPaused
 end
 
+function CoreShared:CanUseTrackedMapFeatures()
+    if Area and Area.CanUseTrackedMapFeatures then
+        return Area:CanUseTrackedMapFeatures()
+    end
+    return self:IsAreaActive()
+end
+
+function CoreShared:CanProcessTeamMessages()
+    return self:CanUseTrackedMapFeatures()
+end
+
 function CoreShared:GetCurrentMapID()
     if Area and Area.GetCurrentMapId then
         return Area:GetCurrentMapId()

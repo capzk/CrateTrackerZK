@@ -29,6 +29,13 @@ function TeamCommMessageService:HasRecentLocalConfirmedAirdrop(listener, mapData
     return (currentTime - persistentState.currentAirdropTimestamp) <= suppressWindow
 end
 
+function TeamCommMessageService:GetDuplicateMessageWindow(listener)
+    if type(listener) == "table" and type(listener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW) == "number" then
+        return listener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW
+    end
+    return 15
+end
+
 function TeamCommMessageService:Process(listener, message, chatType, sender)
     if not message or type(message) ~= "string" then
         return false
@@ -85,12 +92,14 @@ function TeamCommMessageService:Process(listener, message, chatType, sender)
             local tempRecord = UnifiedDataManager:GetValidTemporaryTime(mapId)
             if tempRecord then
                 local timeSinceLast = currentTime - tempRecord.timestamp
+                local duplicateWindow = self:GetDuplicateMessageWindow(listener)
                 local isDuplicate = AirdropEventService and AirdropEventService.IsDuplicateTeamMessage
-                    and AirdropEventService:IsDuplicateTeamMessage(tempRecord.timestamp, currentTime, 30)
-                    or (timeSinceLast >= 0 and timeSinceLast <= 30 and currentTime > tempRecord.timestamp)
+                    and AirdropEventService:IsDuplicateTeamMessage(tempRecord.timestamp, currentTime, duplicateWindow)
+                    or (timeSinceLast >= 0 and timeSinceLast <= duplicateWindow and currentTime > tempRecord.timestamp)
                 if isDuplicate then
                     if Logger and Logger.debugEnabled and Logger.Debug then
-                        Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（30秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒",
+                        Logger:Debug("TeamCommListener", "处理", string.format("跳过重复的团队消息（%d秒内）：地图=%s，上次=%s，本次=%s，差值=%d秒",
+                            duplicateWindow,
                             mapName,
                             UnifiedDataManager:FormatDateTime(tempRecord.timestamp),
                             UnifiedDataManager:FormatDateTime(currentTime),
