@@ -41,7 +41,13 @@ function CoreShared:CanUseTrackedMapFeatures()
 end
 
 function CoreShared:CanProcessTeamMessages()
-    return self:CanUseTrackedMapFeatures()
+    if Area and Area.CanProcessTeamMessages then
+        return Area:CanProcessTeamMessages()
+    end
+    if IsInInstance and IsInInstance() then
+        return false
+    end
+    return true
 end
 
 function CoreShared:GetCurrentMapID()

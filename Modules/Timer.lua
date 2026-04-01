@@ -182,10 +182,6 @@ function TimerManager:DetectMapIcons(currentMapID)
                 -- 2秒确认期内消失
                 Logger:Debug("Timer", "状态", string.format("图标在2秒确认期内消失，清除检测状态：地图=%s", 
                     Data:GetMapDisplayName(targetMapData)));
-                -- 发送无效空投通知
-                if Notification and Notification.NotifyInvalidAirdrop then
-                    Notification:NotifyInvalidAirdrop(Data:GetMapDisplayName(targetMapData));
-                end
                 self.detectionState[targetMapData.id] = nil;
             else
                 -- 已通过2秒确认
@@ -278,10 +274,6 @@ function TimerManager:DetectMapIcons(currentMapID)
         if not currentIconResult or not currentIconResult.detected or currentIconResult.objectGUID ~= objectGUID then
             Logger:Debug("Timer", "状态", string.format("2秒确认后重新检测，图标已消失或objectGUID不同，跳过处理：地图=%s", 
                 Data:GetMapDisplayName(targetMapData)));
-            -- 发送无效空投通知
-            if Notification and Notification.NotifyInvalidAirdrop then
-                Notification:NotifyInvalidAirdrop(Data:GetMapDisplayName(targetMapData));
-            end
             self.detectionState[targetMapData.id] = nil;
             return false;
         end
