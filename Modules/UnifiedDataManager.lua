@@ -104,10 +104,26 @@ local function BuildPersistentTimeRecord(manager, snapshot)
     };
 end
 
+local function SanitizePersistentTimestamp(timestamp)
+    if type(timestamp) ~= "number" then
+        return nil;
+    end
+    local maxFuture = time() + 86400 * 365;
+    if timestamp < 0 or timestamp > maxFuture then
+        return nil;
+    end
+    return timestamp;
+end
+
+local function PopulatePhaseColor(outColor, r, g, b)
+    outColor.r = r;
+    outColor.g = g;
+    outColor.b = b;
+    return outColor;
+end
+
 -- 初始化
 function UnifiedDataManager:Initialize()
-    Logger:Debug("UnifiedDataManager", "初始化", "开始初始化UnifiedDataManager")
-    
     self.isInitialized = true;
     
     -- 时间数据存储 {mapId -> TimeData}（仅运行时临时态）
@@ -118,7 +134,6 @@ function UnifiedDataManager:Initialize()
     
     self:SynchronizeTrackedMaps();
     self:RestoreTemporaryPhaseCache();
-    Logger:Debug("UnifiedDataManager", "初始化", "统一数据管理器已初始化");
 end
 
 -- 获取地图刷新间隔（优先使用Data中的配置）
@@ -164,9 +179,6 @@ end
 
 -- 统一时间设置接口
 function UnifiedDataManager:SetTime(mapId, timestamp, source)
-    Logger:Debug("UnifiedDataManager", "调试", string.format("SetTime被调用：mapId=%s，source=%s", 
-        tostring(mapId), tostring(source)))
-    
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -185,9 +197,6 @@ end
 
 -- 设置临时时间
 function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
-    Logger:Debug("UnifiedDataManager", "调试", string.format("SetTemporaryTime被调用：mapId=%s，timestamp=%s，source=%s", 
-        tostring(mapId), tostring(timestamp), tostring(source)))
-    
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -203,9 +212,6 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
     if TimeStateStore and TimeStateStore.SetTemporary then
         TimeStateStore:SetTemporary(self, mapId, timestamp, source, time(), expansionID);
     end
-    
-    Logger:Debug("UnifiedDataManager", "临时时间", string.format("设置临时时间成功：地图ID=%d，时间=%d，来源=%s", 
-        mapId, timestamp, source));
     
     return true;
 end
@@ -226,34 +232,88 @@ function UnifiedDataManager:ClearTemporaryTime(mapId)
 end
 
 function UnifiedDataManager:GetPersistentTimeRecord(mapId)
+    local record = {};
+    if not self:GetPersistentTimeRecordInto(mapId, record) then
+        return nil;
+    end
+    return record;
+end
+
+function UnifiedDataManager:GetPersistentTimeRecordInto(mapId, outRecord)
     if not self.isInitialized then
         return nil;
     end
 
-    if Data and Data.GetPersistentSnapshot then
-        local snapshot = Data:GetPersistentSnapshot(mapId);
-        local fallbackRecord = BuildPersistentTimeRecord(self, snapshot);
-        if fallbackRecord then
-            return fallbackRecord;
-        end
-    end
-
-    return nil;
-end
-
-function UnifiedDataManager:GetPersistentAirdropState(mapId)
-    local record = self:GetPersistentTimeRecord(mapId);
-    if not record then
+    if type(outRecord) ~= "table" then
         return nil;
     end
 
-    return {
-        lastRefresh = record.timestamp,
-        currentAirdropObjectGUID = record.objectGUID,
-        currentAirdropTimestamp = record.eventTimestamp or record.timestamp,
-        lastRefreshPhase = record.phaseId,
-        source = record.source,
-    };
+    outRecord.timestamp = nil;
+    outRecord.source = nil;
+    outRecord.phaseId = nil;
+    outRecord.objectGUID = nil;
+    outRecord.eventTimestamp = nil;
+
+    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
+    if type(rawRecord) ~= "table" then
+        return nil;
+    end
+
+    local lastRefresh = SanitizePersistentTimestamp(rawRecord.lastRefresh);
+    if not lastRefresh then
+        return nil;
+    end
+
+    outRecord.timestamp = lastRefresh;
+    outRecord.source = type(rawRecord.lastRefreshSource) == "string"
+        and rawRecord.lastRefreshSource
+        or self.TimeSource.ICON_DETECTION;
+    outRecord.phaseId = type(rawRecord.lastRefreshPhase) == "string" and rawRecord.lastRefreshPhase or nil;
+    outRecord.objectGUID = type(rawRecord.currentAirdropObjectGUID) == "string" and rawRecord.currentAirdropObjectGUID or nil;
+    outRecord.eventTimestamp = SanitizePersistentTimestamp(rawRecord.currentAirdropTimestamp) or lastRefresh;
+    return outRecord;
+end
+
+function UnifiedDataManager:GetPersistentAirdropState(mapId)
+    local state = {};
+    if not self:GetPersistentAirdropStateInto(mapId, state) then
+        return nil;
+    end
+    return state;
+end
+
+function UnifiedDataManager:GetPersistentAirdropStateInto(mapId, outState)
+    if not self.isInitialized or type(outState) ~= "table" then
+        return nil;
+    end
+
+    outState.lastRefresh = nil;
+    outState.currentAirdropObjectGUID = nil;
+    outState.currentAirdropTimestamp = nil;
+    outState.lastRefreshPhase = nil;
+    outState.source = nil;
+
+    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
+    if type(rawRecord) ~= "table" then
+        return nil;
+    end
+
+    local lastRefresh = SanitizePersistentTimestamp(rawRecord.lastRefresh);
+    if not lastRefresh then
+        return nil;
+    end
+
+    outState.lastRefresh = lastRefresh;
+    outState.currentAirdropObjectGUID = type(rawRecord.currentAirdropObjectGUID) == "string"
+        and rawRecord.currentAirdropObjectGUID
+        or nil;
+    outState.currentAirdropTimestamp = SanitizePersistentTimestamp(rawRecord.currentAirdropTimestamp) or lastRefresh;
+    outState.lastRefreshPhase = type(rawRecord.lastRefreshPhase) == "string" and rawRecord.lastRefreshPhase or nil;
+    outState.source = type(rawRecord.lastRefreshSource) == "string"
+        and rawRecord.lastRefreshSource
+        or self.TimeSource.ICON_DETECTION;
+
+    return outState;
 end
 
 function UnifiedDataManager:ClearPersistentPhase(mapId)
@@ -315,8 +375,6 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
 
     self.temporaryTimes = synchronizedTimes;
     self.temporaryPhases = synchronizedTemporaryPhases;
-
-    Logger:Debug("UnifiedDataManager", "同步", string.format("已同步 %d 个追踪地图的运行时状态", #maps));
     return true;
 end
 
@@ -330,12 +388,6 @@ function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp)
     
     local delta = math.abs(fallback - record.timestamp);
     if delta <= self.TEMPORARY_TIME_ADOPTION_WINDOW then
-        Logger:Debug("UnifiedDataManager", "优先级", string.format(
-            "采用临时时间作为事件时间：地图ID=%d，临时=%s，检测=%s，差值=%d秒",
-            mapId,
-            self:FormatDateTime(record.timestamp),
-            self:FormatDateTime(fallback),
-            delta));
         return record.timestamp, true;
     end
     
@@ -370,18 +422,25 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId,
     local timeData = self:GetOrCreateTimeData(mapId, expansionID);
     if timeData and timeData.temporaryTime then
         timeData.temporaryTime = nil;
-        Logger:Debug("UnifiedDataManager", "优先级", string.format("持久化时间优先级更高，清除临时时间：地图ID=%d", mapId));
     end
-    
-    Logger:Debug("UnifiedDataManager", "持久化时间", string.format("设置持久化时间：地图ID=%d，时间=%d，来源=%s", 
-        mapId, timestamp, source));
     
     return true;
 end
 
 -- 获取显示时间
 function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
+    local displayTime = {};
+    if not self:GetDisplayTimeInto(mapId, currentTime, displayTime) then
+        return nil;
+    end
+    return displayTime;
+end
+
+function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTime, persistentRecordBuffer)
     if not self.isInitialized then
+        return nil;
+    end
+    if type(outDisplayTime) ~= "table" then
         return nil;
     end
     
@@ -390,7 +449,12 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
     local now = currentTime or time();
 
     local tempRecord = nil;
-    local persistentRecord = self:GetPersistentTimeRecord(mapId);
+    local recordBuffer = persistentRecordBuffer or outDisplayTime.__ctkPersistentRecordBuffer or {};
+    local persistentRecord = self:GetPersistentTimeRecordInto(mapId, recordBuffer);
+    outDisplayTime.__ctkPersistentRecordBuffer = recordBuffer;
+    outDisplayTime.time = nil;
+    outDisplayTime.source = nil;
+    outDisplayTime.isPersistent = nil;
 
     if timeData then
         -- 临时记录（先检查是否过期）
@@ -408,23 +472,20 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
     if tempRecord and persistentRecord then
         local useTemp = tempRecord.timestamp > persistentRecord.timestamp;
         local record = useTemp and tempRecord or persistentRecord;
-        return {
-            time = record.timestamp,
-            source = record.source,
-            isPersistent = not useTemp
-        };
+        outDisplayTime.time = record.timestamp;
+        outDisplayTime.source = record.source;
+        outDisplayTime.isPersistent = not useTemp;
+        return outDisplayTime;
     elseif persistentRecord then
-        return {
-            time = persistentRecord.timestamp,
-            source = persistentRecord.source,
-            isPersistent = true
-        };
+        outDisplayTime.time = persistentRecord.timestamp;
+        outDisplayTime.source = persistentRecord.source;
+        outDisplayTime.isPersistent = true;
+        return outDisplayTime;
     elseif tempRecord then
-        return {
-            time = tempRecord.timestamp,
-            source = tempRecord.source,
-            isPersistent = false
-        };
+        outDisplayTime.time = tempRecord.timestamp;
+        outDisplayTime.source = tempRecord.source;
+        outDisplayTime.isPersistent = false;
+        return outDisplayTime;
     end
 
     return nil;
@@ -432,9 +493,6 @@ end
 
 -- 统一位面设置接口
 function UnifiedDataManager:SetPhase(mapId, phaseId, source, isPersistent)
-    Logger:Debug("UnifiedDataManager", "调试", string.format("SetPhase被调用：mapId=%s，phaseId=%s，source=%s，isPersistent=%s", 
-        tostring(mapId), tostring(phaseId), tostring(source), tostring(isPersistent)))
-    
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -465,9 +523,6 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
     if PhaseStateStore and PhaseStateStore.SetTemporary then
         PhaseStateStore:SetTemporary(self, mapId, phaseId, source, time(), GetPhaseCacheStore(), expansionID);
     end
-
-    Logger:Debug("UnifiedDataManager", "临时位面", string.format("设置临时位面成功：地图ID=%d，位面ID=%s，来源=%s", 
-        mapId, phaseId, source));
     
     return true;
 end
@@ -486,9 +541,6 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
             return false;
         end
     end
-    
-    Logger:Debug("UnifiedDataManager", "持久化位面", string.format("设置持久化位面成功：地图ID=%d，位面ID=%s，来源=%s", 
-        mapId, phaseId, source));
     
     return true;
 end
@@ -548,94 +600,109 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
         return nil;
     end
 
-    if Data and Data.GetPersistentSnapshot then
-        local snapshot = Data:GetPersistentSnapshot(mapId);
-        if snapshot and snapshot.lastRefreshPhase then
-            return snapshot.lastRefreshPhase;
-        end
+    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
+    if rawRecord and type(rawRecord.lastRefreshPhase) == "string" then
+        return rawRecord.lastRefreshPhase;
     end
     return nil;
 end
 
 -- 位面数据比对
 function UnifiedDataManager:ComparePhases(mapId)
+    local result = {};
+    if not self:ComparePhasesInto(mapId, result) then
+        return nil;
+    end
+    return result;
+end
+
+function UnifiedDataManager:ComparePhasesInto(mapId, outResult)
     if not self.isInitialized then
+        return nil;
+    end
+    if type(outResult) ~= "table" then
         return nil;
     end
     
     local currentPhase = self:GetCurrentPhase(mapId);
     local persistentPhase = self:GetPersistentPhase(mapId);
     
-    local result = {
-        match = false,
-        current = currentPhase,
-        persistent = persistentPhase,
-        status = "unknown"
-    };
+    outResult.match = false;
+    outResult.current = currentPhase;
+    outResult.persistent = persistentPhase;
+    outResult.status = "unknown";
     
     if not currentPhase and not persistentPhase then
-        result.status = "no_data";
+        outResult.status = "no_data";
     elseif not currentPhase then
-        result.status = "no_current";
+        outResult.status = "no_current";
     elseif not persistentPhase then
-        result.status = "no_persistent";
+        outResult.status = "no_persistent";
     elseif currentPhase == persistentPhase then
-        result.match = true;
-        result.status = "match";
+        outResult.match = true;
+        outResult.status = "match";
     else
-        result.match = false;
-        result.status = "mismatch";
+        outResult.match = false;
+        outResult.status = "mismatch";
     end
     
-    return result;
+    return outResult;
 end
 
 -- 获取位面显示信息
 function UnifiedDataManager:GetPhaseDisplayInfo(mapId)
+    local info = {};
+    if not self:GetPhaseDisplayInfoInto(mapId, info) then
+        return nil;
+    end
+    return info;
+end
+
+function UnifiedDataManager:GetPhaseDisplayInfoInto(mapId, outInfo, comparisonBuffer)
     if not self.isInitialized then
         return nil;
     end
-    
-    local comparison = self:ComparePhases(mapId);
-    if not comparison then
+    if type(outInfo) ~= "table" then
         return nil;
     end
     
-    local displayPhase = comparison.current or comparison.persistent or "未知";
-    local color = {r = 1, g = 1, b = 1}; -- 默认白色
-    local status = "未知";
-    local tooltip = "";
+    local comparison = self:ComparePhasesInto(mapId, comparisonBuffer or outInfo.__ctkComparisonBuffer or {});
+    outInfo.__ctkComparisonBuffer = comparisonBuffer or outInfo.__ctkComparisonBuffer or comparison;
+    if not comparison then
+        return nil;
+    end
+    outInfo.color = outInfo.color or {};
+    outInfo.phaseId = comparison.current or comparison.persistent or "未知";
+    outInfo.status = "未知";
+    outInfo.tooltip = "";
+    outInfo.compareStatus = comparison.status;
+    outInfo.currentPhaseID = comparison.current;
+    outInfo.persistentPhaseID = comparison.persistent;
+    PopulatePhaseColor(outInfo.color, 1, 1, 1);
     
     if comparison.status == "match" then
-        color = {r = 0, g = 1, b = 0}; -- 绿色
-        status = "匹配";
-        tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：匹配", comparison.current, comparison.persistent);
+        PopulatePhaseColor(outInfo.color, 0, 1, 0);
+        outInfo.status = "匹配";
+        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：匹配", comparison.current, comparison.persistent);
     elseif comparison.status == "mismatch" then
-        color = {r = 1, g = 0, b = 0}; -- 红色
-        status = "不匹配";
-        tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：不匹配", comparison.current, comparison.persistent);
+        PopulatePhaseColor(outInfo.color, 1, 0, 0);
+        outInfo.status = "不匹配";
+        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：不匹配", comparison.current, comparison.persistent);
     elseif comparison.status == "no_data" then
-        color = {r = 1, g = 1, b = 1}; -- 白色
-        status = "无数据";
-        tooltip = "无位面数据";
+        outInfo.status = "无数据";
+        outInfo.tooltip = "无位面数据";
     elseif comparison.status == "no_current" then
-        color = {r = 1, g = 1, b = 1}; -- 白色
-        status = "无当前位面";
-        tooltip = string.format("持久化位面：%s\n当前位面：未检测到", comparison.persistent);
-        displayPhase = comparison.persistent;
+        outInfo.status = "无当前位面";
+        outInfo.tooltip = string.format("持久化位面：%s\n当前位面：未检测到", comparison.persistent);
+        outInfo.phaseId = comparison.persistent;
     elseif comparison.status == "no_persistent" then
-        color = {r = 0, g = 1, b = 0}; -- 绿色
-        status = "无持久化位面";
-        tooltip = string.format("当前位面：%s\n持久化位面：无", comparison.current);
-        displayPhase = comparison.current;
+        PopulatePhaseColor(outInfo.color, 0, 1, 0);
+        outInfo.status = "无持久化位面";
+        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：无", comparison.current);
+        outInfo.phaseId = comparison.current;
     end
     
-    return {
-        phaseId = displayPhase,
-        color = color,
-        status = status,
-        tooltip = tooltip
-    };
+    return outInfo;
 end
 
 -- 获取剩余时间

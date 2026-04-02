@@ -5,11 +5,39 @@ local AirdropEventService = BuildEnv("AirdropEventService")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Logger = BuildEnv("Logger")
 
+local function PruneTimestampState(state, expireBefore)
+    if type(state) ~= "table" then
+        return 0
+    end
+
+    local removedCount = 0
+    for key, timestamp in pairs(state) do
+        if type(timestamp) ~= "number" or timestamp <= expireBefore then
+            state[key] = nil
+            removedCount = removedCount + 1
+        end
+    end
+    return removedCount
+end
+
 function NotificationDedupService:EnsureState(notification)
     notification.firstNotificationTime = notification.firstNotificationTime or {}
     notification.playerSentNotification = notification.playerSentNotification or {}
     notification.lastShoutTime = notification.lastShoutTime or {}
     notification.lastReceivedSyncTime = notification.lastReceivedSyncTime or {}
+end
+
+function NotificationDedupService:ClearExpiredTransientState(notification, currentTime)
+    self:EnsureState(notification)
+
+    local now = currentTime or time()
+    local shoutGraceWindow = math.max((notification.SHOUT_DEDUP_WINDOW or 20) * 4, 120)
+    local syncGraceWindow = math.max((notification.RECEIVED_SYNC_SUPPRESS_WINDOW or 15) * 4, 120)
+
+    local removedCount = 0
+    removedCount = removedCount + PruneTimestampState(notification.lastShoutTime, now - shoutGraceWindow)
+    removedCount = removedCount + PruneTimestampState(notification.lastReceivedSyncTime, now - syncGraceWindow)
+    return removedCount
 end
 
 function NotificationDedupService:UpdateFirstNotificationTime(notification, mapName, notificationTime)
@@ -19,8 +47,6 @@ function NotificationDedupService:UpdateFirstNotificationTime(notification, mapN
     self:EnsureState(notification)
     if not notification.firstNotificationTime[mapName] or notificationTime < notification.firstNotificationTime[mapName] then
         notification.firstNotificationTime[mapName] = notificationTime
-        Logger:Debug("Notification", "更新", string.format("更新首次通知时间：地图=%s，时间=%s",
-            mapName, UnifiedDataManager:FormatDateTime(notificationTime)))
     end
 end
 
@@ -40,12 +66,7 @@ function NotificationDedupService:CanSendNotification(notification, mapName)
     else
         isAllowed = (currentTime - firstNotificationTime) <= notification.NOTIFICATION_WINDOW
     end
-    if not isAllowed then
-        Logger:Debug("Notification", "限制", string.format("距离首次通知已超过30秒（%d秒），不允许发送：地图=%s",
-            currentTime - firstNotificationTime, mapName))
-        return false
-    end
-    return true
+    return isAllowed == true
 end
 
 function NotificationDedupService:ResetMapNotificationState(notification, mapName)
@@ -74,7 +95,6 @@ function NotificationDedupService:MarkPlayerSentNotification(notification, mapNa
     self:EnsureState(notification)
     if not notification.playerSentNotification[mapName] then
         notification.playerSentNotification[mapName] = true
-        Logger:Debug("Notification", "标记", string.format("标记玩家已发送通知：地图=%s", mapName))
     end
 end
 
@@ -89,8 +109,6 @@ function NotificationDedupService:RecordShout(notification, mapName, timestamp)
     end
     self:EnsureState(notification)
     notification.lastShoutTime[mapName] = timestamp or time()
-    Logger:Debug("Notification", "记录", string.format("记录喊话时间：地图=%s，时间=%s",
-        mapName, UnifiedDataManager:FormatDateTime(notification.lastShoutTime[mapName])))
 end
 
 function NotificationDedupService:RecordReceivedSync(notification, mapName, timestamp)
@@ -99,8 +117,6 @@ function NotificationDedupService:RecordReceivedSync(notification, mapName, time
     end
     self:EnsureState(notification)
     notification.lastReceivedSyncTime[mapName] = timestamp or time()
-    Logger:Debug("Notification", "记录", string.format("记录收到隐藏同步时间：地图=%s，时间=%s",
-        mapName, UnifiedDataManager:FormatDateTime(notification.lastReceivedSyncTime[mapName])))
 end
 
 function NotificationDedupService:HasRecentReceivedSync(notification, mapName, windowSeconds, currentTime)

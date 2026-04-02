@@ -14,9 +14,24 @@ local L = CrateTrackerZK.L
 local tableRows = {}
 local rowFramePool = {}
 local headerRowFrame = nil
+local visibleRowFrameByRowId = {}
 local FIXED_ROW_HEIGHT = 29
 local MAP_COL_COMPACT_MIN_CHARS = 1
 local MAP_ROW_TEXT_HEIGHT_RATIO = 0.70
+
+local function ClearArray(buffer)
+    for index = #buffer, 1, -1 do
+        buffer[index] = nil
+    end
+    return buffer
+end
+
+local function ClearMap(buffer)
+    for key in pairs(buffer) do
+        buffer[key] = nil
+    end
+    return buffer
+end
 
 local function GetConfig()
     return UIConfig
@@ -76,13 +91,36 @@ local function ApplyFontScale(fontString, scale)
     fontString:SetFont(base.font, GetScaledFontSize(base.size, scale or 1), base.flags)
 end
 
+local function SetColorBuffer(buffer, r, g, b, a)
+    buffer[1] = r
+    buffer[2] = g
+    buffer[3] = b
+    buffer[4] = a
+    return buffer
+end
+
+local function PrepareColumn(columns, index, colIndex, text, color, isCountdown)
+    local colData = columns[index]
+    if not colData then
+        colData = {}
+        columns[index] = colData
+    end
+
+    colData.colIndex = colIndex
+    colData.text = text or ""
+    colData.color = color
+    colData.isCountdown = isCountdown == true
+end
+
 function TableUIRenderer:HideVisibleFrames()
-    for _, frameRef in ipairs(tableRows) do
+    for index = 1, #tableRows do
+        local frameRef = tableRows[index]
         if frameRef and frameRef.Hide then
             frameRef:Hide()
         end
     end
-    tableRows = {}
+    ClearArray(tableRows)
+    ClearMap(visibleRowFrameByRowId)
 end
 
 function TableUIRenderer:AcquireRowFrame(parent, index)
@@ -113,6 +151,53 @@ function TableUIRenderer:ClearCountdownRegistration()
     end
     if SortingSystem and SortingSystem.SetHeaderButton then
         SortingSystem:SetHeaderButton(nil)
+    end
+end
+
+function TableUIRenderer:ReleaseHiddenState()
+    self:ClearCountdownRegistration()
+    self:HideVisibleFrames()
+
+    if headerRowFrame and headerRowFrame.sortHeaderButton then
+        headerRowFrame.sortHeaderButton:Hide()
+    end
+
+    for index = 1, #rowFramePool do
+        local rowFrame = rowFramePool[index]
+        if rowFrame then
+            rowFrame.rowId = nil
+            rowFrame.__ctkDisplayIndex = nil
+            rowFrame.__ctkBaseAlpha = nil
+            if rowFrame.__ctkColWidths then
+                ClearArray(rowFrame.__ctkColWidths)
+            end
+            if rowFrame.__ctkLayoutState then
+                ClearMap(rowFrame.__ctkLayoutState)
+            end
+            if rowFrame.columnBuffer then
+                for colIndex = 1, #rowFrame.columnBuffer do
+                    local column = rowFrame.columnBuffer[colIndex]
+                    if column then
+                        column.colIndex = nil
+                        column.text = nil
+                        column.color = nil
+                        column.isCountdown = nil
+                    end
+                end
+                ClearArray(rowFrame.columnBuffer)
+            end
+            if rowFrame.phaseColorBuffer then
+                ClearArray(rowFrame.phaseColorBuffer)
+            end
+            if rowFrame.lastColorBuffer then
+                ClearArray(rowFrame.lastColorBuffer)
+            end
+            if rowFrame.countdownHitArea then
+                rowFrame.countdownHitArea.__ctkRowId = nil
+                rowFrame.countdownHitArea.__ctkIsHidden = nil
+                rowFrame.countdownHitArea:Hide()
+            end
+        end
     end
 end
 
@@ -183,7 +268,7 @@ function TableUIRenderer:CreateHeaderRow(parent, headerLabels, colWidths, layout
         currentX = currentX + (colWidths[colIndex] or 0)
     end
 
-    table.insert(tableRows, headerRowFrame)
+    tableRows[#tableRows + 1] = headerRowFrame
 end
 
 function TableUIRenderer:CreateSortHeaderButton(parent, label, colWidth, layout, currentX, existingButton)
@@ -285,10 +370,20 @@ function TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths
     rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
     rowFrame:SetAlpha(renderAlpha)
     rowFrame:Show()
+    rowFrame.__ctkBaseAlpha = renderAlpha
     rowFrame.uiScale = layout.scale
     rowFrame.uiFontScale = layout.fontScale or 1
     rowFrame.uiRowHeight = renderHeight
     rowFrame.rowId = rowId
+    rowFrame.__ctkDisplayIndex = displayIndex
+    rowFrame.__ctkLayoutState = rowFrame.__ctkLayoutState or {}
+    rowFrame.__ctkLayoutState.showPhaseColumn = layout and layout.showPhaseColumn == true
+    rowFrame.__ctkLayoutState.showLastRefreshColumn = layout and layout.showLastRefreshColumn == true
+    rowFrame.__ctkLayoutState.fontScale = layout and layout.fontScale or 1
+    rowFrame.__ctkColWidths = rowFrame.__ctkColWidths or {}
+    for index = 1, 4 do
+        rowFrame.__ctkColWidths[index] = colWidths[index] or 0
+    end
 
     local rowBg = rowFrame.rowBg
     rowBg:SetAllPoints(rowFrame)
@@ -303,13 +398,51 @@ function TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths
 
     self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, rowFrame.uiFontScale, layout)
 
-    table.insert(tableRows, rowFrame)
+    tableRows[#tableRows + 1] = rowFrame
+    visibleRowFrameByRowId[rowId] = rowFrame
+end
+
+function TableUIRenderer:RefreshVisibleRow(rowInfo)
+    local rowId = rowInfo and rowInfo.rowId
+    local rowFrame = rowId and visibleRowFrameByRowId[rowId] or nil
+    if not rowFrame or not rowFrame.IsShown or not rowFrame:IsShown() then
+        return false
+    end
+
+    local rowBg = rowFrame.rowBg
+    if not rowBg then
+        return false
+    end
+
+    local displayIndex = rowFrame.__ctkDisplayIndex or 1
+    local rowColor = UIConfig.GetDataRowColor(displayIndex)
+    local baseAlpha = rowFrame.__ctkBaseAlpha or rowFrame:GetAlpha() or 1
+    if rowInfo.isHidden then
+        rowBg:SetColorTexture(0.5, 0.5, 0.5, 0.3)
+        rowFrame:SetAlpha(baseAlpha * 0.6)
+    else
+        rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
+        rowFrame:SetAlpha(baseAlpha)
+    end
+
+    self:CreateRowCells(
+        rowFrame,
+        rowInfo,
+        rowFrame.__ctkColWidths or {},
+        rowBg,
+        rowFrame.uiFontScale or 1,
+        rowFrame.__ctkLayoutState or {}
+    )
+    return true
 end
 
 function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layout)
     local cfg = GetConfig()
     local currentX = 0
     local leftPadding = math.floor(15 * (scale or 1) + 0.5)
+    local normalTextColor = cfg.GetTextColor("normal")
+    local planeIdTextColor = cfg.GetTextColor("planeId")
+    local deletedTextColor = rowInfo.isHidden and cfg.GetTextColor("deleted") or nil
     rowFrame.cellTexts = rowFrame.cellTexts or {}
 
     for _, cellText in pairs(rowFrame.cellTexts) do
@@ -320,13 +453,20 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
 
     local hasCurrentPhase = rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= ""
     local phaseText = L["NotAcquired"] or "---:---"
-    local phaseColor = cfg.GetTextColor("normal")
+    local phaseColor = normalTextColor
     if hasCurrentPhase then
         phaseText = FormatPhaseDisplayText(rowInfo.currentPhaseID) or phaseText
         if rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.color then
-            phaseColor = {rowInfo.phaseDisplayInfo.color.r, rowInfo.phaseDisplayInfo.color.g, rowInfo.phaseDisplayInfo.color.b, 1}
+            rowFrame.phaseColorBuffer = rowFrame.phaseColorBuffer or {}
+            phaseColor = SetColorBuffer(
+                rowFrame.phaseColorBuffer,
+                rowInfo.phaseDisplayInfo.color.r,
+                rowInfo.phaseDisplayInfo.color.g,
+                rowInfo.phaseDisplayInfo.color.b,
+                1
+            )
         else
-            phaseColor = cfg.GetTextColor("planeId")
+            phaseColor = planeIdTextColor
         end
     else
         if rowInfo.lastRefreshPhase and rowInfo.lastRefreshPhase ~= "" then
@@ -335,37 +475,54 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
     end
 
     local lastRefreshText = rowInfo.lastRefresh and UnifiedDataManager:FormatDateTime(rowInfo.lastRefresh) or (L["NoRecord"] or "--:--")
-    local lastColor = cfg.GetTextColor("normal")
+    local lastColor = normalTextColor
     if rowInfo.lastRefresh and not rowInfo.isPersistent then
-        local base = cfg.GetTextColor("planeId")
-        lastColor = {base[1], base[2], base[3], 0.7}
+        rowFrame.lastColorBuffer = rowFrame.lastColorBuffer or {}
+        lastColor = SetColorBuffer(
+            rowFrame.lastColorBuffer,
+            planeIdTextColor[1],
+            planeIdTextColor[2],
+            planeIdTextColor[3],
+            0.7
+        )
     elseif hasCurrentPhase and rowInfo.lastRefresh and rowInfo.isPersistent then
-        local compareStatus = nil
-        if UnifiedDataManager and UnifiedDataManager.ComparePhases then
+        local compareStatus = rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.compareStatus or nil
+        if compareStatus == nil and UnifiedDataManager and UnifiedDataManager.ComparePhases then
             local compare = UnifiedDataManager:ComparePhases(rowInfo.rowId)
             compareStatus = compare and compare.status or nil
         end
         if compareStatus == "match" then
-            lastColor = cfg.GetTextColor("planeId")
+            lastColor = planeIdTextColor
         elseif compareStatus == "mismatch" then
-            local base = cfg.GetTextColor("planeId")
-            lastColor = {base[1], base[2], base[3], 0.7}
+            rowFrame.lastColorBuffer = rowFrame.lastColorBuffer or {}
+            lastColor = SetColorBuffer(
+                rowFrame.lastColorBuffer,
+                planeIdTextColor[1],
+                planeIdTextColor[2],
+                planeIdTextColor[3],
+                0.7
+            )
         end
     end
     local nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
 
-    local columns = {
-        {colIndex = 1, text = rowInfo.mapName, align = "left", color = cfg.GetTextColor("normal")},
-    }
+    rowFrame.columnBuffer = rowFrame.columnBuffer or {}
+    local columns = rowFrame.columnBuffer
+    local columnCount = 1
+    PrepareColumn(columns, columnCount, 1, rowInfo.mapName, normalTextColor, false)
     if layout and layout.showPhaseColumn then
-        table.insert(columns, {colIndex = 2, text = phaseText, align = "center", color = phaseColor})
+        columnCount = columnCount + 1
+        PrepareColumn(columns, columnCount, 2, phaseText, phaseColor, false)
     end
     if layout and layout.showLastRefreshColumn then
-        table.insert(columns, {colIndex = 3, text = lastRefreshText, align = "center", color = lastColor})
+        columnCount = columnCount + 1
+        PrepareColumn(columns, columnCount, 3, lastRefreshText, lastColor, false)
     end
-    table.insert(columns, {colIndex = 4, text = nextRefreshText, align = "center", color = cfg.GetTextColor("normal"), isCountdown = true})
+    columnCount = columnCount + 1
+    PrepareColumn(columns, columnCount, 4, nextRefreshText, normalTextColor, true)
 
-    for _, colData in ipairs(columns) do
+    for columnIndex = 1, columnCount do
+        local colData = columns[columnIndex]
         local colIndex = colData.colIndex
         local cellText = rowFrame.cellTexts[colIndex]
         if not cellText then
@@ -409,10 +566,9 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
         cellText:SetShadowOffset(0, 0)
         cellText:Show()
 
-        local textColor = colData.color or cfg.GetTextColor("normal")
+        local textColor = colData.color or normalTextColor
         if rowInfo.isHidden then
-            local hiddenColor = cfg.GetTextColor("deleted")
-            cellText:SetTextColor(hiddenColor[1], hiddenColor[2], hiddenColor[3], hiddenColor[4])
+            cellText:SetTextColor(deletedTextColor[1], deletedTextColor[2], deletedTextColor[3], deletedTextColor[4])
         else
             cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
         end

@@ -12,6 +12,10 @@ local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator");
 Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
+Phase.lastUpdateAt = Phase.lastUpdateAt or 0;
+Phase.pendingUpdateTimer = Phase.pendingUpdateTimer or nil;
+Phase.pendingMapID = Phase.pendingMapID or nil;
+Phase.MIN_UPDATE_INTERVAL = 0.12;
 
 local function GetExpansionAwareCacheKey(expansionID, mapID)
     return tostring(expansionID or "default") .. ":" .. tostring(mapID);
@@ -64,7 +68,66 @@ function Phase:Reset()
     self.lastReportedInstanceID = nil;
     self.lastReportedMapPhaseKey = nil;
     self.phaseCache = {};
-    Logger:Debug("Phase", "重置", "已重置位面检测状态和缓存");
+    self.lastUpdateAt = 0;
+    self.pendingMapID = nil;
+    if self.pendingUpdateTimer and self.pendingUpdateTimer.Cancel then
+        self.pendingUpdateTimer:Cancel();
+    end
+    self.pendingUpdateTimer = nil;
+end
+
+function Phase:RequestUpdate(currentMapID, delay)
+    local now = GetTime and GetTime() or 0;
+    local minInterval = self.MIN_UPDATE_INTERVAL or 0.12;
+    local resolvedDelay = tonumber(delay);
+    if resolvedDelay == nil then
+        local elapsed = now - (self.lastUpdateAt or 0);
+        if elapsed >= minInterval then
+            resolvedDelay = 0;
+        else
+            resolvedDelay = minInterval - elapsed;
+        end
+    end
+
+    self.pendingMapID = currentMapID;
+    if resolvedDelay <= 0 then
+        if self.pendingUpdateTimer and self.pendingUpdateTimer.Cancel then
+            self.pendingUpdateTimer:Cancel();
+        end
+        self.pendingUpdateTimer = nil;
+        local pendingMapID = self.pendingMapID;
+        self.pendingMapID = nil;
+        return self:UpdatePhaseInfo(pendingMapID);
+    end
+
+    if self.pendingUpdateTimer then
+        return true;
+    end
+
+    if C_Timer and C_Timer.NewTimer then
+        self.pendingUpdateTimer = C_Timer.NewTimer(resolvedDelay, function()
+            self.pendingUpdateTimer = nil;
+            local pendingMapID = self.pendingMapID;
+            self.pendingMapID = nil;
+            self:UpdatePhaseInfo(pendingMapID);
+        end);
+        return true;
+    end
+
+    if C_Timer and C_Timer.After then
+        self.pendingUpdateTimer = true;
+        C_Timer.After(resolvedDelay, function()
+            self.pendingUpdateTimer = nil;
+            local pendingMapID = self.pendingMapID;
+            self.pendingMapID = nil;
+            self:UpdatePhaseInfo(pendingMapID);
+        end);
+        return true;
+    end
+
+    local pendingMapID = self.pendingMapID;
+    self.pendingMapID = nil;
+    return self:UpdatePhaseInfo(pendingMapID);
 end
 
 function Phase:GetLayerFromNPC()
@@ -86,11 +149,25 @@ function Phase:GetLayerFromNPC()
     return nil;
 end
 
+function Phase:HasProbeUnit()
+    if not UnitGUID then
+        return false;
+    end
+    if UnitGUID("mouseover") then
+        return true;
+    end
+    if UnitGUID("target") then
+        return true;
+    end
+    return false;
+end
+
 function Phase:UpdatePhaseInfo(currentMapID)
     if not Data then return end
     if Area and Area.IsActive and not Area:IsActive() then
         return;
     end
+    self.lastUpdateAt = GetTime and GetTime() or 0;
     
     local playerMapID = Area:GetCurrentMapId(currentMapID);
     if not playerMapID then
@@ -99,7 +176,6 @@ function Phase:UpdatePhaseInfo(currentMapID)
     
     -- 排除主城区域，不进行位面检测
     if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(playerMapID) then
-        Logger:Debug("Phase", "排除", string.format("跳过主城区域位面检测：地图ID=%d", playerMapID));
         return;
     end
     
@@ -128,15 +204,11 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 currentPhaseID = detectedPhaseID;
                 shouldUpdate = true;
                 isPhaseChanged = (cachedPhaseID ~= nil);
-                Logger:Debug("Phase", "缓存", string.format("位面ID已更新：配置地图ID=%d，当前地图ID=%d，旧位面=%s，新位面=%s，是否变化=%s", 
-                    targetMapData.mapID, playerMapID, cachedPhaseID or "无", detectedPhaseID, isPhaseChanged and "是" or "否（首次检测）"));
             else
                 currentPhaseID = detectedPhaseID;
             end
         elseif cachedPhaseID then
             currentPhaseID = cachedPhaseID;
-            Logger:Debug("Phase", "缓存", string.format("使用缓存的位面ID：配置地图ID=%d，当前地图ID=%d，位面ID=%s", 
-                targetMapData.mapID, playerMapID, cachedPhaseID));
         end
         
         if currentPhaseID then
@@ -156,11 +228,8 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 
                 local lastReportedMapID = nil;
                 if lastReportedKey then
-                    local parts = {strsplit("-", lastReportedKey)};
-                    if #parts >= 1 then
-                        local mapPart = parts[1];
-                        lastReportedMapID = tonumber(mapPart:match(":(%d+)$")) or tonumber(mapPart);
-                    end
+                    local mapPart = strsplit("-", lastReportedKey);
+                    lastReportedMapID = tonumber(mapPart and mapPart:match(":(%d+)$")) or tonumber(mapPart);
                 end
                 
                 if lastReportedKey == mapPhaseKey then
@@ -196,8 +265,15 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 end
             end
             
-            if uiNeedsRefresh and UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
-                UIRefreshCoordinator:RefreshMainTable();
+            if uiNeedsRefresh and UIRefreshCoordinator then
+                if UIRefreshCoordinator.RequestRowRefresh then
+                    UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {
+                        affectsSort = false,
+                        delay = 0.08,
+                    });
+                elseif UIRefreshCoordinator.RefreshMainTable then
+                    UIRefreshCoordinator:RefreshMainTable();
+                end
             end
         end
     end

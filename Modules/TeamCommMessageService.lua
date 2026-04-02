@@ -5,13 +5,36 @@ local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local AirdropEventService = BuildEnv("AirdropEventService")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local TimerManager = BuildEnv("TimerManager")
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local Data = BuildEnv("Data")
 local Notification = BuildEnv("Notification")
+
+TeamCommMessageService.syncContextBuffer = TeamCommMessageService.syncContextBuffer or {
+    persistentStateBuffer = {},
+}
 
 local function RecordVisibleMessageSuppress(mapName, currentTime)
     if Notification and Notification.RecordReceivedSync then
         Notification:RecordReceivedSync(mapName, currentTime)
     end
+end
+
+local function RequestSyncUIRefresh(mapId)
+    if UIRefreshCoordinator and UIRefreshCoordinator.RequestSyncRefresh then
+        return UIRefreshCoordinator:RequestSyncRefresh(mapId)
+    end
+    if TimerManager and TimerManager.UpdateUI then
+        TimerManager:UpdateUI()
+        return true
+    end
+    return false
+end
+
+local function AcquireSyncContextBuffer()
+    local buffer = TeamCommMessageService.syncContextBuffer or {}
+    TeamCommMessageService.syncContextBuffer = buffer
+    buffer.persistentStateBuffer = buffer.persistentStateBuffer or {}
+    return buffer
 end
 
 function TeamCommMessageService:HasRecentLocalConfirmedAirdrop(listener, mapData, currentTime)
@@ -42,17 +65,50 @@ function TeamCommMessageService:GetDuplicateMessageWindow(listener)
     return 15
 end
 
-local function ResolveSyncContext(listener, mapId, sender)
+local function IsSameTrackedMapContext(currentMapID, mapData)
+    if type(currentMapID) ~= "number" or type(mapData) ~= "table" or type(mapData.mapID) ~= "number" then
+        return false
+    end
+
+    local inspectMapID = currentMapID
+    local visited = {}
+    while type(inspectMapID) == "number" and not visited[inspectMapID] do
+        if inspectMapID == mapData.mapID then
+            return true
+        end
+        visited[inspectMapID] = true
+
+        if not C_Map or not C_Map.GetMapInfo then
+            break
+        end
+
+        local mapInfo = C_Map.GetMapInfo(inspectMapID)
+        inspectMapID = mapInfo and mapInfo.parentMapID or nil
+    end
+
+    return false
+end
+
+local function HasSameObjectGUID(localGUID, incomingGUID)
+    if AirdropEventService and AirdropEventService.HasSameObjectGUID then
+        return AirdropEventService:HasSameObjectGUID(localGUID, incomingGUID)
+    end
+    return type(localGUID) == "string"
+        and type(incomingGUID) == "string"
+        and localGUID == incomingGUID
+end
+
+local function ResolveSyncContext(listener, mapId, sender, outContext)
     local numericMapId = tonumber(mapId)
     if not numericMapId then
         return nil
     end
+    if type(outContext) ~= "table" then
+        outContext = {}
+    end
 
     local mapData = Data and Data.GetMap and Data:GetMap(numericMapId) or nil
     if not mapData then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "忽略", string.format("消息地图ID无效或未追踪，已忽略：mapId=%s", tostring(numericMapId)))
-        end
         return nil
     end
 
@@ -63,30 +119,30 @@ local function ResolveSyncContext(listener, mapId, sender)
         and TeamCommMapCache:IsSelfSender(listener, sender)
         or (sender and (sender == listener.playerName or sender == listener.fullPlayerName))
     if isSelfSender then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "处理", string.format("跳过自己发送的同步消息：发送者=%s，地图=%s", sender, mapName))
-        end
         return nil
     end
 
     local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropState
-        and UnifiedDataManager:GetPersistentAirdropState(numericMapId)
-        or nil
-    return {
-        mapId = numericMapId,
-        mapData = mapData,
-        mapName = mapName,
-        currentMapID = currentMapID,
-        persistentState = persistentState,
-        isOnMap = mapData and currentMapID == mapData.mapID,
-        currentTime = time(),
-        sender = sender,
-    }
+    local isOnMap = IsSameTrackedMapContext(currentMapID, mapData)
+    local persistentState = nil
+    if not isOnMap then
+        persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
+            and UnifiedDataManager:GetPersistentAirdropStateInto(numericMapId, outContext.persistentStateBuffer)
+            or nil
+    end
+    outContext.mapId = numericMapId
+    outContext.mapData = mapData
+    outContext.mapName = mapName
+    outContext.currentMapID = currentMapID
+    outContext.persistentState = persistentState
+    outContext.isOnMap = isOnMap
+    outContext.currentTime = time()
+    outContext.sender = sender
+    return outContext
 end
 
-function TeamCommMessageService:ProcessTemporarySync(listener, syncState, chatType, sender)
-    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender)
+function TeamCommMessageService:ProcessTemporarySync(listener, syncState, _, sender)
+    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender, AcquireSyncContextBuffer())
     if not context then
         return false
     end
@@ -96,48 +152,19 @@ function TeamCommMessageService:ProcessTemporarySync(listener, syncState, chatTy
         return false
     end
 
-    if Logger and Logger.debugEnabled and Logger.Debug then
-        Logger:Debug("TeamCommListener", "处理", string.format(
-            "检测到隐藏临时同步：发送者=%s，地图=%s，聊天类型=%s，同步时间=%s",
-            sender or "未知",
-            context.mapName,
-            chatType,
-            UnifiedDataManager:FormatDateTime(syncTimestamp)
-        ))
-    end
-
     RecordVisibleMessageSuppress(context.mapName, context.currentTime)
 
     if context.isOnMap then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "处理", string.format("在空投地图，跳过隐藏临时同步（由自己的检测处理）：地图=%s", context.mapName))
-        end
         return true
     end
 
     if self:HasRecentLocalConfirmedAirdrop(listener, context.persistentState, context.currentTime) then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "处理", string.format(
-                "忽略晚到隐藏临时同步：地图=%s，本地已在%d秒保护窗内确认过空投，确认时间=%s",
-                context.mapName,
-                listener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300,
-                UnifiedDataManager:FormatDateTime(context.persistentState.currentAirdropTimestamp)
-            ))
-        end
         return true
     end
 
     if context.persistentState
         and type(context.persistentState.currentAirdropTimestamp) == "number"
         and syncTimestamp <= context.persistentState.currentAirdropTimestamp then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "处理", string.format(
-                "忽略旧的隐藏临时同步：地图=%s，同步时间=%s，本地确认时间=%s",
-                context.mapName,
-                UnifiedDataManager:FormatDateTime(syncTimestamp),
-                UnifiedDataManager:FormatDateTime(context.persistentState.currentAirdropTimestamp)
-            ))
-        end
         return true
     end
 
@@ -147,15 +174,6 @@ function TeamCommMessageService:ProcessTemporarySync(listener, syncState, chatTy
             local duplicateWindow = self:GetDuplicateMessageWindow(listener)
             local isDuplicate = math.abs(syncTimestamp - tempRecord.timestamp) <= duplicateWindow
             if isDuplicate then
-                if Logger and Logger.debugEnabled and Logger.Debug then
-                    Logger:Debug("TeamCommListener", "处理", string.format(
-                        "跳过重复的隐藏临时同步（%d秒内）：地图=%s，上次=%s，本次=%s",
-                        duplicateWindow,
-                        context.mapName,
-                        UnifiedDataManager:FormatDateTime(tempRecord.timestamp),
-                        UnifiedDataManager:FormatDateTime(syncTimestamp)
-                    ))
-                end
                 return true
             end
         end
@@ -174,14 +192,12 @@ function TeamCommMessageService:ProcessTemporarySync(listener, syncState, chatTy
         return false
     end
 
-    if TimerManager and TimerManager.UpdateUI then
-        TimerManager:UpdateUI()
-    end
+    RequestSyncUIRefresh(context.mapId)
     return true
 end
 
-function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, chatType, sender)
-    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender)
+function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sender)
+    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender, AcquireSyncContextBuffer())
     if not context then
         return false
     end
@@ -191,22 +207,13 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, chatTy
         return false
     end
 
-    if Logger and Logger.debugEnabled and Logger.Debug then
-        Logger:Debug("TeamCommListener", "处理", string.format(
-            "检测到隐藏确认同步：发送者=%s，地图=%s，聊天类型=%s，确认时间=%s",
-            sender or "未知",
-            context.mapName,
-            chatType,
-            UnifiedDataManager:FormatDateTime(syncTimestamp)
-        ))
-    end
-
     RecordVisibleMessageSuppress(context.mapName, context.currentTime)
 
     if context.isOnMap then
-        if Logger and Logger.debugEnabled and Logger.Debug then
-            Logger:Debug("TeamCommListener", "处理", string.format("在空投地图，跳过隐藏确认同步（由自己的检测处理）：地图=%s", context.mapName))
-        end
+        return true
+    end
+
+    if self:HasRecentLocalConfirmedAirdrop(listener, context.persistentState, context.currentTime) then
         return true
     end
 
@@ -214,15 +221,22 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, chatTy
         local localTimestamp = context.persistentState.currentAirdropTimestamp
         local localGUID = context.persistentState.currentAirdropObjectGUID
         local incomingGUID = syncState and syncState.objectGUID or nil
-        if syncTimestamp < localTimestamp or (syncTimestamp == localTimestamp and (incomingGUID == nil or incomingGUID == localGUID)) then
-            if Logger and Logger.debugEnabled and Logger.Debug then
-                Logger:Debug("TeamCommListener", "处理", string.format(
-                    "忽略旧的隐藏确认同步：地图=%s，同步时间=%s，本地确认时间=%s",
-                    context.mapName,
-                    UnifiedDataManager:FormatDateTime(syncTimestamp),
-                    UnifiedDataManager:FormatDateTime(localTimestamp)
-                ))
-            end
+
+        if syncTimestamp < localTimestamp then
+            return true
+        end
+
+        -- 同一事件的确认时间必须保留最早值，不能被后到队友继续往后推。
+        if HasSameObjectGUID(localGUID, incomingGUID) and syncTimestamp >= localTimestamp then
+            return true
+        end
+
+        -- 无 GUID 的较弱确认结果，不允许覆盖已有的本地确认状态。
+        if type(localGUID) == "string" and localGUID ~= "" and incomingGUID == nil and syncTimestamp >= localTimestamp then
+            return true
+        end
+
+        if syncTimestamp == localTimestamp and (incomingGUID == nil or incomingGUID == localGUID) then
             return true
         end
     end
@@ -243,9 +257,7 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, chatTy
         return false
     end
 
-    if TimerManager and TimerManager.UpdateUI then
-        TimerManager:UpdateUI()
-    end
+    RequestSyncUIRefresh(context.mapId)
     return true
 end
 

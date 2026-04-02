@@ -2,6 +2,33 @@
 
 local TableUIRebuildEngine = BuildEnv("TableUIRebuildEngine")
 
+local function ClearArray(buffer)
+    for index = #buffer, 1, -1 do
+        buffer[index] = nil
+    end
+    return buffer
+end
+
+local function GetReusableArray(owner, fieldName)
+    local buffer = owner[fieldName]
+    if not buffer then
+        buffer = {}
+        owner[fieldName] = buffer
+    else
+        ClearArray(buffer)
+    end
+    return buffer
+end
+
+local function GetReusableMap(owner, fieldName)
+    local buffer = owner[fieldName]
+    if not buffer then
+        buffer = {}
+        owner[fieldName] = buffer
+    end
+    return buffer
+end
+
 local function ResolveReleaseSnapHeight(chromeMetrics, verticalMetrics)
     if not chromeMetrics or not verticalMetrics then
         return nil
@@ -74,10 +101,15 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local tableParent = deps.GetTableParent(frame)
 
     local function BuildVisibleRows()
-        local visibleRows = {}
-        for _, rowInfo in ipairs(deps.SortingSystem:GetCurrentRows() or {}) do
+        local visibleRows = GetReusableArray(frame, "__ctkVisibleRowsBuffer")
+        local sourceRows = deps.SortingSystem:GetCurrentRows() or {}
+        local visibleCount = 0
+
+        for index = 1, #sourceRows do
+            local rowInfo = sourceRows[index]
             if visibilityProfile.showDeletedRows or not rowInfo.isHidden then
-                table.insert(visibleRows, rowInfo)
+                visibleCount = visibleCount + 1
+                visibleRows[visibleCount] = rowInfo
             end
         end
         return visibleRows
@@ -148,7 +180,17 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     visibilityProfile.headerAlphaByHeight = verticalMetrics.headerAlphaByHeight
 
     local layout = deps.CalculateTableLayout(frame, visibilityProfile, layoutScale, chromeMetrics, verticalMetrics)
-    local colWidths = deps.CalculateColumnWidths(rows, headerLabels, layout.tableWidth, layout.fontScale, visibilityProfile)
+    local columnMetricsBuffer = GetReusableMap(frame, "__ctkColumnMetricsBuffer")
+    local columnMetrics = deps.CollectColumnMetrics and deps.CollectColumnMetrics(rows, headerLabels, columnMetricsBuffer) or columnMetricsBuffer
+    local colWidths = deps.CalculateColumnWidths(
+        rows,
+        headerLabels,
+        layout.tableWidth,
+        layout.fontScale,
+        visibilityProfile,
+        GetReusableArray(frame, "__ctkColumnWidthsBuffer"),
+        columnMetrics
+    )
     local mapNaturalWidth = visibilityProfile.mapNaturalWidth or (colWidths[1] or 0)
     local mapCompressed = ((colWidths[1] or 0) + 0.5) < mapNaturalWidth
     local shouldHideTitleForCompactLayout = visibilityProfile.compactByWidth == true
@@ -174,16 +216,23 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local userControlledWidth = frame.__ctkWidthControlledByUser == true
     local userControlledHeight = frame.__ctkHeightControlledByUser == true
     local horizontalPadding = chromeMetrics.horizontalPadding
-    local defaultProfile = {
-        showHeader = true,
-        showPhaseColumn = true,
-        showLastRefreshColumn = true,
-        phaseShortMode = false,
-        showDeletedRows = false,
-        isFullInfo = true,
-    }
+    local defaultProfile = GetReusableMap(frame, "__ctkDefaultProfileBuffer")
+    defaultProfile.showHeader = true
+    defaultProfile.showPhaseColumn = true
+    defaultProfile.showLastRefreshColumn = true
+    defaultProfile.phaseShortMode = false
+    defaultProfile.showDeletedRows = false
+    defaultProfile.isFullInfo = true
     local defaultTableWidthHint = math.max(1, math.floor((deps.baseFrameWidth - deps.frameHorizontalPadding - (deps.innerTableSideMargin * 2)) + 0.5))
-    local defaultColWidths = deps.CalculateColumnWidths(rows, headerLabels, defaultTableWidthHint, 1, defaultProfile)
+    local defaultColWidths = deps.CalculateColumnWidths(
+        rows,
+        headerLabels,
+        defaultTableWidthHint,
+        1,
+        defaultProfile,
+        GetReusableArray(frame, "__ctkDefaultColumnWidthsBuffer"),
+        columnMetrics
+    )
     local defaultTableWidth = deps.SumColumnWidths(defaultColWidths)
     local desiredFrameWidth = math.floor(defaultTableWidth + horizontalPadding + (deps.innerTableSideMargin * 2) + 0.5)
     desiredFrameWidth = deps.Clamp(desiredFrameWidth, deps.baseMinFrameWidth, deps.baseFrameWidth)
@@ -198,25 +247,27 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local requiredMaxFrameWidth = deps.Clamp(desiredFrameWidth, requiredMinFrameWidth, deps.baseFrameWidth)
     local requiredMinFrameHeight = math.max(1, math.floor((verticalMetrics.minTableHeight + chromeMetrics.verticalPadding) + 0.5))
     local requiredMaxFrameHeight = math.max(requiredMinFrameHeight, math.floor((verticalMetrics.maxTableHeight + chromeMetrics.verticalPadding) + 0.5))
-    local debugPayload = {
-        frameWidth = math.floor(frameWidth + 0.5),
-        frameHeight = math.floor(frameHeight + 0.5),
-        minWidth = requiredMinFrameWidth,
-        minHeight = requiredMinFrameHeight,
-        maxWidth = requiredMaxFrameWidth,
-        maxHeight = requiredMaxFrameHeight,
-        desiredWidth = desiredFrameWidth,
-        desiredHeight = requiredMaxFrameHeight,
-        activeTableWidth = layout.activeTableWidth,
-        defaultTableWidth = defaultTableWidth,
-        userControlled = userControlledWidth,
-        userControlledHeight = userControlledHeight,
-        layoutScale = layoutScale,
-        autoCompactSort = shouldAutoCompactSort,
-        showHeader = visibilityProfile.showHeader == true,
-        isSizing = frame.isSizing == true,
-        visibleRows = verticalMetrics.visibleRowCount,
-    }
+    local resizeStatePayload = nil
+    if deps.IsResizeStateHookEnabled and deps.IsResizeStateHookEnabled() then
+        resizeStatePayload = GetReusableMap(frame, "__ctkResizeStatePayload")
+        resizeStatePayload.frameWidth = math.floor(frameWidth + 0.5)
+        resizeStatePayload.frameHeight = math.floor(frameHeight + 0.5)
+        resizeStatePayload.minWidth = requiredMinFrameWidth
+        resizeStatePayload.minHeight = requiredMinFrameHeight
+        resizeStatePayload.maxWidth = requiredMaxFrameWidth
+        resizeStatePayload.maxHeight = requiredMaxFrameHeight
+        resizeStatePayload.desiredWidth = desiredFrameWidth
+        resizeStatePayload.desiredHeight = requiredMaxFrameHeight
+        resizeStatePayload.activeTableWidth = layout.activeTableWidth
+        resizeStatePayload.defaultTableWidth = defaultTableWidth
+        resizeStatePayload.userControlled = userControlledWidth
+        resizeStatePayload.userControlledHeight = userControlledHeight
+        resizeStatePayload.layoutScale = layoutScale
+        resizeStatePayload.autoCompactSort = shouldAutoCompactSort
+        resizeStatePayload.showHeader = visibilityProfile.showHeader == true
+        resizeStatePayload.isSizing = frame.isSizing == true
+        resizeStatePayload.visibleRows = verticalMetrics.visibleRowCount
+    end
 
     if frame.__ctkContentMinWidth ~= requiredMinFrameWidth
         or frame.__ctkContentMaxWidth ~= requiredMaxFrameWidth
@@ -240,7 +291,7 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
         if deps.MainFrame and deps.MainFrame.PersistFrameSize then
             deps.MainFrame:PersistFrameSize(frame)
         end
-        deps.EmitResizeDebug(frame, "exit-user", debugPayload)
+        deps.EmitResizeStateHook(frame, "exit-user", resizeStatePayload)
     end
     if userControlledHeight and not frame.isSizing and frameHeight + 0.5 >= requiredMaxFrameHeight then
         frame.__ctkHeightControlledByUser = false
@@ -303,7 +354,7 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
 
     local resized = math.abs(targetWidth - frameWidth) > 0.5 or math.abs(targetHeight - frameHeight) > 0.5
     if resized then
-        deps.EmitResizeDebug(frame, resizeStage, debugPayload)
+        deps.EmitResizeStateHook(frame, resizeStage, resizeStatePayload)
         frame:SetSize(targetWidth, targetHeight)
         if deps.MainFrame and deps.MainFrame.PersistFrameSize then
             deps.MainFrame:PersistFrameSize(frame)
@@ -316,37 +367,12 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
         end
     end
 
-    deps.EmitResizeDebug(frame, "stable", debugPayload)
+    deps.EmitResizeStateHook(frame, "stable", resizeStatePayload)
 
-    local rowsToRender = {}
     local fullVisibleRowCount = math.max(0, math.min(verticalMetrics.fullVisibleRowCount or 0, #rows))
     local partialRowRatio = deps.Clamp(verticalMetrics.partialRowRatio or 0, 0, 1)
     local currentSlotY = 0
-
-    for idx = 1, fullVisibleRowCount do
-        if idx > 1 then
-            currentSlotY = currentSlotY + layout.rowGap
-        end
-        rowsToRender[#rowsToRender + 1] = {
-            rowInfo = rows[idx],
-            slotY = currentSlotY,
-            height = layout.rowHeight,
-            alpha = 1,
-        }
-        currentSlotY = currentSlotY + layout.rowHeight
-    end
-
-    if partialRowRatio > 0 and (fullVisibleRowCount + 1) <= #rows then
-        if fullVisibleRowCount > 0 then
-            currentSlotY = currentSlotY + (layout.rowGap * partialRowRatio)
-        end
-        rowsToRender[#rowsToRender + 1] = {
-            rowInfo = rows[fullVisibleRowCount + 1],
-            slotY = currentSlotY,
-            height = math.max(1, layout.rowHeight * partialRowRatio),
-            alpha = verticalMetrics.partialRowAlpha or partialRowRatio,
-        }
-    end
+    local reusableRowState = GetReusableMap(frame, "__ctkReusableRowState")
 
     deps.HideVisibleFrames()
     deps.ClearCountdownRegistration()
@@ -355,9 +381,32 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
         tableUI:CreateHeaderRow(layout.parent, headerLabels, colWidths, layout)
     end
 
-    for displayIndex, rowState in ipairs(rowsToRender) do
-        tableUI:CreateDataRow(layout.parent, rowState, displayIndex, colWidths, layout)
+    for displayIndex = 1, fullVisibleRowCount do
+        if displayIndex > 1 then
+            currentSlotY = currentSlotY + layout.rowGap
+        end
+
+        reusableRowState.rowInfo = rows[displayIndex]
+        reusableRowState.slotY = currentSlotY
+        reusableRowState.height = layout.rowHeight
+        reusableRowState.alpha = 1
+        tableUI:CreateDataRow(layout.parent, reusableRowState, displayIndex, colWidths, layout)
+        currentSlotY = currentSlotY + layout.rowHeight
     end
+
+    if partialRowRatio > 0 and (fullVisibleRowCount + 1) <= #rows then
+        if fullVisibleRowCount > 0 then
+            currentSlotY = currentSlotY + (layout.rowGap * partialRowRatio)
+        end
+
+        reusableRowState.rowInfo = rows[fullVisibleRowCount + 1]
+        reusableRowState.slotY = currentSlotY
+        reusableRowState.height = math.max(1, layout.rowHeight * partialRowRatio)
+        reusableRowState.alpha = verticalMetrics.partialRowAlpha or partialRowRatio
+        tableUI:CreateDataRow(layout.parent, reusableRowState, fullVisibleRowCount + 1, colWidths, layout)
+    end
+
+    reusableRowState.rowInfo = nil
 
     if deps.SortingSystem then
         deps.SortingSystem:UpdateHeaderVisual()

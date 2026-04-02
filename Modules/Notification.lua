@@ -30,10 +30,6 @@ Notification.lastReceivedSyncTime = Notification.lastReceivedSyncTime or {};
 Notification.SHOUT_DEDUP_WINDOW = 20;
 Notification.RECEIVED_SYNC_SUPPRESS_WINDOW = 15;
 
-local function DebugPrint(msg, ...)
-    Logger:Debug("Notification", "调试", msg, ...);
-end
-
 function Notification:Initialize()
     if self.isInitialized then return end
     self.isInitialized = true;
@@ -47,8 +43,6 @@ function Notification:Initialize()
     if NotificationDedupService and NotificationDedupService.EnsureState then
         NotificationDedupService:EnsureState(self);
     end
-    
-    DebugPrint("[通知] 通知模块已初始化");
 end
 
 function Notification:IsTeamNotificationEnabled()
@@ -197,6 +191,13 @@ function Notification:RecordReceivedSync(mapName, timestamp)
     end
 end
 
+function Notification:ClearExpiredTransientState(currentTime)
+    if NotificationDedupService and NotificationDedupService.ClearExpiredTransientState then
+        return NotificationDedupService:ClearExpiredTransientState(self, currentTime);
+    end
+    return 0;
+end
+
 function Notification:HasRecentReceivedSync(mapName, windowSeconds, currentTime)
     if NotificationDedupService and NotificationDedupService.HasRecentReceivedSync then
         return NotificationDedupService:HasRecentReceivedSync(self, mapName, windowSeconds, currentTime);
@@ -233,7 +234,6 @@ end
 function Notification:NotifyAirdropDetected(mapName, detectionSource)
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
-        Logger:Debug("Notification", "通知", "通知失败：地图名称为空");
         return 
     end
     
@@ -254,8 +254,6 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     if shouldSuppressMapIcon then
         self:UpdateFirstNotificationTime(mapName, lastShoutTime or currentTime);
         self:MarkPlayerSentNotification(mapName);
-        Logger:Debug("Notification", "去重", string.format("最近%ds内已由喊话触发，跳过图标二次通知：地图=%s，间隔=%ds",
-            self.SHOUT_DEDUP_WINDOW, mapName, currentTime - (lastShoutTime or currentTime)));
         return;
     end
 
@@ -269,21 +267,12 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         );
         if hasRecentReceivedSync then
             outboundChatType = nil;
-            Logger:Debug("Notification", "限制", string.format(
-                "最近%ds内已收到隐藏同步，跳过团队可见消息：地图=%s，来源=%s，间隔=%ds",
-                self.RECEIVED_SYNC_SUPPRESS_WINDOW,
-                mapName,
-                detectionSource or "未知",
-                currentTime - (lastReceivedSyncTime or currentTime)
-            ));
         end
     end
     
     if outboundChatType and self.teamNotificationEnabled then
         -- 个人发送限制检查
         if self:HasPlayerSentNotification(mapName) then
-            Logger:Debug("Notification", "通知", string.format("玩家已发送过通知，跳过发送：地图=%s，来源=%s", 
-                mapName, detectionSource or "未知"));
             local message = string.format(L["AirdropDetected"], mapName);
             Logger:Info("Notification", "通知", message);
             return;
@@ -291,8 +280,6 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         
         -- 30秒限制检查
         if not self:CanSendNotification(mapName) then
-            Logger:Debug("Notification", "通知", string.format("超过30秒限制，不允许发送：地图=%s，来源=%s", 
-                mapName, detectionSource or "未知"));
             local message = string.format(L["AirdropDetected"], mapName);
             Logger:Info("Notification", "通知", message);
             return;
@@ -301,8 +288,6 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         -- 记录首次通知时间
         if not self.firstNotificationTime[mapName] then
             self.firstNotificationTime[mapName] = currentTime;
-            Logger:Debug("Notification", "通知", string.format("记录首次通知时间：地图=%s，时间=%s", 
-                mapName, UnifiedDataManager:FormatDateTime(currentTime)));
         end
         
         self:MarkPlayerSentNotification(mapName);
@@ -316,16 +301,8 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         self:PlayAirdropAlertSound();
     end
     
-    Logger:Debug("Notification", "通知", string.format("发送空投检测通知：地图=%s，来源=%s", mapName, detectionSource or "未知"));
-    
-    Logger:Debug("Notification", "调试", string.format("团队通知检查：chatType=%s, teamNotificationEnabled=%s, IsInRaid=%s, IsInGroup=%s", 
-        tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
-    
     if NotificationOutputService and NotificationOutputService.SendMessage then
-        local sentToTeam = NotificationOutputService:SendMessage(self, message, outboundChatType);
-        if chatType and not self.teamNotificationEnabled and not sentToTeam then
-            Logger:Debug("Notification", "通知", string.format("团队通知已禁用，仅发送系统消息：地图=%s", mapName));
-        end
+        NotificationOutputService:SendMessage(self, message, outboundChatType);
     end
 end
 
@@ -377,9 +354,11 @@ function Notification:SendAutoTeamReport()
         or string.format((L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!", mapName, UnifiedDataManager:FormatTime(remaining, true));
     local chatType = self:GetTeamChatType();
     if chatType then
-        -- 自动通知固定使用普通团队/小队频道，避免触发团队警告音效
+        local visibleChatType = NotificationOutputService
+            and NotificationOutputService.GetStandardVisibleChatType
+            and NotificationOutputService:GetStandardVisibleChatType();
         if NotificationOutputService and NotificationOutputService.SendManualMessage then
-            NotificationOutputService:SendManualMessage(message, chatType);
+            NotificationOutputService:SendManualMessage(message, visibleChatType);
         end
     else
         if Logger and Logger.Info then
@@ -394,18 +373,12 @@ end
 function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     if not self.isInitialized then self:Initialize() end
     if not mapData then 
-        Logger:Debug("Notification", "通知", "通知地图刷新失败：地图数据为空");
         return 
     end
     
     if isAirdropActive == nil then
         isAirdropActive = false;
-        Logger:Debug("Notification", "通知", string.format("未传递空投状态参数，默认发送剩余时间：地图=%s", 
-            Data:GetMapDisplayName(mapData)));
     end
-    
-    Logger:Debug("Notification", "通知", string.format("用户请求通知地图刷新：地图=%s，空投进行中=%s", 
-        Data:GetMapDisplayName(mapData), isAirdropActive and "是" or "否"));
     
     local message;
     local systemMessage;
@@ -435,13 +408,15 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     local chatType = self:GetTeamChatType();
     
     if chatType then
-        Logger:Debug("Notification", "通知", string.format("发送小队/团队通知（手动）：类型=%s", chatType));
+        local visibleChatType = NotificationOutputService
+            and NotificationOutputService.GetStandardVisibleChatType
+            and NotificationOutputService:GetStandardVisibleChatType();
         local success, err = false, nil;
         if NotificationOutputService and NotificationOutputService.SendManualMessage then
-            success, err = NotificationOutputService:SendManualMessage(message, chatType);
+            success, err = NotificationOutputService:SendManualMessage(message, visibleChatType);
         end
         if not success then
-            Logger:Debug("Notification", "调试", "发送团队消息失败:", err or "未知错误");
+            Logger:Warn("Notification", "通知", "发送小队/团队消息失败: " .. tostring(err or "未知错误"));
         end
     else
         Logger:Info("Notification", "通知", systemMessage);

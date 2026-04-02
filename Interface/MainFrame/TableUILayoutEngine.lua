@@ -18,6 +18,43 @@ local MAP_COL_BASE_PADDING = 24
 local MAP_COL_SAFETY_PADDING = 6
 local PHASE_DISPLAY_MAX_LENGTH = 4
 
+local function ClearArray(buffer)
+    if type(buffer) ~= "table" then
+        return {}
+    end
+    for index = #buffer, 1, -1 do
+        buffer[index] = nil
+    end
+    return buffer
+end
+
+local function GetReusableArray(owner, fieldName)
+    local buffer = owner[fieldName]
+    if not buffer then
+        buffer = {}
+        owner[fieldName] = buffer
+    else
+        ClearArray(buffer)
+    end
+    return buffer
+end
+
+local function ResetColumnMetrics(outMetrics)
+    local metrics = type(outMetrics) == "table" and outMetrics or {}
+    metrics.mapMaxTextWidth = 0
+    metrics.phaseHeaderWidth = 0
+    metrics.lastHeaderWidth = 0
+    metrics.nextHeaderWidth = 0
+    metrics.notAcquiredWidth = 0
+    metrics.noRecordWidth = 0
+    metrics.timeWidth = 0
+    metrics.phaseFullDesiredTextWidth = 0
+    metrics.phaseShortDesiredTextWidth = 0
+    metrics.phaseFullNeedTextWidth = 0
+    metrics.phaseShortNeedTextWidth = 0
+    return metrics
+end
+
 function TableUILayoutEngine:Clamp(value, minValue, maxValue)
     if value < minValue then
         return minValue
@@ -154,15 +191,21 @@ local function GetTextWidth(text)
     return 0
 end
 
-function TableUILayoutEngine:ScaleWidths(baseWidths, targetTotal)
+function TableUILayoutEngine:ScaleWidths(baseWidths, targetTotal, outWidths)
     local sum = 0
     for _, width in ipairs(baseWidths) do
         sum = sum + width
     end
     if sum <= 0 then
-        return baseWidths
+        local passthrough = type(outWidths) == "table" and outWidths or {}
+        ClearArray(passthrough)
+        for index = 1, #baseWidths do
+            passthrough[index] = baseWidths[index]
+        end
+        return passthrough
     end
-    local scaled = {}
+    local scaled = type(outWidths) == "table" and outWidths or {}
+    ClearArray(scaled)
     local used = 0
     for i, width in ipairs(baseWidths) do
         if i == #baseWidths then
@@ -176,56 +219,81 @@ function TableUILayoutEngine:ScaleWidths(baseWidths, targetTotal)
     return scaled
 end
 
-function TableUILayoutEngine:GetMaxWidth(texts)
-    local maxWidth = 0
-    for _, text in ipairs(texts or {}) do
-        local width = GetTextWidth(text)
-        if width > maxWidth then
-            maxWidth = width
-        end
-    end
-    return maxWidth
-end
-
-function TableUILayoutEngine:FormatPhaseDisplayText(phaseValue)
+function TableUILayoutEngine:FormatPhaseDisplayText(phaseValue, maxLength)
     if phaseValue == nil or phaseValue == "" then
         return nil
     end
     local text = tostring(phaseValue)
-    if #text > PHASE_DISPLAY_MAX_LENGTH then
-        text = string.sub(text, 1, PHASE_DISPLAY_MAX_LENGTH)
+    local displayMaxLength = math.max(1, tonumber(maxLength) or PHASE_DISPLAY_MAX_LENGTH)
+    if #text > displayMaxLength then
+        text = string.sub(text, 1, displayMaxLength)
     end
     return text
 end
 
-function TableUILayoutEngine:BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
-    local fullSamples = {}
-    local shortSamples = {}
-    local fullCap = math.max(1, fullMaxLength or 10)
-    local shortCap = math.max(1, shortMaxLength or 4)
+function TableUILayoutEngine:CollectColumnMetrics(rows, headerLabels, outMetrics)
+    local headers = headerLabels or {}
+    local noRecord = L and L["NoRecord"] or "--:--"
+    local notAcquired = L and L["NotAcquired"] or "---:---"
+    local metrics = ResetColumnMetrics(outMetrics)
+
+    metrics.mapMaxTextWidth = GetTextWidth(headers[1] or "")
+    metrics.phaseHeaderWidth = GetTextWidth(headers[2] or "")
+    metrics.lastHeaderWidth = GetTextWidth(headers[3] or "")
+    metrics.nextHeaderWidth = GetTextWidth(headers[4] or "")
+    metrics.notAcquiredWidth = GetTextWidth(notAcquired)
+    metrics.noRecordWidth = GetTextWidth(noRecord)
+    metrics.timeWidth = GetTextWidth("00:00:00")
+    metrics.phaseFullDesiredTextWidth = math.max(metrics.phaseHeaderWidth, metrics.notAcquiredWidth)
+    metrics.phaseShortDesiredTextWidth = math.max(metrics.phaseHeaderWidth, metrics.notAcquiredWidth)
+    metrics.phaseFullNeedTextWidth = metrics.notAcquiredWidth
+    metrics.phaseShortNeedTextWidth = metrics.notAcquiredWidth
 
     for _, rowInfo in ipairs(rows or {}) do
-        local phaseValue = nil
-        if rowInfo then
-            if rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= "" then
-                phaseValue = tostring(rowInfo.currentPhaseID)
-            elseif rowInfo.lastRefreshPhase and rowInfo.lastRefreshPhase ~= "" then
-                phaseValue = tostring(rowInfo.lastRefreshPhase)
+        if rowInfo and rowInfo.mapName then
+            local mapWidth = GetTextWidth(rowInfo.mapName)
+            if mapWidth > metrics.mapMaxTextWidth then
+                metrics.mapMaxTextWidth = mapWidth
             end
         end
 
-        local displayText = self:FormatPhaseDisplayText(phaseValue)
-        if displayText and displayText ~= "" then
-            table.insert(fullSamples, string.sub(displayText, 1, fullCap))
-            table.insert(shortSamples, string.sub(displayText, 1, shortCap))
+        local phaseValue = nil
+        if rowInfo then
+            if rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= "" then
+                phaseValue = rowInfo.currentPhaseID
+            elseif rowInfo.lastRefreshPhase and rowInfo.lastRefreshPhase ~= "" then
+                phaseValue = rowInfo.lastRefreshPhase
+            end
+        end
+
+        local phaseFullText = self:FormatPhaseDisplayText(phaseValue, PHASE_DISPLAY_MAX_LENGTH)
+        if phaseFullText and phaseFullText ~= "" then
+            local phaseFullWidth = GetTextWidth(phaseFullText)
+            if phaseFullWidth > metrics.phaseFullDesiredTextWidth then
+                metrics.phaseFullDesiredTextWidth = phaseFullWidth
+            end
+            if phaseFullWidth > metrics.phaseFullNeedTextWidth then
+                metrics.phaseFullNeedTextWidth = phaseFullWidth
+            end
+        end
+
+        local phaseShortText = self:FormatPhaseDisplayText(phaseValue, PHASE_DISPLAY_MAX_LENGTH)
+        if phaseShortText and phaseShortText ~= "" then
+            local phaseShortWidth = GetTextWidth(phaseShortText)
+            if phaseShortWidth > metrics.phaseShortDesiredTextWidth then
+                metrics.phaseShortDesiredTextWidth = phaseShortWidth
+            end
+            if phaseShortWidth > metrics.phaseShortNeedTextWidth then
+                metrics.phaseShortNeedTextWidth = phaseShortWidth
+            end
         end
     end
 
-    return fullSamples, shortSamples
+    return metrics
 end
 
-function TableUILayoutEngine:DistributeWidths(desired, minWidths, maxWidths, total)
-    local clamped = {}
+function TableUILayoutEngine:DistributeWidths(desired, minWidths, maxWidths, total, outWidths)
+    local clamped = GetReusableArray(self, "__ctkDistributeClampedBuffer")
     local minSum = 0
     for i, width in ipairs(desired) do
         local minW = minWidths[i] or 1
@@ -234,9 +302,9 @@ function TableUILayoutEngine:DistributeWidths(desired, minWidths, maxWidths, tot
         minSum = minSum + minW
     end
     if minSum >= total then
-        return self:ScaleWidths(minWidths, total)
+        return self:ScaleWidths(minWidths, total, outWidths)
     end
-    local weights = {}
+    local weights = GetReusableArray(self, "__ctkDistributeWeightsBuffer")
     local weightSum = 0
     for i, width in ipairs(clamped) do
         local extra = width - (minWidths[i] or 0)
@@ -245,7 +313,8 @@ function TableUILayoutEngine:DistributeWidths(desired, minWidths, maxWidths, tot
         weightSum = weightSum + extra
     end
     local remaining = total - minSum
-    local result = {}
+    local result = type(outWidths) == "table" and outWidths or {}
+    ClearArray(result)
     local used = 0
     for i = 1, #clamped do
         local add = 0
@@ -272,51 +341,25 @@ function TableUILayoutEngine:SumColumnWidths(widths)
     return total
 end
 
-function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile)
-    local headers = headerLabels or {}
-    local noRecord = L and L["NoRecord"] or "--:--"
-    local notAcquired = L and L["NotAcquired"] or "---:---"
+function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile, outWidths, columnMetrics)
     local widthScale = scale or 1
+    local metrics = columnMetrics or self:CollectColumnMetrics(rows, headerLabels, self.__ctkColumnMetricsBuffer)
 
-    local mapMax = GetTextWidth(headers[1] or "")
-    for _, rowInfo in ipairs(rows or {}) do
-        if rowInfo and rowInfo.mapName then
-            local width = GetTextWidth(rowInfo.mapName)
-            if width > mapMax then
-                mapMax = width
-            end
-        end
-    end
-
-    local mapNaturalWidth = math.max(1, math.floor(mapMax + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5))
+    local mapNaturalWidth = math.max(1, math.floor(metrics.mapMaxTextWidth + MAP_COL_BASE_PADDING + MAP_COL_SAFETY_PADDING + 0.5))
     local mapCompactMinWidth = mapNaturalWidth
     if profile then
         profile.mapNaturalWidth = mapNaturalWidth
         profile.mapCompactMinWidth = mapCompactMinWidth
     end
 
-    local phaseFullSamples, phaseShortSamples = self:BuildPhaseWidthSamples(rows, PHASE_DISPLAY_MAX_LENGTH, PHASE_DISPLAY_MAX_LENGTH)
-    local phaseFullDesiredSamples = {headers[2] or "", notAcquired}
-    local phaseShortDesiredSamples = {headers[2] or "", notAcquired}
-    local phaseFullNeedSamples = {notAcquired}
-    local phaseShortNeedSamples = {notAcquired}
-    for _, text in ipairs(phaseFullSamples) do
-        table.insert(phaseFullDesiredSamples, text)
-        table.insert(phaseFullNeedSamples, text)
-    end
-    for _, text in ipairs(phaseShortSamples) do
-        table.insert(phaseShortDesiredSamples, text)
-        table.insert(phaseShortNeedSamples, text)
-    end
-
-    local phaseFullDesired = math.floor((self:GetMaxWidth(phaseFullDesiredSamples) + 20) * widthScale + 0.5)
-    local phaseShortDesired = math.floor((self:GetMaxWidth(phaseShortDesiredSamples) + 20) * widthScale + 0.5)
-    local lastDesired = math.floor((self:GetMaxWidth({headers[3] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5)
-    local nextDesired = math.floor((self:GetMaxWidth({headers[4] or "", noRecord, "00:00:00"}) + 18) * widthScale + 0.5)
-    local phaseFullNeed = math.floor((self:GetMaxWidth(phaseFullNeedSamples) + 10) * widthScale + 0.5)
-    local phaseShortNeed = math.floor((self:GetMaxWidth(phaseShortNeedSamples) + 10) * widthScale + 0.5)
-    local lastNeed = math.floor((self:GetMaxWidth({noRecord, "00:00:00"}) + 10) * widthScale + 0.5)
-    local nextNeed = math.floor((self:GetMaxWidth({noRecord, "00:00:00"}) + 10) * widthScale + 0.5)
+    local phaseFullDesired = math.floor((metrics.phaseFullDesiredTextWidth + 20) * widthScale + 0.5)
+    local phaseShortDesired = math.floor((metrics.phaseShortDesiredTextWidth + 20) * widthScale + 0.5)
+    local lastDesired = math.floor((math.max(metrics.lastHeaderWidth, metrics.noRecordWidth, metrics.timeWidth) + 18) * widthScale + 0.5)
+    local nextDesired = math.floor((math.max(metrics.nextHeaderWidth, metrics.noRecordWidth, metrics.timeWidth) + 18) * widthScale + 0.5)
+    local phaseFullNeed = math.floor((metrics.phaseFullNeedTextWidth + 10) * widthScale + 0.5)
+    local phaseShortNeed = math.floor((metrics.phaseShortNeedTextWidth + 10) * widthScale + 0.5)
+    local lastNeed = math.floor((math.max(metrics.noRecordWidth, metrics.timeWidth) + 10) * widthScale + 0.5)
+    local nextNeed = math.floor((math.max(metrics.noRecordWidth, metrics.timeWidth) + 10) * widthScale + 0.5)
 
     if profile and profile.compactByWidth == true then
         local remaining = math.max(0, math.floor((totalWidth or 0) - mapNaturalWidth + 0.5))
@@ -339,48 +382,50 @@ function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidt
         profile.showLastRefreshColumn = showLast
         profile.phaseShortMode = usePhaseShort
 
-        local desired = {
-            mapNaturalWidth,
-            usePhaseShort and phaseShortDesired or phaseFullDesired,
-            lastDesired,
-            nextDesired,
-        }
-        local minWidths = {
-            mapCompactMinWidth,
-            usePhaseShort and phaseShortNeed or phaseFullNeed,
-            lastNeed,
-            nextNeed,
-        }
-        local maxWidths = {
-            mapNaturalWidth,
-            math.max(desired[2], minWidths[2]) + math.max(2, math.floor(6 * widthScale + 0.5)),
-            math.max(desired[3], minWidths[3]) + math.max(2, math.floor(6 * widthScale + 0.5)),
-            math.max(desired[4], minWidths[4]) + math.max(2, math.floor(6 * widthScale + 0.5)),
-        }
+        local desired = GetReusableArray(self, "__ctkDesiredWidthsBuffer")
+        desired[1] = mapNaturalWidth
+        desired[2] = usePhaseShort and phaseShortDesired or phaseFullDesired
+        desired[3] = lastDesired
+        desired[4] = nextDesired
+        local minWidths = GetReusableArray(self, "__ctkMinWidthsBuffer")
+        minWidths[1] = mapCompactMinWidth
+        minWidths[2] = usePhaseShort and phaseShortNeed or phaseFullNeed
+        minWidths[3] = lastNeed
+        minWidths[4] = nextNeed
+        local maxWidths = GetReusableArray(self, "__ctkMaxWidthsBuffer")
+        maxWidths[1] = mapNaturalWidth
+        maxWidths[2] = math.max(desired[2], minWidths[2]) + math.max(2, math.floor(6 * widthScale + 0.5))
+        maxWidths[3] = math.max(desired[3], minWidths[3]) + math.max(2, math.floor(6 * widthScale + 0.5))
+        maxWidths[4] = math.max(desired[4], minWidths[4]) + math.max(2, math.floor(6 * widthScale + 0.5))
 
-        local result = {0, 0, 0, 0}
+        local result = type(outWidths) == "table" and outWidths or {0, 0, 0, 0}
+        ClearArray(result)
 
-        local otherIndices = {}
-        local otherDesired = {}
-        local otherMinWidths = {}
-        local otherMaxWidths = {}
+        local otherIndices = GetReusableArray(self, "__ctkOtherIndicesBuffer")
+        local otherDesired = GetReusableArray(self, "__ctkOtherDesiredBuffer")
+        local otherMinWidths = GetReusableArray(self, "__ctkOtherMinWidthsBuffer")
+        local otherMaxWidths = GetReusableArray(self, "__ctkOtherMaxWidthsBuffer")
+        local otherCount = 0
 
         if showPhase then
-            table.insert(otherIndices, 2)
-            table.insert(otherDesired, desired[2])
-            table.insert(otherMinWidths, math.max(1, minWidths[2]))
-            table.insert(otherMaxWidths, math.max(1, maxWidths[2]))
+            otherCount = otherCount + 1
+            otherIndices[otherCount] = 2
+            otherDesired[otherCount] = desired[2]
+            otherMinWidths[otherCount] = math.max(1, minWidths[2])
+            otherMaxWidths[otherCount] = math.max(1, maxWidths[2])
         end
         if showLast then
-            table.insert(otherIndices, 3)
-            table.insert(otherDesired, desired[3])
-            table.insert(otherMinWidths, math.max(1, minWidths[3]))
-            table.insert(otherMaxWidths, math.max(1, maxWidths[3]))
+            otherCount = otherCount + 1
+            otherIndices[otherCount] = 3
+            otherDesired[otherCount] = desired[3]
+            otherMinWidths[otherCount] = math.max(1, minWidths[3])
+            otherMaxWidths[otherCount] = math.max(1, maxWidths[3])
         end
-        table.insert(otherIndices, 4)
-        table.insert(otherDesired, desired[4])
-        table.insert(otherMinWidths, math.max(1, minWidths[4]))
-        table.insert(otherMaxWidths, math.max(1, maxWidths[4]))
+        otherCount = otherCount + 1
+        otherIndices[otherCount] = 4
+        otherDesired[otherCount] = desired[4]
+        otherMinWidths[otherCount] = math.max(1, minWidths[4])
+        otherMaxWidths[otherCount] = math.max(1, maxWidths[4])
 
         local otherMinTotal = 0
         for _, width in ipairs(otherMinWidths) do
@@ -391,7 +436,7 @@ function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidt
         result[1] = mapWidth
 
         local remainingWidth = math.max(1, math.floor((totalWidth or 1) - mapWidth + 0.5))
-        local distributedOthers = self:DistributeWidths(otherDesired, otherMinWidths, otherMaxWidths, remainingWidth)
+        local distributedOthers = self:DistributeWidths(otherDesired, otherMinWidths, otherMaxWidths, remainingWidth, GetReusableArray(self, "__ctkDistributedOthersBuffer"))
         for i, colIndex in ipairs(otherIndices) do
             result[colIndex] = distributedOthers[i] or 0
         end
@@ -402,7 +447,8 @@ function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidt
         return result
     end
 
-    local result = {0, 0, 0, 0}
+    local result = type(outWidths) == "table" and outWidths or {0, 0, 0, 0}
+    ClearArray(result)
 
     local showPhase = profile and profile.showPhaseColumn == true or false
     local showLast = profile and profile.showLastRefreshColumn == true or false
@@ -422,37 +468,42 @@ function TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidt
     local availableWidth = math.max(1, math.floor((totalWidth or 0) + 0.5))
     local naturalTotal = self:SumColumnWidths(result)
     if naturalTotal > availableWidth then
-        local activeIndices = {}
-        local activeDesired = {}
-        local activeMinWidths = {}
-        local activeMaxWidths = {}
+        local activeIndices = GetReusableArray(self, "__ctkActiveIndicesBuffer")
+        local activeDesired = GetReusableArray(self, "__ctkActiveDesiredBuffer")
+        local activeMinWidths = GetReusableArray(self, "__ctkActiveMinWidthsBuffer")
+        local activeMaxWidths = GetReusableArray(self, "__ctkActiveMaxWidthsBuffer")
+        local activeCount = 0
 
-        table.insert(activeIndices, 1)
-        table.insert(activeDesired, result[1])
-        table.insert(activeMinWidths, math.max(1, mapCompactMinWidth))
-        table.insert(activeMaxWidths, math.max(1, result[1]))
+        activeCount = activeCount + 1
+        activeIndices[activeCount] = 1
+        activeDesired[activeCount] = result[1]
+        activeMinWidths[activeCount] = math.max(1, mapCompactMinWidth)
+        activeMaxWidths[activeCount] = math.max(1, result[1])
 
         if showPhase then
-            table.insert(activeIndices, 2)
-            table.insert(activeDesired, result[2])
-            table.insert(activeMinWidths, math.max(1, phaseFullNeed))
-            table.insert(activeMaxWidths, math.max(1, result[2]))
+            activeCount = activeCount + 1
+            activeIndices[activeCount] = 2
+            activeDesired[activeCount] = result[2]
+            activeMinWidths[activeCount] = math.max(1, phaseFullNeed)
+            activeMaxWidths[activeCount] = math.max(1, result[2])
         end
         if showLast then
-            table.insert(activeIndices, 3)
-            table.insert(activeDesired, result[3])
-            table.insert(activeMinWidths, math.max(1, lastNeed))
-            table.insert(activeMaxWidths, math.max(1, result[3]))
+            activeCount = activeCount + 1
+            activeIndices[activeCount] = 3
+            activeDesired[activeCount] = result[3]
+            activeMinWidths[activeCount] = math.max(1, lastNeed)
+            activeMaxWidths[activeCount] = math.max(1, result[3])
         end
         if showNext then
-            table.insert(activeIndices, 4)
-            table.insert(activeDesired, result[4])
-            table.insert(activeMinWidths, math.max(1, nextNeed))
-            table.insert(activeMaxWidths, math.max(1, result[4]))
+            activeCount = activeCount + 1
+            activeIndices[activeCount] = 4
+            activeDesired[activeCount] = result[4]
+            activeMinWidths[activeCount] = math.max(1, nextNeed)
+            activeMaxWidths[activeCount] = math.max(1, result[4])
         end
 
-        local distributed = self:DistributeWidths(activeDesired, activeMinWidths, activeMaxWidths, availableWidth)
-        result = {0, 0, 0, 0}
+        local distributed = self:DistributeWidths(activeDesired, activeMinWidths, activeMaxWidths, availableWidth, GetReusableArray(self, "__ctkDistributedActiveBuffer"))
+        ClearArray(result)
         for index, colIndex in ipairs(activeIndices) do
             result[colIndex] = distributed[index] or 0
         end

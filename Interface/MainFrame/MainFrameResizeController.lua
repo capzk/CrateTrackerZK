@@ -14,6 +14,7 @@ end
 
 function MainFrameResizeController:CreateResizeHandle(frame, options)
     options = options or {}
+    local releaseGuardInterval = options.resizeReleaseGuardInterval or 0.05
 
     local resizeHandle = CreateFrame("Button", nil, frame)
     resizeHandle:SetSize(16, 16)
@@ -105,11 +106,11 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
 
     local StopSizing
 
-    local function StartLayoutRefreshTicker()
-        if frame.layoutRefreshTicker then
+    local function StartReleaseGuardTicker()
+        if frame.resizeReleaseGuardTicker then
             return
         end
-        frame.layoutRefreshTicker = C_Timer.NewTicker(options.resizeLayoutNotifyInterval or 0.016, function()
+        frame.resizeReleaseGuardTicker = C_Timer.NewTicker(releaseGuardInterval, function()
             if not frame or not frame:IsShown() or not frame.isSizing then
                 return
             end
@@ -117,16 +118,14 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
                 if StopSizing then
                     StopSizing()
                 end
-                return
             end
-            NotifyLayoutChanged(false)
         end)
     end
 
-    local function StopLayoutRefreshTicker()
-        if frame.layoutRefreshTicker then
-            frame.layoutRefreshTicker:Cancel()
-            frame.layoutRefreshTicker = nil
+    local function StopReleaseGuardTicker()
+        if frame.resizeReleaseGuardTicker then
+            frame.resizeReleaseGuardTicker:Cancel()
+            frame.resizeReleaseGuardTicker = nil
         end
     end
 
@@ -162,7 +161,7 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
         frame.__ctkWidthControlledByUser = (finalWidth + 0.5) < maxWidth
         frame.__ctkHeightControlledByUser = (finalHeight + 0.5) < maxHeight
         frame:StopMovingOrSizing()
-        StopLayoutRefreshTicker()
+        StopReleaseGuardTicker()
         if options.normalizeSize then
             options.normalizeSize(frame)
         end
@@ -187,7 +186,7 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
         frame.__ctkSizingStartHeight = frame:GetHeight() or options.frameCfg.height
         frame.__ctkAutoHeightSyncValue = nil
         SetResizeHandleVisible(true)
-        StartLayoutRefreshTicker()
+        StartReleaseGuardTicker()
         frame:StartSizing("BOTTOMRIGHT")
         NotifyLayoutChanged(true)
     end)
@@ -220,7 +219,7 @@ function MainFrameResizeController:CreateResizeHandle(frame, options)
     end)
 
     frame:SetScript("OnHide", function()
-        StopLayoutRefreshTicker()
+        StopReleaseGuardTicker()
         CancelHideTimer()
         frame.isSizing = false
         frame.__ctkReleaseSnapWidth = nil

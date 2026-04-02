@@ -4,28 +4,48 @@ local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 
+local PHASE_TICK_INTERVAL = 10
+
+local function CanRunPhasePolling()
+    if not CoreShared:IsAreaActive() or not Phase then
+        return false
+    end
+    if Phase.HasProbeUnit then
+        return Phase:HasProbeUnit() == true
+    end
+    return true
+end
+
 local function UpdatePhaseNowIfActive()
-    if CoreShared:IsAreaActive() and Phase then
+    if CanRunPhasePolling() then
         local currentMapID = CoreShared:GetCurrentMapID()
         Phase:UpdatePhaseInfo(currentMapID)
+        return true
     end
+    return false
 end
 
 function TickerController:StartPhaseTicker(owner)
     owner = owner or CrateTrackerZK
+    if not CanRunPhasePolling() then
+        self:StopPhaseTicker(owner)
+        return false
+    end
     if owner.phaseTimerTicker then
-        owner.phaseTimerTicker:Cancel()
+        return true
     end
 
-    owner.phaseTimerTicker = C_Timer.NewTicker(10, function()
-        if CoreShared:IsAreaActive() and Phase then
-            local tickerMapID = CoreShared:GetCurrentMapID()
-            Phase:UpdatePhaseInfo(tickerMapID)
+    owner.phaseTimerTicker = C_Timer.NewTicker(PHASE_TICK_INTERVAL, function()
+        if not CanRunPhasePolling() then
+            self:StopPhaseTicker(owner)
+            return
         end
+        local tickerMapID = CoreShared:GetCurrentMapID()
+        Phase:UpdatePhaseInfo(tickerMapID)
     end)
     owner.phaseTimerPaused = false
-    Logger:Debug("Core", "状态", "已启动位面检测定时器（间隔10秒）")
     UpdatePhaseNowIfActive()
+    return true
 end
 
 function TickerController:StopPhaseTicker(owner)
@@ -34,39 +54,42 @@ function TickerController:StopPhaseTicker(owner)
         owner.phaseTimerTicker:Cancel()
         owner.phaseTimerTicker = nil
         owner.phaseTimerPaused = true
-        Logger:Debug("Core", "状态", "已停止位面检测定时器")
     end
+end
+
+function TickerController:RefreshPhaseTicker(owner)
+    owner = owner or CrateTrackerZK
+    if CanRunPhasePolling() then
+        return self:StartPhaseTicker(owner)
+    end
+    self:StopPhaseTicker(owner)
+    return false
 end
 
 function TickerController:PauseLocalDetections(owner)
     owner = owner or CrateTrackerZK
-    Logger:Debug("Core", "状态", "暂停本地空投与位面检测")
 
     self:StopPhaseTicker(owner)
 
     if owner.mapIconDetectionTicker then
         owner.mapIconDetectionTicker:Cancel()
         owner.mapIconDetectionTicker = nil
-        Logger:Debug("Core", "状态", "已停止地图图标检测")
     end
 end
 
 function TickerController:PauseAllDetections(owner)
     owner = owner or CrateTrackerZK
-    Logger:Debug("Core", "状态", "暂停所有检测功能")
 
     self:PauseLocalDetections(owner)
 
     if owner.cleanupTicker then
         owner.cleanupTicker:Cancel()
         owner.cleanupTicker = nil
-        Logger:Debug("Core", "状态", "已停止临时数据清理定时器")
     end
 
     if owner.autoReportTicker then
         owner.autoReportTicker:Cancel()
         owner.autoReportTicker = nil
-        Logger:Debug("Core", "状态", "已停止自动团队播报")
     end
 end
 
@@ -90,7 +113,6 @@ function TickerController:StartMapIconDetection(owner, interval)
         end
     end)
 
-    Logger:Debug("Core", "状态", string.format("已启动地图图标检测（间隔%d秒）", interval))
     return true
 end
 
@@ -99,7 +121,6 @@ function TickerController:StopMapIconDetection(owner)
     if owner.mapIconDetectionTicker then
         owner.mapIconDetectionTicker:Cancel()
         owner.mapIconDetectionTicker = nil
-        Logger:Debug("Core", "状态", "已停止地图图标检测")
     end
     return true
 end
@@ -113,9 +134,15 @@ function TickerController:StartCleanupTicker(owner)
         return
     end
     owner.cleanupTicker = C_Timer.NewTicker(300, function()
+        local cleanupTime = time()
         UnifiedDataManager:ClearExpiredTemporaryData()
+        if Notification and Notification.ClearExpiredTransientState then
+            Notification:ClearExpiredTransientState(cleanupTime)
+        end
+        if Logger and Logger.PruneMessageCache then
+            Logger:PruneMessageCache(cleanupTime)
+        end
     end)
-    Logger:Debug("Core", "状态", "已启动临时数据清理定时器（间隔300秒）")
 end
 
 function TickerController:StopCleanupTicker(owner)
@@ -123,7 +150,6 @@ function TickerController:StopCleanupTicker(owner)
     if owner.cleanupTicker then
         owner.cleanupTicker:Cancel()
         owner.cleanupTicker = nil
-        Logger:Debug("Core", "状态", "已停止临时数据清理定时器")
     end
 end
 
@@ -163,7 +189,6 @@ function TickerController:StartAutoTeamReportTicker(owner)
             Notification:SendAutoTeamReport()
         end
     end)
-    Logger:Debug("Core", "状态", string.format("已启动自动团队播报（间隔%d秒）", interval))
 end
 
 function TickerController:StopAutoTeamReportTicker(owner)
@@ -171,7 +196,6 @@ function TickerController:StopAutoTeamReportTicker(owner)
     if owner.autoReportTicker then
         owner.autoReportTicker:Cancel()
         owner.autoReportTicker = nil
-        Logger:Debug("Core", "状态", "已停止自动团队播报")
     end
 end
 
@@ -183,12 +207,10 @@ end
 
 function TickerController:ResumeAllDetections(owner)
     owner = owner or CrateTrackerZK
-    Logger:Debug("Core", "状态", "恢复所有检测功能")
-
     self:StartMapIconDetection(owner, 1)
     self:StartCleanupTicker(owner)
     self:StartAutoTeamReportTicker(owner)
-    self:StartPhaseTicker(owner)
+    self:RefreshPhaseTicker(owner)
 end
 
 return TickerController

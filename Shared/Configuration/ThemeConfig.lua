@@ -102,6 +102,38 @@ local function RGBToWoW(r, g, b, a)
     return {r / 255, g / 255, b / 255, a or 1.0}
 end
 
+local DEFAULT_COLOR = {255, 255, 255, 0.16}
+local DEFAULT_ROW_COLOR = {0, 0, 0, 0}
+
+local function AcquireCache(owner, fieldName)
+    if type(owner) ~= "table" then
+        return {}
+    end
+    local cache = owner[fieldName]
+    if type(cache) ~= "table" then
+        cache = {}
+        owner[fieldName] = cache
+    end
+    return cache
+end
+
+local function GetCachedRGBA(cache, cacheKey, color)
+    local cached = cache[cacheKey]
+    if cached then
+        return cached
+    end
+
+    local resolvedColor = color or DEFAULT_COLOR
+    cached = RGBToWoW(
+        resolvedColor[1] or DEFAULT_COLOR[1],
+        resolvedColor[2] or DEFAULT_COLOR[2],
+        resolvedColor[3] or DEFAULT_COLOR[3],
+        resolvedColor[4] or DEFAULT_COLOR[4]
+    )
+    cache[cacheKey] = cached
+    return cached
+end
+
 local function DeepCopy(value)
     if type(value) ~= "table" then
         return value
@@ -239,30 +271,22 @@ function ThemeConfig.GetColor(colorType)
         color = theme.table and theme.table.actionButtonNormal
     elseif colorType == "actionButtonHover" then
         color = theme.table and theme.table.actionButtonHover
-    else
-        color = {255, 255, 255, 0.16}
     end
 
-    if color then
-        return RGBToWoW(color[1], color[2], color[3], color[4])
-    end
-    return RGBToWoW(255, 255, 255, 0.16)
+    return GetCachedRGBA(AcquireCache(theme, "__ctkColorCache"), colorType or "__default", color or DEFAULT_COLOR)
 end
 
 function ThemeConfig.GetTextColor(textType)
     local theme = GetResolvedTheme()
     local textColors = theme.textColors or FALLBACK_THEME.textColors
     local color = textColors[textType] or textColors.normal or FALLBACK_THEME.textColors.normal
-    return RGBToWoW(color[1], color[2], color[3], color[4])
+    return GetCachedRGBA(AcquireCache(theme, "__ctkTextColorCache"), textType or "__default", color or DEFAULT_COLOR)
 end
 
 function ThemeConfig.GetSettingsColor(colorType)
     local settingsTheme = ThemeConfig.settingsTheme or FALLBACK_THEME.settingsTheme
     local color = settingsTheme[colorType]
-    if color then
-        return RGBToWoW(color[1], color[2], color[3], color[4])
-    end
-    return RGBToWoW(255, 255, 255, 0.16)
+    return GetCachedRGBA(AcquireCache(settingsTheme, "__ctkColorCache"), colorType or "__default", color or DEFAULT_COLOR)
 end
 
 function ThemeConfig.GetDataRowColor(rowIndex)
@@ -276,10 +300,9 @@ function ThemeConfig.GetDataRowColor(rowIndex)
             rowColor = rows[normalizedIndex]
         end
     end
-    if rowColor then
-        return RGBToWoW(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
-    end
-    return RGBToWoW(0, 0, 0, 0)
+    local normalizedIndex = tonumber(rowIndex) or 0
+    local cacheKey = tostring(normalizedIndex)
+    return GetCachedRGBA(AcquireCache(theme, "__ctkRowColorCache"), cacheKey, rowColor or DEFAULT_ROW_COLOR)
 end
 
 return ThemeConfig

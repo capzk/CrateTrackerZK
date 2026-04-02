@@ -62,22 +62,49 @@ local function ResolveAddonDistribution(chatType)
     return nil
 end
 
+local function ResolveAutomaticVisibleChatType()
+    if IsInRaid() then
+        local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
+        return hasPermission and "RAID_WARNING" or "RAID"
+    end
+    if IsInGroup() then
+        return "PARTY"
+    end
+    return nil
+end
+
+function NotificationOutputService:GetAutomaticVisibleChatType()
+    return ResolveAutomaticVisibleChatType()
+end
+
+local function ResolveStandardVisibleChatType()
+    if IsInRaid() then
+        return "RAID"
+    end
+    if IsInGroup() then
+        return "PARTY"
+    end
+    return nil
+end
+
+function NotificationOutputService:GetStandardVisibleChatType()
+    return ResolveStandardVisibleChatType()
+end
+
 function NotificationOutputService:SendMessage(notification, message, chatType)
-    if chatType and notification and notification.teamNotificationEnabled then
-        if IsInRaid() then
-            local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
-            local raidChatType = hasPermission and "RAID_WARNING" or "RAID"
-            Logger:Debug("Notification", "通知", string.format("发送团队通知：类型=%s，权限=%s", raidChatType, hasPermission and "有" or "无"))
-            pcall(function()
-                SendChatMessage(message, raidChatType)
-            end)
-            return true
-        end
-        Logger:Debug("Notification", "通知", string.format("发送小队通知：类型=%s", chatType))
-        pcall(function()
-            SendChatMessage(message, chatType)
+    local autoChatType = self:GetAutomaticVisibleChatType()
+    if chatType and notification and notification.teamNotificationEnabled and autoChatType then
+        local success, err = pcall(function()
+            SendChatMessage(message, autoChatType)
         end)
-        return true
+        if not success and Logger and Logger.Warn then
+            Logger:Warn(
+                "Notification",
+                "通知",
+                string.format("发送自动团队消息失败：类型=%s，错误=%s", autoChatType, tostring(err))
+            )
+        end
+        return success
     end
 
     Logger:Info("Notification", "通知", message)
@@ -85,9 +112,10 @@ function NotificationOutputService:SendMessage(notification, message, chatType)
 end
 
 function NotificationOutputService:SendManualMessage(message, chatType)
-    if chatType then
+    local standardChatType = self:GetStandardVisibleChatType()
+    if chatType and standardChatType then
         local success, err = pcall(function()
-            SendChatMessage(message, chatType)
+            SendChatMessage(message, standardChatType)
         end)
         return success, err
     end

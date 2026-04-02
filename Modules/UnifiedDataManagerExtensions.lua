@@ -39,9 +39,6 @@ function UnifiedDataManager:ClearExpiredTemporaryTimes()
         end
     end
 
-    if expiredCount > 0 then
-        Logger:Debug("UnifiedDataManager", "清理", string.format("清理了%d个过期的临时时间数据", expiredCount));
-    end
 end
 
 function UnifiedDataManager:ClearExpiredTemporaryPhases()
@@ -69,9 +66,6 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
         end
     end
 
-    if expiredCount > 0 then
-        Logger:Debug("UnifiedDataManager", "清理", string.format("清理了%d个过期的临时位面数据", expiredCount));
-    end
 end
 
 function UnifiedDataManager:RestoreTemporaryPhaseCache()

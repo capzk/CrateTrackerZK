@@ -73,11 +73,14 @@ end
 
 function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime, expansionID)
     local timeData = self:GetOrCreate(manager, mapId, expansionID)
-    timeData.temporaryTime = {
-        timestamp = timestamp,
-        source = source,
-        setTime = setTime or time(),
-    }
+    local temporaryTime = timeData.temporaryTime
+    if not temporaryTime then
+        temporaryTime = {}
+        timeData.temporaryTime = temporaryTime
+    end
+    temporaryTime.timestamp = timestamp
+    temporaryTime.source = source
+    temporaryTime.setTime = setTime or time()
     return timeData
 end
 

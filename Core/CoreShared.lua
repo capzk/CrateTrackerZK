@@ -12,10 +12,6 @@ function CoreShared:EnsureReloadHook()
     end
 end
 
-function CoreShared:DebugPrint(msg, ...)
-    Logger:Debug("Core", "调试", msg, ...)
-end
-
 function CoreShared:IsAddonEnabled()
     if not CRATETRACKERZK_UI_DB or CRATETRACKERZK_UI_DB.addonEnabled == nil then
         return true

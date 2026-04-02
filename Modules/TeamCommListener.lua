@@ -22,6 +22,7 @@ TeamCommListener.addonPrefixRegistered = false;
 TeamCommListener.addonPrefixRegistrationAttempted = false;
 TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
+TeamCommListener.syncStateBuffer = TeamCommListener.syncStateBuffer or {};
 
 TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW = 300;
 TeamCommListener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW = 15;
@@ -32,10 +33,6 @@ local TEAM_CHAT_TYPES = {
     PARTY = true,
     INSTANCE_CHAT = true
 };
-
-local function IsDebugEnabled()
-    return Logger and Logger.debugEnabled == true;
-end
 
 local function NormalizeAddonCallResult(...)
     local secondary = select(2, ...)
@@ -189,7 +186,15 @@ function TeamCommListener:BuildAirdropPayload(syncState)
 end
 
 function TeamCommListener:ParseAddonPayload(prefix, payload)
+    local outState = {};
+    return self:ParseAddonPayloadInto(prefix, payload, outState);
+end
+
+function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
     if prefix ~= self.ADDON_PREFIX or type(payload) ~= "string" then
+        return nil
+    end
+    if type(outState) ~= "table" then
         return nil
     end
 
@@ -206,13 +211,12 @@ function TeamCommListener:ParseAddonPayload(prefix, payload)
         return nil
     end
 
-    return {
-        syncType = syncType,
-        mapId = mapId,
-        timestamp = timestamp,
-        phaseId = DecodePayloadField(phaseIdText),
-        objectGUID = DecodePayloadField(objectGUIDText),
-    }
+    outState.syncType = syncType
+    outState.mapId = mapId
+    outState.timestamp = timestamp
+    outState.phaseId = DecodePayloadField(phaseIdText)
+    outState.objectGUID = DecodePayloadField(objectGUIDText)
+    return outState
 end
 
 function TeamCommListener:Initialize()
@@ -224,10 +228,6 @@ function TeamCommListener:Initialize()
     self:RegisterAddonPrefix();
 
     self.isInitialized = true;
-
-    if IsDebugEnabled() and Logger and Logger.Debug then
-        Logger:Debug("TeamCommListener", "初始化", "团队消息读取器已初始化（被动）");
-    end
 end
 
 function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
@@ -241,7 +241,8 @@ function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sen
         return false;
     end
 
-    local syncState = self:ParseAddonPayload(prefix, payload);
+    self.syncStateBuffer = self.syncStateBuffer or {};
+    local syncState = self:ParseAddonPayloadInto(prefix, payload, self.syncStateBuffer);
     if not syncState then
         return false;
     end

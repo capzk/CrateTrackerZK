@@ -9,6 +9,8 @@ local RowViewModelBuilder = BuildEnv("RowViewModelBuilder")
 local StateBuckets = BuildEnv("StateBuckets")
 local TableUI = BuildEnv("TableUI")
 local SortingSystem = BuildEnv("SortingSystem")
+local CountdownSystem = BuildEnv("CountdownSystem")
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local Data = BuildEnv("Data")
 local TimerManager = BuildEnv("TimerManager")
 local Notification = BuildEnv("Notification")
@@ -26,6 +28,7 @@ MainPanel.layoutUpdatePending = MainPanel.layoutUpdatePending or false
 MainPanel.lastLayoutUpdateAt = MainPanel.lastLayoutUpdateAt or 0
 MainPanel.LAYOUT_UPDATE_INTERVAL = 0.016
 MainPanel.layoutUpdateTimer = MainPanel.layoutUpdateTimer or nil
+MainPanel.headerLabelsBuffer = MainPanel.headerLabelsBuffer or {"", "", "", ""}
 
 local function EnsureUIBucket()
     if StateBuckets and StateBuckets.GetExpansionUIBucket then
@@ -52,12 +55,16 @@ function MainPanel:BuildRowData()
 end
 
 function MainPanel:BuildHeaderLabels()
-    return {
-        L["MapName"] or "Map",
-        L["PhaseID"] or "当前位面",
-        L["LastRefresh"] or "Last",
-        L["NextRefresh"] or "Next",
-    }
+    local labels = self.headerLabelsBuffer
+    labels[1] = L["MapName"] or "Map"
+    labels[2] = L["PhaseID"] or "当前位面"
+    labels[3] = L["LastRefresh"] or "Last"
+    labels[4] = L["NextRefresh"] or "Next"
+    return labels
+end
+
+function MainPanel:IsSortActive()
+    return SortingSystem and SortingSystem.GetSortState and SortingSystem:GetSortState() ~= "default"
 end
 
 function MainPanel:IsMainFrameVisible()
@@ -152,6 +159,29 @@ function MainPanel:StopUpdateTimer()
     end
 end
 
+function MainPanel:ReleaseHiddenState()
+    if self:IsMainFrameVisible() then
+        return false
+    end
+
+    if UIRefreshCoordinator and UIRefreshCoordinator.CancelPendingRefreshes then
+        UIRefreshCoordinator:CancelPendingRefreshes()
+    end
+    if TableUI and TableUI.ReleaseHiddenState then
+        TableUI:ReleaseHiddenState(self.mainFrame)
+    end
+    if SortingSystem and SortingSystem.ReleaseRuntimeCache then
+        SortingSystem:ReleaseRuntimeCache()
+    end
+    if RowViewModelBuilder and RowViewModelBuilder.ReleaseCache then
+        RowViewModelBuilder:ReleaseCache()
+    end
+    if CountdownSystem and CountdownSystem.ReleaseRuntimeState then
+        CountdownSystem:ReleaseRuntimeState()
+    end
+    return true
+end
+
 function MainPanel:Toggle()
     if not CrateTrackerZKFrame then
         self:CreateMainFrame()
@@ -189,6 +219,31 @@ function MainPanel:UpdateLayoutOnly()
     end
     local headers = self:BuildHeaderLabels()
     TableUI:RebuildUI(self.mainFrame, headers)
+end
+
+function MainPanel:RefreshRowData(rowId)
+    if rowId == nil or not self.mainFrame or not TableUI then
+        return false
+    end
+    if not self:IsMainFrameVisible() then
+        return false
+    end
+
+    local existingRow = SortingSystem and SortingSystem.GetRowData and SortingSystem:GetRowData(rowId) or nil
+    local rowInfo = RowViewModelBuilder and RowViewModelBuilder.BuildRowById and RowViewModelBuilder:BuildRowById(rowId, existingRow) or nil
+    if not rowInfo then
+        return false
+    end
+
+    if existingRow == nil and SortingSystem and SortingSystem.ReplaceRow then
+        SortingSystem:ReplaceRow(rowId, rowInfo)
+    end
+
+    if CountdownSystem and CountdownSystem.MarkRowStateDirty then
+        CountdownSystem:MarkRowStateDirty(rowId)
+    end
+
+    return TableUI:RefreshVisibleRow(rowInfo) == true
 end
 
 function MainPanel:RefreshTrackedMapConfiguration()

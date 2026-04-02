@@ -101,7 +101,7 @@ C_Timer.After(0.2, function()
         end
     end
     
-    if #LocaleLoadStatus.failedLocales > 0 and Logger and Logger:IsDebugEnabled() then
+    if #LocaleLoadStatus.failedLocales > 0 and Logger then
         Logger:Warn("Localization", "本地化", string.format(
             "Failed to load %d locale file(s).",
             #LocaleLoadStatus.failedLocales

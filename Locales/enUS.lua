@@ -85,7 +85,7 @@ Usage Guide
 
 2. Message Settings page options:
    Message Settings: controls manual and automatic message sending behavior
-   Team Notifications: when enabled, messages are sent to party, raid, or instance chat
+   Team Notifications: when enabled, messages are sent to party or raid chat
    Sound Alert: when enabled, a sound plays when an airdrop is detected
    Auto Notify: when enabled, automatically sends the nearest airdrop countdown at the configured interval
    Report Interval (sec): sets the interval for automatic countdown messages

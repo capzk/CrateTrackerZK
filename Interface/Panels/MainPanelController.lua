@@ -92,6 +92,9 @@ function MainPanelController:StopUpdateTimer(panel)
         CountdownSystem:Stop()
     end
     panel.updateTimerActive = false
+    if panel.ReleaseHiddenState then
+        panel:ReleaseHiddenState()
+    end
 end
 
 return MainPanelController

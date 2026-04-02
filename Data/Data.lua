@@ -58,6 +58,22 @@ local function sanitizeTimestamp(ts)
     return ts;
 end
 
+local function PopulatePersistentSnapshot(outSnapshot, mapData, savedData)
+    if type(outSnapshot) ~= "table" or type(mapData) ~= "table" then
+        return nil;
+    end
+
+    outSnapshot.expansionID = mapData.expansionID;
+    outSnapshot.mapID = mapData.mapID;
+    outSnapshot.createTime = sanitizeTimestamp(savedData and savedData.createTime) or mapData.createTime or time();
+    outSnapshot.lastRefresh = sanitizeTimestamp(savedData and savedData.lastRefresh) or nil;
+    outSnapshot.lastRefreshSource = type(savedData and savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil;
+    outSnapshot.currentAirdropObjectGUID = type(savedData and savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil;
+    outSnapshot.currentAirdropTimestamp = sanitizeTimestamp(savedData and savedData.currentAirdropTimestamp) or nil;
+    outSnapshot.lastRefreshPhase = type(savedData and savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil;
+    return outSnapshot;
+end
+
 local function getTrackedMapConfigs()
     if ExpansionConfig and ExpansionConfig.GetTrackedMapConfigs then
         return ExpansionConfig:GetTrackedMapConfigs() or {};
@@ -351,7 +367,6 @@ function Data:SetMapTracked(expansionID, mapID, tracked)
 end
 
 function Data:Initialize()
-    Logger:Debug("Data", "初始化", "开始初始化数据模块");
     self:ResetDatabaseIfNeeded(false);
     if self.ReloadMapConfigForExpansion then
         self:ReloadMapConfigForExpansion();
@@ -397,21 +412,6 @@ function Data:Initialize()
                 createTime = createTime,
             };
 
-            if lastRefresh then
-                Logger:Debug("Data", "加载", string.format(
-                    "地图 ID=%d，版本=%s，已加载持久化记录：%s",
-                    cfg.mapID,
-                    tostring(cfg.expansionID),
-                    UnifiedDataManager:FormatDateTime(lastRefresh)
-                ));
-            else
-                Logger:Debug("Data", "加载", string.format(
-                    "地图 ID=%d，版本=%s，无持久化记录",
-                    cfg.mapID,
-                    tostring(cfg.expansionID)
-                ));
-            end
-
             self.maps[#self.maps + 1] = mapData;
             self.mapsById[mapData.id] = mapData;
             self.mapsByMapID[mapData.mapID] = self.mapsByMapID[mapData.mapID] or {};
@@ -439,24 +439,23 @@ function Data:Initialize()
         return (displayOrder[a.expansionID] or math.huge) < (displayOrder[b.expansionID] or math.huge)
     end)
 
-    Logger:DebugLimited(
-        "data:init_complete",
-        "Data",
-        "初始化",
-        string.format("数据模块初始化完成：已加载 %d 个追踪地图，跳过 %d 个", loadedCount, skippedCount)
-    );
+    for index, mapData in ipairs(self.maps) do
+        if type(mapData) == "table" then
+            mapData.listIndex = index;
+        end
+    end
+
 end
 
 function Data:SavePersistentSnapshot(mapId, snapshot)
     local mapData = self:GetMap(mapId);
     if not mapData or not mapData.mapID or not mapData.expansionID then
-        Logger:DebugLimited("data_save:invalid", "Data", "保存", "保存失败：无效的地图ID " .. tostring(mapId));
         return false;
     end
 
-    local existingSnapshot = self:GetPersistentSnapshot(mapId) or {};
+    local existingRecord = self:GetPersistentRecord(mapId);
     local savedData = {
-        createTime = sanitizeTimestamp((snapshot and snapshot.createTime) or existingSnapshot.createTime) or mapData.createTime or time(),
+        createTime = sanitizeTimestamp((snapshot and snapshot.createTime) or (existingRecord and existingRecord.createTime)) or mapData.createTime or time(),
         lastRefresh = sanitizeTimestamp(snapshot and snapshot.lastRefresh) or nil,
         lastRefreshSource = type(snapshot and snapshot.lastRefreshSource) == "string" and snapshot.lastRefreshSource or nil,
         currentAirdropObjectGUID = type(snapshot and snapshot.currentAirdropObjectGUID) == "string" and snapshot.currentAirdropObjectGUID or nil,
@@ -472,18 +471,7 @@ function Data:SavePersistentSnapshot(mapId, snapshot)
         local mapStore = ensureExpansionMapData(expansionID);
         mapStore[mapData.mapID] = savedData;
     end
-
-    Logger:DebugLimited("data_save:map_" .. mapData.mapID, "Data", "保存",
-        string.format(
-            "已保存地图数据：资料片=%s，地图ID=%d（配置ID=%d），上次刷新=%s，objectGUID=%s",
-            tostring(expansionID),
-            mapData.mapID,
-            mapId,
-            savedData.lastRefresh and UnifiedDataManager:FormatDateTime(savedData.lastRefresh) or "无",
-            savedData.currentAirdropObjectGUID or "nil"
-        ));
-
-    if Logger and Logger.Debug then
+    if Logger and Logger.Error then
         local verifyData = PersistentMapStateStore and PersistentMapStateStore.GetSavedRecord
             and PersistentMapStateStore:GetSavedRecord(expansionID, mapData.mapID)
             or (ensureExpansionMapData(expansionID))[mapData.mapID];
@@ -501,26 +489,33 @@ function Data:SavePersistentSnapshot(mapId, snapshot)
     return true;
 end
 
-function Data:GetPersistentSnapshot(mapId)
+function Data:GetPersistentRecord(mapId)
     local mapData = self:GetMap(mapId);
     if not mapData then
         return nil;
     end
 
-    local savedData = PersistentMapStateStore and PersistentMapStateStore.GetSavedRecord
+    return PersistentMapStateStore and PersistentMapStateStore.GetSavedRecord
         and PersistentMapStateStore:GetSavedRecord(mapData.expansionID, mapData.mapID)
         or nil;
+end
 
-    return {
-        expansionID = mapData.expansionID,
-        mapID = mapData.mapID,
-        createTime = sanitizeTimestamp(savedData and savedData.createTime) or mapData.createTime or time(),
-        lastRefresh = sanitizeTimestamp(savedData and savedData.lastRefresh) or nil,
-        lastRefreshSource = type(savedData and savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil,
-        currentAirdropObjectGUID = type(savedData and savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil,
-        currentAirdropTimestamp = sanitizeTimestamp(savedData and savedData.currentAirdropTimestamp) or nil,
-        lastRefreshPhase = type(savedData and savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil,
-    };
+function Data:GetPersistentSnapshot(mapId)
+    local snapshot = {};
+    if not self:GetPersistentSnapshotInto(mapId, snapshot) then
+        return nil;
+    end
+    return snapshot;
+end
+
+function Data:GetPersistentSnapshotInto(mapId, outSnapshot)
+    local mapData = self:GetMap(mapId);
+    if not mapData or type(outSnapshot) ~= "table" then
+        return nil;
+    end
+
+    local savedData = self:GetPersistentRecord(mapId);
+    return PopulatePersistentSnapshot(outSnapshot, mapData, savedData);
 end
 
 function Data:PersistAirdropState(mapId, state)
@@ -529,18 +524,18 @@ function Data:PersistAirdropState(mapId, state)
         return false;
     end
 
-    local currentSnapshot = self:GetPersistentSnapshot(mapId) or {};
-    local lastRefreshPhase = currentSnapshot.lastRefreshPhase;
+    local currentRecord = self:GetPersistentRecord(mapId);
+    local lastRefreshPhase = currentRecord and currentRecord.lastRefreshPhase or nil;
     if state.lastRefreshPhase ~= nil or state.lastRefreshPhase == false then
         lastRefreshPhase = state.lastRefreshPhase or nil;
     end
 
     return self:SavePersistentSnapshot(mapId, {
-        createTime = currentSnapshot.createTime or mapData.createTime or time(),
-        lastRefresh = state.lastRefresh ~= nil and state.lastRefresh or currentSnapshot.lastRefresh,
-        lastRefreshSource = state.lastRefreshSource ~= nil and state.lastRefreshSource or currentSnapshot.lastRefreshSource,
-        currentAirdropObjectGUID = state.currentAirdropObjectGUID ~= nil and state.currentAirdropObjectGUID or currentSnapshot.currentAirdropObjectGUID,
-        currentAirdropTimestamp = state.currentAirdropTimestamp ~= nil and state.currentAirdropTimestamp or currentSnapshot.currentAirdropTimestamp,
+        createTime = (currentRecord and currentRecord.createTime) or mapData.createTime or time(),
+        lastRefresh = state.lastRefresh ~= nil and state.lastRefresh or (currentRecord and currentRecord.lastRefresh),
+        lastRefreshSource = state.lastRefreshSource ~= nil and state.lastRefreshSource or (currentRecord and currentRecord.lastRefreshSource),
+        currentAirdropObjectGUID = state.currentAirdropObjectGUID ~= nil and state.currentAirdropObjectGUID or (currentRecord and currentRecord.currentAirdropObjectGUID),
+        currentAirdropTimestamp = state.currentAirdropTimestamp ~= nil and state.currentAirdropTimestamp or (currentRecord and currentRecord.currentAirdropTimestamp),
         lastRefreshPhase = lastRefreshPhase,
     });
 end
@@ -551,32 +546,6 @@ end
 
 function Data:GetMap(mapId)
     return getStableMap(mapId);
-end
-
-function Data:ClearAllData()
-    if not self.maps then return false end
-
-    ensureDB();
-    if PersistentMapStateStore and PersistentMapStateStore.ClearAll then
-        PersistentMapStateStore:ClearAll();
-    elseif CRATETRACKERZK_DB.expansionData then
-        for _, expansionBucket in pairs(CRATETRACKERZK_DB.expansionData) do
-            if type(expansionBucket) == "table" then
-                expansionBucket.mapData = {};
-            end
-        end
-    end
-
-    if MapTracker then
-        MapTracker.lastDetectedMapId = nil;
-        MapTracker.lastDetectedGameMapID = nil;
-    end
-
-    if UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
-        UIRefreshCoordinator:RefreshMainTable();
-    end
-
-    return true;
 end
 
 function Data:GetMapDisplayName(mapData)

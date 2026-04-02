@@ -256,6 +256,7 @@ function MainFrame:CreateResizeHandle(frame)
         return MainFrameResizeController:CreateResizeHandle(frame, {
             frameCfg = FRAME_CFG,
             resizeLayoutNotifyInterval = RESIZE_LAYOUT_NOTIFY_INTERVAL,
+            resizeReleaseGuardInterval = math.max(RESIZE_LAYOUT_NOTIFY_INTERVAL or 0.016, 0.05),
             getEffectiveMinHeight = GetEffectiveMinHeight,
             getEffectiveMaxHeight = GetEffectiveMaxHeight,
             normalizeSize = function(targetFrame)

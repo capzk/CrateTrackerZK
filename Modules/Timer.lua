@@ -39,6 +39,8 @@ TimerManager.detectionSources = {
 function TimerManager:Initialize()
     self.isInitialized = true;
     self.detectionState = self.detectionState or {};
+    self.persistentStateBuffer = self.persistentStateBuffer or {};
+    self.iconDetectionBuffer = self.iconDetectionBuffer or {};
     self.CONFIRM_TIME = 2;          -- 初筛防抖
     self.MIN_STABLE_TIME = 5;       -- 最短稳定存活时间（秒），达标后才广播/持久化
     
@@ -46,16 +48,16 @@ function TimerManager:Initialize()
     if UnifiedDataManager and UnifiedDataManager.Initialize then
         UnifiedDataManager:Initialize();
     end
-    
-    Logger:DebugLimited("timer:init_complete", "Timer", "初始化", "计时器管理器已初始化");
 end
 
-local function SafeDebugLimited(messageKey, ...)
-    Logger:DebugLimited(messageKey, "Timer", "调试", ...);
+local function AcquirePersistentStateBuffer(owner)
+    owner.persistentStateBuffer = owner.persistentStateBuffer or {};
+    return owner.persistentStateBuffer;
 end
 
-local function DT(key)
-    return Logger:GetDebugText(key);
+local function AcquireIconDetectionBuffer(owner)
+    owner.iconDetectionBuffer = owner.iconDetectionBuffer or {};
+    return owner.iconDetectionBuffer;
 end
 
 local function getCurrentTimestamp()
@@ -91,15 +93,12 @@ local function ResetNotificationStateForNewEvent(mapDisplayName, currentTime)
         if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
             Notification.playerSentNotification[mapDisplayName] = nil;
         end
-    elseif isRecentShout then
-        Logger:Debug("Timer", "去重", string.format("检测到新objectGUID但最近喊话触发，保留通知状态：地图=%s，间隔=%ds",
-            mapDisplayName, currentTime - (lastShoutTime or currentTime)));
     end
 end
 
 function TimerManager:GetSourceDisplayName(source)
     local displayNames = {
-        [self.detectionSources.MAP_ICON] = DT("DebugDetectionSourceMapIcon")
+        [self.detectionSources.MAP_ICON] = "地图图标检测"
     };
     
     return displayNames[source] or "Unknown";
@@ -132,18 +131,14 @@ function TimerManager:DetectMapIcons(currentMapID)
     local playerMapID = currentMapID;
     if not playerMapID then
         if not C_Map or not C_Map.GetBestMapForUnit then
-            SafeDebugLimited("detection_loop:api_unavailable", DT("DebugCMapAPINotAvailable"));
             return false;
         end
         playerMapID = C_Map.GetBestMapForUnit("player");
     end
     
     if not playerMapID then
-        SafeDebugLimited("detection_loop:no_map_id", DT("DebugCannotGetMapID"));
         return false;
     end
-    
-    SafeDebugLimited("detection_loop:start", "开始检测循环", "当前地图ID=" .. playerMapID);
     if not MapTracker or not MapTracker.GetTargetMapData then
         Logger:Error("Timer", "错误", "MapTracker module not loaded");
         return false;
@@ -151,20 +146,24 @@ function TimerManager:DetectMapIcons(currentMapID)
     
     local targetMapData = MapTracker:GetTargetMapData(playerMapID);
     if not targetMapData then
-        SafeDebugLimited("detection_loop:map_not_in_list", "当前地图不在列表中，跳过检测", "地图ID=" .. playerMapID);
         return false;
     end
 
     -- 如果地图被隐藏，暂停该地图的空投检测
     if Data and Data.IsMapHidden and Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID) then
-        SafeDebugLimited("detection_loop:hidden_map_" .. tostring(targetMapData.mapID), "地图被隐藏，跳过空投检测", Data:GetMapDisplayName(targetMapData));
         -- 清除该地图的检测状态，避免残留
         self.detectionState[targetMapData.id] = nil;
         return false;
     end
+
+    local mapDisplayName = Data:GetMapDisplayName(targetMapData);
     
     local currentTime = getCurrentTimestamp();
-    MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
+    if MapTracker.UpdateCurrentMapState then
+        MapTracker:UpdateCurrentMapState(playerMapID, targetMapData, currentTime);
+    else
+        MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
+    end
     
     if not IconDetector or not IconDetector.DetectIcon then
         Logger:Error("Timer", "错误", "IconDetector module not loaded");
@@ -172,21 +171,17 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
     
     -- 检测图标
-    local iconResult = IconDetector:DetectIcon(playerMapID);
+    local iconResult = IconDetector.DetectIconInto
+        and IconDetector:DetectIconInto(playerMapID, AcquireIconDetectionBuffer(self))
+        or IconDetector:DetectIcon(playerMapID);
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
         if self.detectionState[targetMapData.id] then
             local detectionState = self.detectionState[targetMapData.id];
             local timeSinceFirst = currentTime - (detectionState.firstDetectedTime or currentTime);
             if timeSinceFirst < self.CONFIRM_TIME then
-                -- 2秒确认期内消失
-                Logger:Debug("Timer", "状态", string.format("图标在2秒确认期内消失，清除检测状态：地图=%s", 
-                    Data:GetMapDisplayName(targetMapData)));
                 self.detectionState[targetMapData.id] = nil;
             else
-                -- 已通过2秒确认
-                Logger:Debug("Timer", "状态", string.format("图标消失（已通过2秒确认），清除检测状态：地图=%s", 
-                    Data:GetMapDisplayName(targetMapData)));
                 self.detectionState[targetMapData.id] = nil;
             end
         end
@@ -198,20 +193,20 @@ function TimerManager:DetectMapIcons(currentMapID)
     -- 验证 objectGUID 格式
     if not objectGUID or type(objectGUID) ~= "string" then
         Logger:Error("Timer", "错误", string.format("检测到无效的 objectGUID：地图=%s，objectGUID=%s", 
-            Data:GetMapDisplayName(targetMapData), tostring(objectGUID)));
+            mapDisplayName, tostring(objectGUID)));
         return false;
     end
     
-    local guidParts = {strsplit("-", objectGUID)};
-    if #guidParts < 7 then
+    local guidPartCount = select("#", strsplit("-", objectGUID));
+    if guidPartCount < 7 then
         Logger:Error("Timer", "错误", string.format("检测到格式不正确的 objectGUID：地图=%s，objectGUID=%s（只有%d部分，需要至少7部分）", 
-            Data:GetMapDisplayName(targetMapData), objectGUID, #guidParts));
+            mapDisplayName, objectGUID, guidPartCount));
         return false;
     end
     
     -- objectGUID 比对：相同则跳过（同一事件）
-    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropState
-        and UnifiedDataManager:GetPersistentAirdropState(targetMapData.id)
+    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
+        and UnifiedDataManager:GetPersistentAirdropStateInto(targetMapData.id, AcquirePersistentStateBuffer(self))
         or nil;
     local persistentObjectGUID = persistentState and persistentState.currentAirdropObjectGUID or nil;
     local persistentTimestamp = persistentState and persistentState.currentAirdropTimestamp or nil;
@@ -223,14 +218,9 @@ function TimerManager:DetectMapIcons(currentMapID)
         or (persistentObjectGUID and persistentObjectGUID ~= objectGUID);
 
     if hasSameObjectGUID then
-        Logger:DebugLimited("detection:same_event_" .. targetMapData.id, "Timer", "检测", 
-            string.format("检测到相同 objectGUID（同一事件持续中）：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，空投开始时间=%s", 
-                Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
-                persistentTimestamp and UnifiedDataManager:FormatDateTime(persistentTimestamp) or "无"));
         return true;
     elseif hasDifferentObjectGUID then
         -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
-        local mapDisplayName = Data:GetMapDisplayName(targetMapData);
         ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
     end
     
@@ -244,8 +234,6 @@ function TimerManager:DetectMapIcons(currentMapID)
                 firstDetectedTime = currentTime,
                 detectedObjectGUID = objectGUID
             };
-        Logger:Debug("Timer", "检测", string.format("首次检测到空投：地图=%s，objectGUID=%s", 
-            Data:GetMapDisplayName(targetMapData), objectGUID));
         return true;
     end
     
@@ -253,11 +241,7 @@ function TimerManager:DetectMapIcons(currentMapID)
         and AirdropEventService:HasDifferentObjectGUID(detectionState.detectedObjectGUID, objectGUID))
         or (detectionState.detectedObjectGUID ~= objectGUID) then
         -- 新事件：清除通知记录
-        local mapDisplayName = Data:GetMapDisplayName(targetMapData);
         ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
-        
-        Logger:Debug("Timer", "检测", string.format("检测到新事件（objectGUID不同）：地图=%s，旧objectGUID=%s，新objectGUID=%s", 
-            Data:GetMapDisplayName(targetMapData), detectionState.detectedObjectGUID, objectGUID));
         self.detectionState[targetMapData.id] = AirdropEventService
             and AirdropEventService.CreateDetectionState
             and AirdropEventService:CreateDetectionState(currentTime, objectGUID)
@@ -269,27 +253,10 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
     local timeSinceFirstDetection = currentTime - detectionState.firstDetectedTime;
     if timeSinceFirstDetection >= self.CONFIRM_TIME then
-        -- 2秒确认后重新检测
-        local currentIconResult = IconDetector:DetectIcon(playerMapID);
-        if not currentIconResult or not currentIconResult.detected or currentIconResult.objectGUID ~= objectGUID then
-            Logger:Debug("Timer", "状态", string.format("2秒确认后重新检测，图标已消失或objectGUID不同，跳过处理：地图=%s", 
-                Data:GetMapDisplayName(targetMapData)));
-            self.detectionState[targetMapData.id] = nil;
-            return false;
-        end
-
         -- 等待达到最短稳定时间后再广播/持久化，减少误报
         if timeSinceFirstDetection < self.MIN_STABLE_TIME then
-            Logger:DebugLimited("detection:stabilizing_" .. targetMapData.id, "Timer", "检测", 
-                string.format("空投检测等待稳定：地图=%s，已持续%d秒，目标GUID=%s", 
-                    Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection, objectGUID));
             return true;
         end
-        
-        Logger:Debug("Timer", "处理", string.format("确认空投事件：地图=%s，首次检测时间=%s，objectGUID=%s", 
-            Data:GetMapDisplayName(targetMapData),
-            UnifiedDataManager:FormatDateTime(detectionState.firstDetectedTime),
-            objectGUID));
         
         -- 选择事件时间：若存在未过期的团队消息临时时间且与检测时间接近，则优先采用该时间
         local eventTimestamp, usedTemporary = UnifiedDataManager:SelectEventTimestamp(targetMapData.id, detectionState.firstDetectedTime);
@@ -298,20 +265,12 @@ function TimerManager:DetectMapIcons(currentMapID)
         -- 首次检测：根据事件时间决定是否发送团队消息
         if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
             Notification:NotifyAirdropDetected(
-                Data:GetMapDisplayName(targetMapData), 
+                mapDisplayName,
                 self.detectionSources.MAP_ICON
             );
-        else
-            Logger:Debug("Timer", "通知", string.format("超过团队消息窗口或未配置通知：地图=%s，事件时间=%s，当前时间=%s", 
-                Data:GetMapDisplayName(targetMapData),
-                UnifiedDataManager:FormatDateTime(eventTimestamp),
-                UnifiedDataManager:FormatDateTime(currentTime)));
         end
         
-        local phaseId = nil;
-        if IconDetector and IconDetector.ExtractPhaseID and objectGUID then
-            phaseId = IconDetector.ExtractPhaseID(objectGUID);
-        end
+        local phaseId = iconResult and iconResult.phaseID or nil;
 
         local success = UnifiedDataManager and UnifiedDataManager.PersistConfirmedAirdropState
             and UnifiedDataManager:PersistConfirmedAirdropState(targetMapData.id, {
@@ -324,11 +283,6 @@ function TimerManager:DetectMapIcons(currentMapID)
             });
         
         if success then
-            Logger:Debug("Timer", "保存", string.format("准备保存空投信息：地图=%s（地图ID=%d，配置ID=%d），objectGUID=%s，timestamp=%s（%s）",
-                Data:GetMapDisplayName(targetMapData), targetMapData.mapID, targetMapData.id, objectGUID,
-                UnifiedDataManager:FormatDateTime(eventTimestamp),
-                usedTemporary and "来自团队消息" or "本地检测"));
-
             if Notification and Notification.SendAirdropSync then
                 Notification:SendAirdropSync({
                     syncType = "CONFIRMED",
@@ -338,37 +292,17 @@ function TimerManager:DetectMapIcons(currentMapID)
                     objectGUID = objectGUID,
                 });
             end
-
-            if phaseId then
-                Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s",
-                    Data:GetMapDisplayName(targetMapData), phaseId));
-            else
-                Logger:Debug("Timer", "保存", string.format("无法从objectGUID提取位面ID：地图=%s，objectGUID=%s",
-                    Data:GetMapDisplayName(targetMapData), objectGUID));
-            end
             
             -- 清除临时时间，避免影响后续事件
             UnifiedDataManager:ClearTemporaryTime(targetMapData.id);
             
             -- 清除检测状态
             self.detectionState[targetMapData.id] = nil;
-            
-            local sourceText = self:GetSourceDisplayName(self.detectionSources.MAP_ICON);
-            Logger:Debug("Timer", "更新", string.format("空投事件已处理：地图=%s，来源=%s", 
-                Data:GetMapDisplayName(targetMapData), sourceText));
-            
-            Logger:Debug("Timer", "状态", string.format("空投事件已处理：地图=%s，objectGUID=%s", 
-                Data:GetMapDisplayName(targetMapData), objectGUID));
-            
+
             self:UpdateUI();
         else
             Logger:Error("Timer", "错误", string.format("设置持久化时间失败：地图ID=%d", targetMapData.id));
         end
-    else
-        -- 2秒确认期内
-        Logger:DebugLimited("detection:confirming_" .. targetMapData.id, "Timer", "检测", 
-            string.format("等待确认中：地图=%s，已等待%d秒，objectGUID=%s", 
-                Data:GetMapDisplayName(targetMapData), timeSinceFirstDetection, objectGUID));
     end
     
     return true;

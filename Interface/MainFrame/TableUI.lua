@@ -18,55 +18,17 @@ local FIXED_ROW_HEIGHT = 29
 local BASE_MIN_FRAME_WIDTH = 100
 local INNER_TABLE_SIDE_MARGIN = 4
 local MAP_COL_COMPACT_MIN_CHARS = 1
-local RESIZE_DEBUG_ENABLED = false
 
 local function GetConfig()
     return UIConfig
 end
 
-local function EmitResizeDebug(frame, stage, payload)
-    if not RESIZE_DEBUG_ENABLED then
-        return
-    end
-    if not frame then
-        return
-    end
-    local signature = table.concat({
-        tostring(stage or ""),
-        tostring(payload and payload.frameWidth or ""),
-        tostring(payload and payload.minWidth or ""),
-        tostring(payload and payload.maxWidth or ""),
-        tostring(payload and payload.desiredWidth or ""),
-        tostring(payload and payload.activeTableWidth or ""),
-        tostring(payload and payload.defaultTableWidth or ""),
-        tostring(payload and payload.userControlled or ""),
-        tostring(payload and payload.showHeader or ""),
-        tostring(payload and payload.isSizing or ""),
-    }, "|")
-    if frame.__ctkLastResizeDebugSignature == signature then
-        return
-    end
-    frame.__ctkLastResizeDebugSignature = signature
+local function EmitResizeStateHook(frame, stage, payload)
+    return
+end
 
-    local msg = string.format(
-        "CTK Resize[%s] cur=%s min=%s max=%s desired=%s active=%s default=%s user=%s header=%s sizing=%s",
-        tostring(stage or "state"),
-        tostring(payload and payload.frameWidth or "nil"),
-        tostring(payload and payload.minWidth or "nil"),
-        tostring(payload and payload.maxWidth or "nil"),
-        tostring(payload and payload.desiredWidth or "nil"),
-        tostring(payload and payload.activeTableWidth or "nil"),
-        tostring(payload and payload.defaultTableWidth or "nil"),
-        tostring(payload and payload.userControlled or "nil"),
-        tostring(payload and payload.showHeader or "nil"),
-        tostring(payload and payload.isSizing or "nil")
-    )
-
-    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-        DEFAULT_CHAT_FRAME:AddMessage(msg)
-    elseif print then
-        print(msg)
-    end
+local function IsResizeStateHookEnabled()
+    return false
 end
 
 local function IsAddonEnabled()
@@ -233,25 +195,11 @@ local function ScaleWidths(baseWidths, targetTotal)
     return baseWidths
 end
 
-local function GetMaxWidth(texts)
-    if TableUILayoutEngine and TableUILayoutEngine.GetMaxWidth then
-        return TableUILayoutEngine:GetMaxWidth(texts)
-    end
-    return 0
-end
-
 local function FormatPhaseDisplayText(phaseValue)
     if TableUILayoutEngine and TableUILayoutEngine.FormatPhaseDisplayText then
         return TableUILayoutEngine:FormatPhaseDisplayText(phaseValue)
     end
     return nil
-end
-
-local function BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
-    if TableUILayoutEngine and TableUILayoutEngine.BuildPhaseWidthSamples then
-        return TableUILayoutEngine:BuildPhaseWidthSamples(rows, fullMaxLength, shortMaxLength)
-    end
-    return {}, {}
 end
 
 local function DistributeWidths(desired, minWidths, maxWidths, total)
@@ -268,11 +216,18 @@ local function SumColumnWidths(widths)
     return 1
 end
 
-local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile)
+local function CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile, outWidths, columnMetrics)
     if TableUILayoutEngine and TableUILayoutEngine.CalculateColumnWidths then
-        return TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile)
+        return TableUILayoutEngine:CalculateColumnWidths(rows, headerLabels, totalWidth, scale, profile, outWidths, columnMetrics)
     end
     return {0, 0, 0, 0}
+end
+
+local function CollectColumnMetrics(rows, headerLabels, outMetrics)
+    if TableUILayoutEngine and TableUILayoutEngine.CollectColumnMetrics then
+        return TableUILayoutEngine:CollectColumnMetrics(rows, headerLabels, outMetrics)
+    end
+    return outMetrics or {}
 end
 
 local function CalculateTableLayout(frame, profile, layoutScale, chromeMetrics, verticalMetrics)
@@ -303,17 +258,28 @@ local function BuildVerticalMetrics(frame, rowCount, rowHeight, rowGap, tablePar
     return { contentHeight = 0, fullRowsHeight = 0, headerAlphaByHeight = 0, visibleRowCount = 0, fullVisibleRowCount = 0, partialRowRatio = 0, partialRowAlpha = 1, rowHeight = FIXED_ROW_HEIGHT, rowGap = 2, renderedTableHeight = 0, minTableHeight = 0, maxTableHeight = 0, shouldAutoCompactSort = false }
 end
 
+local function ClearArray(buffer)
+    if type(buffer) ~= "table" then
+        return
+    end
+    for index = #buffer, 1, -1 do
+        buffer[index] = nil
+    end
+end
+
+local function ClearMap(buffer)
+    if type(buffer) ~= "table" then
+        return
+    end
+    for key in pairs(buffer) do
+        buffer[key] = nil
+    end
+end
+
 local function HideVisibleFrames()
     if TableUIRenderer and TableUIRenderer.HideVisibleFrames then
         return TableUIRenderer:HideVisibleFrames()
     end
-end
-
-local function AcquireRowFrame(parent, index)
-    if TableUIRenderer and TableUIRenderer.AcquireRowFrame then
-        return TableUIRenderer:AcquireRowFrame(parent, index)
-    end
-    return nil
 end
 
 function TableUI:RebuildUI(frame, headerLabels)
@@ -334,12 +300,14 @@ function TableUI:RebuildUI(frame, headerLabels)
             GetDefaultFrameHeightForRowCount = GetDefaultFrameHeightForRowCount,
             BuildVerticalMetrics = BuildVerticalMetrics,
             CalculateTableLayout = CalculateTableLayout,
+            CollectColumnMetrics = CollectColumnMetrics,
             CalculateColumnWidths = CalculateColumnWidths,
             SumColumnWidths = SumColumnWidths,
             GetFrameWidth = GetFrameWidth,
             GetFrameHeight = GetFrameHeight,
             Clamp = Clamp,
-            EmitResizeDebug = EmitResizeDebug,
+            IsResizeStateHookEnabled = IsResizeStateHookEnabled,
+            EmitResizeStateHook = EmitResizeStateHook,
             HideVisibleFrames = HideVisibleFrames,
             ClearCountdownRegistration = function()
                 if TableUIRenderer and TableUIRenderer.ClearCountdownRegistration then
@@ -374,6 +342,37 @@ function TableUI:CreateDataRow(parent, rowState, displayIndex, colWidths, layout
     if TableUIRenderer and TableUIRenderer.CreateDataRow then
         return TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths, layout)
     end
+end
+
+function TableUI:RefreshVisibleRow(rowInfo)
+    if TableUIRenderer and TableUIRenderer.RefreshVisibleRow then
+        return TableUIRenderer:RefreshVisibleRow(rowInfo)
+    end
+    return false
+end
+
+function TableUI:ReleaseHiddenState(frame)
+    if TableUIRenderer and TableUIRenderer.ReleaseHiddenState then
+        TableUIRenderer:ReleaseHiddenState()
+    else
+        if TableUIRenderer and TableUIRenderer.ClearCountdownRegistration then
+            TableUIRenderer:ClearCountdownRegistration()
+        end
+        if TableUIRenderer and TableUIRenderer.HideVisibleFrames then
+            TableUIRenderer:HideVisibleFrames()
+        end
+    end
+
+    if not frame then
+        return
+    end
+
+    ClearArray(frame.__ctkVisibleRowsBuffer)
+    ClearArray(frame.__ctkColumnWidthsBuffer)
+    ClearArray(frame.__ctkDefaultColumnWidthsBuffer)
+    ClearMap(frame.__ctkDefaultProfileBuffer)
+    ClearMap(frame.__ctkColumnMetricsBuffer)
+    ClearMap(frame.__ctkResizeStatePayload)
 end
 
 function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layout)

@@ -5,44 +5,11 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local Analytics = BuildEnv("CrateTrackerZKAnalytics")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
+local RuntimeResetManager = BuildEnv("RuntimeResetManager")
 
 local function ResetRuntimeState()
     if RuntimeResetManager and RuntimeResetManager.ResetSharedRuntimeState then
         RuntimeResetManager:ResetSharedRuntimeState()
-        return
-    end
-
-    if TimerManager then
-        TimerManager.detectionState = {}
-        Logger:Debug("Core", "重置", "已清除检测状态（2秒确认期的临时状态）")
-    end
-    if MapTracker then
-        MapTracker:Initialize()
-        Logger:Debug("Core", "重置", "已重置地图追踪器状态")
-    end
-    if Phase and Phase.Reset then
-        Phase:Reset()
-    end
-    if Area then
-        Area.lastAreaValidState = nil
-        Area.lastAccessMode = nil
-        Area.detectionPaused = false
-    end
-    if Notification then
-        Notification.firstNotificationTime = {}
-        Notification.playerSentNotification = {}
-    end
-    if CrateTrackerZK.phaseTimerTicker then
-        CrateTrackerZK.phaseTimerTicker:Cancel()
-        CrateTrackerZK.phaseTimerTicker = nil
-    end
-    CrateTrackerZK.phaseTimerPaused = false
-    CrateTrackerZK.phaseResumePending = false
-    if Logger and Logger.ClearMessageCache then
-        Logger:ClearMessageCache()
-    end
-    if MainPanel then
-        MainPanel.lastNotifyClickTime = {}
     end
 end
 
@@ -61,8 +28,6 @@ local function EnsureSavedVariables()
 end
 
 function AddonLifecycle:OnLogin()
-    CoreShared:DebugPrint("[核心] 玩家已登录，开始初始化")
-
     EnsureSavedVariables()
 
     if Localization and Localization.Initialize and not Localization.isInitialized then
@@ -119,10 +84,9 @@ function AddonLifecycle:OnLogin()
         TickerController:StartMapIconDetection(CrateTrackerZK, 1)
         TickerController:StartCleanupTicker(CrateTrackerZK)
         TickerController:StartAutoTeamReportTicker(CrateTrackerZK)
-        TickerController:StartPhaseTicker(CrateTrackerZK)
+        TickerController:RefreshPhaseTicker(CrateTrackerZK)
     end
 
-    CoreShared:DebugPrint("[核心] 初始化完成")
 end
 
 function AddonLifecycle:Reinitialize()

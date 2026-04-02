@@ -23,10 +23,6 @@ function Localization:Initialize()
     self.missingLogEnabled = false;
     self.isInitialized = true;
     
-    if Logger and Logger:IsDebugEnabled() then
-        self.missingLogEnabled = Logger:IsDebugEnabled();
-    end
-    
     C_Timer.After(0.1, function()
         self:ValidateCompleteness();
         self:ReportInitializationStatus();
@@ -108,9 +104,6 @@ function Localization:ReportInitializationStatus()
     if self.suppressWarnings then
         return;
     end
-    if not (Logger and Logger:IsDebugEnabled()) then
-        return;
-    end
     local LocaleManager = BuildEnv("LocaleManager");
     if not LocaleManager or not LocaleManager.GetLoadStatus then
         return;
@@ -134,13 +127,6 @@ function Localization:ReportInitializationStatus()
     local missingKeyCount = #(missing.keys or {});
     local missingCount = missingKeyCount;
     
-    if missingCount > 0 then
-        Logger:Debug("Localization", "本地化", string.format(
-            "Missing locale data detected: keys=%d, total=%d",
-            missingKeyCount,
-            missingCount
-        ));
-    end
 end
 
 function Localization:GetMapName(mapID)

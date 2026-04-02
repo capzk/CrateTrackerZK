@@ -18,12 +18,21 @@ if not Utils then
     Utils = BuildEnv('Utils')
 end
 
-local function DT(key)
-    return Logger:GetDebugText(key);
-end
+local function ApplyMapChange(self, currentMapID, targetMapData)
+    local oldMapId = self.lastDetectedMapId;
+    local oldGameMapID = self.lastDetectedGameMapID;
+    if not targetMapData or not currentMapID then
+        return false, false, false, oldMapId, oldGameMapID;
+    end
 
-local function IsDebugEnabled()
-    return Logger and Logger.debugEnabled == true;
+    local gameMapChanged = (oldGameMapID and oldGameMapID ~= currentMapID);
+    local configMapChanged = (oldMapId and oldMapId ~= targetMapData.id);
+    local configIdSame = (oldMapId and oldMapId == targetMapData.id);
+
+    self.lastDetectedMapId = targetMapData.id;
+    self.lastDetectedGameMapID = currentMapID;
+
+    return gameMapChanged, configMapChanged, configIdSame, oldMapId, oldGameMapID;
 end
 
 local function EnsureMapLookup(self, validMaps)
@@ -79,21 +88,15 @@ function MapTracker:GetTargetMapData(currentMapID)
     end
     
     if not C_Map or not C_Map.GetMapInfo then
-        Logger:DebugLimited("map_check:api_unavailable", "MapTracker", "匹配", "C_Map.GetMapInfo API 不可用");
         return nil;
     end
 
     if ExpansionConfig and ExpansionConfig.IsMainCityMap and ExpansionConfig:IsMainCityMap(currentMapID) then
-        if IsDebugEnabled() then
-            Logger:DebugLimited("map_check:main_city_" .. tostring(currentMapID), "MapTracker", "匹配", 
-                string.format("主城地图已排除，跳过匹配：地图ID=%d", currentMapID));
-        end
         return nil;
     end
     
     local validMaps = Data:GetAllMaps();
     if not validMaps or #validMaps == 0 then
-        Logger:DebugLimited("map_check:empty_list", "MapTracker", "匹配", DT("DebugMapListEmpty"));
         return nil;
     end
 
@@ -109,7 +112,6 @@ function MapTracker:GetTargetMapData(currentMapID)
 
     local mapInfo = GetMapInfoCached(self, currentMapID);
     if not mapInfo then
-        Logger:DebugLimited("map_check:no_map_info", "MapTracker", "匹配", DT("DebugCannotGetMapName2"));
         self.resolvedMapCache[currentMapID] = {
             version = self.mapLookupVersion,
             target = false
@@ -130,80 +132,29 @@ function MapTracker:GetTargetMapData(currentMapID)
     };
 
     if targetMapData and (not self.lastMatchedMapID or self.lastMatchedMapID ~= currentMapID) then
-        if IsDebugEnabled() then
-            if isParentMatch then
-                local currentMapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
-                local parentMapDisplayName = Localization and Localization:GetMapName(mapInfo.parentMapID) or tostring(mapInfo.parentMapID);
-                Logger:DebugLimited("map_check:parent_match_" .. tostring(currentMapID), "MapTracker", "地图", 
-                    string.format("父地图匹配成功：当前地图=%s（ID=%d），父地图=%s（ID=%d，配置ID=%d）", 
-                    currentMapDisplayName, currentMapID, parentMapDisplayName, mapInfo.parentMapID, targetMapData.id));
-            else
-                local mapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
-                Logger:DebugLimited("map_check:match_success_" .. tostring(currentMapID), "MapTracker", "地图", 
-                    string.format("地图匹配成功：%s（地图ID=%d，配置ID=%d）", 
-                    mapDisplayName, currentMapID, targetMapData.id));
-            end
-        end
         self.lastMatchedMapID = currentMapID;
-    end
-
-    if not targetMapData then
-        if IsDebugEnabled() then
-            local mapDisplayName = Localization and Localization:GetMapName(currentMapID) or (mapInfo.name or tostring(currentMapID));
-            local parentMapDisplayName = (mapInfo.parentMapID and Localization and Localization:GetMapName(mapInfo.parentMapID)) or (mapInfo.parentMapID and tostring(mapInfo.parentMapID)) or DT("DebugNoRecord");
-            Logger:DebugLimited("map_check:not_in_list_" .. tostring(currentMapID), "MapTracker", "匹配", 
-                string.format(DT("DebugMapNotInList"), mapDisplayName, parentMapDisplayName, currentMapID));
-        end
     end
     
     return targetMapData;
 end
 
 function MapTracker:OnMapChanged(currentMapID, targetMapData, currentTime)
-    local changeInfo = {
-        gameMapChanged = false,
-        configMapChanged = false,
-        configIdSame = false,
-        oldMapId = self.lastDetectedMapId,
-        oldGameMapID = self.lastDetectedGameMapID
+    local gameMapChanged, configMapChanged, configIdSame, oldMapId, oldGameMapID =
+        ApplyMapChange(self, currentMapID, targetMapData);
+
+    return {
+        gameMapChanged = gameMapChanged,
+        configMapChanged = configMapChanged,
+        configIdSame = configIdSame,
+        oldMapId = oldMapId,
+        oldGameMapID = oldGameMapID
     };
-    
-    if not targetMapData or not currentMapID then
-        return changeInfo;
-    end
-    
-    changeInfo.gameMapChanged = (self.lastDetectedGameMapID and self.lastDetectedGameMapID ~= currentMapID);
-    changeInfo.configMapChanged = (self.lastDetectedMapId and self.lastDetectedMapId ~= targetMapData.id);
-    changeInfo.configIdSame = (self.lastDetectedMapId and self.lastDetectedMapId == targetMapData.id);
-    
-    local mapInfo = C_Map and C_Map.GetMapInfo and GetMapInfoCached(self, currentMapID);
-    if changeInfo.gameMapChanged then
-        if IsDebugEnabled() then
-            local oldMapName = self.lastDetectedGameMapID and (Localization and Localization:GetMapName(self.lastDetectedGameMapID) or tostring(self.lastDetectedGameMapID)) or "未知";
-            local newMapName = Localization and Localization:GetMapName(currentMapID) or (mapInfo and mapInfo.name) or tostring(currentMapID);
-            Logger:Debug("MapTracker", "地图", string.format("游戏地图变化：%s（ID=%d） -> %s（ID=%d）", 
-                oldMapName, self.lastDetectedGameMapID or 0, newMapName, currentMapID));
-        end
-    end
-    
-    if changeInfo.configMapChanged then
-        if IsDebugEnabled() then
-            local oldMapData = self.lastDetectedMapId and Data:GetMap(self.lastDetectedMapId);
-            local oldMapName = oldMapData and Data:GetMapDisplayName(oldMapData) or tostring(self.lastDetectedMapId);
-            local newMapName = Data:GetMapDisplayName(targetMapData);
-            Logger:Debug("MapTracker", "地图", string.format("配置地图变化：%s（配置ID=%d） -> %s（配置ID=%d）", 
-                oldMapName, self.lastDetectedMapId or 0, newMapName, targetMapData.id));
-        end
-    end
-    
-    
-    self.lastDetectedMapId = targetMapData.id;
-    self.lastDetectedGameMapID = currentMapID;
-    
-    return changeInfo;
+end
+
+function MapTracker:UpdateCurrentMapState(currentMapID, targetMapData, currentTime)
+    ApplyMapChange(self, currentMapID, targetMapData);
 end
 
 MapTracker:Initialize();
 
 return MapTracker;
-

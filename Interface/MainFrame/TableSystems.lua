@@ -15,9 +15,36 @@ local lastSortTime = nil
 local rebuildCallback = nil
 local compactAutoSortEnabled = false
 local compactAutoSortPreviousState = nil
+local sortValidationRemainingCache = {}
 
 local function GetSortingConfig()
     return UIConfig
+end
+
+local function ClearArray(buffer)
+    for index = #buffer, 1, -1 do
+        buffer[index] = nil
+    end
+    return buffer
+end
+
+local function ClearMap(buffer)
+    for key in pairs(buffer) do
+        buffer[key] = nil
+    end
+    return buffer
+end
+
+local function CopyRows(source, target)
+    ClearArray(target)
+    if not source then
+        return target
+    end
+
+    for index = 1, #source do
+        target[index] = source[index]
+    end
+    return target
 end
 
 function SortingSystem:SetRebuildCallback(callback)
@@ -91,35 +118,78 @@ end
 
 function SortingSystem:SetOriginalRows(rows)
     originalRows = rows or {}
-    currentRows = {}
-    for _, rowInfo in ipairs(originalRows) do
-        table.insert(currentRows, rowInfo)
-    end
+    CopyRows(originalRows, currentRows)
 end
 
 function SortingSystem:GetCurrentRows()
     return currentRows
 end
 
+local function FindRowById(buffer, rowId)
+    if rowId == nil then
+        return nil, nil
+    end
+
+    for index = 1, #buffer do
+        local rowInfo = buffer[index]
+        if rowInfo and rowInfo.rowId == rowId then
+            return rowInfo, index
+        end
+    end
+
+    return nil, nil
+end
+
+function SortingSystem:GetRowData(rowId)
+    local rowInfo = FindRowById(currentRows, rowId)
+    if rowInfo then
+        return rowInfo
+    end
+
+    rowInfo = FindRowById(originalRows, rowId)
+    return rowInfo
+end
+
+function SortingSystem:ReplaceRow(rowId, rowInfo)
+    if rowId == nil or not rowInfo then
+        return false
+    end
+
+    local replaced = false
+    local _, index = FindRowById(originalRows, rowId)
+    if index then
+        originalRows[index] = rowInfo
+        replaced = true
+    end
+
+    _, index = FindRowById(currentRows, rowId)
+    if index then
+        currentRows[index] = rowInfo
+        replaced = true
+    end
+
+    return replaced
+end
+
 function SortingSystem:SortRows()
     if sortState == "default" then
-        local normalRows = {}
-        local hiddenRows = {}
+        ClearArray(currentRows)
+        local insertIndex = 0
 
-        for _, rowInfo in ipairs(originalRows) do
-            if rowInfo.isHidden then
-                table.insert(hiddenRows, rowInfo)
-            else
-                table.insert(normalRows, rowInfo)
+        for rowIndex = 1, #originalRows do
+            local rowInfo = originalRows[rowIndex]
+            if rowInfo and not rowInfo.isHidden then
+                insertIndex = insertIndex + 1
+                currentRows[insertIndex] = rowInfo
             end
         end
 
-        currentRows = {}
-        for _, rowInfo in ipairs(normalRows) do
-            table.insert(currentRows, rowInfo)
-        end
-        for _, rowInfo in ipairs(hiddenRows) do
-            table.insert(currentRows, rowInfo)
+        for rowIndex = 1, #originalRows do
+            local rowInfo = originalRows[rowIndex]
+            if rowInfo and rowInfo.isHidden then
+                insertIndex = insertIndex + 1
+                currentRows[insertIndex] = rowInfo
+            end
         end
         return
     end
@@ -171,6 +241,14 @@ function SortingSystem:RefreshSorting()
     end
 end
 
+function SortingSystem:ReleaseRuntimeCache()
+    ClearArray(originalRows)
+    ClearArray(currentRows)
+    ClearMap(sortValidationRemainingCache)
+    headerButton = nil
+    lastSortTime = nil
+end
+
 function SortingSystem:SetCompactAutoSortEnabled(enabled)
     local shouldEnable = enabled == true
     if shouldEnable == compactAutoSortEnabled then
@@ -209,22 +287,22 @@ local L = CrateTrackerZK.L
 local textByRowId = {}
 local rowDisplayCache = {}
 local hoveredRowIds = {}
-local updateDriver = nil
-local updateElapsed = 0
+local realtimeRowIds = {}
+local activeRealtimeTextCount = 0
+local updateTicker = nil
+local countdownRunning = false
 local sortRefreshCallback = nil
-local UPDATE_INTERVAL = 0.2
-local SORT_VALIDATE_INTERVAL = 0.5
+local UPDATE_INTERVAL = 1.0
+local SORT_VALIDATE_INTERVAL = 1.0
+local PHASE_STATE_REFRESH_INTERVAL = 1.0
+local NO_REMAINING_VALUE = {}
+local RefreshCountdownUI
+local tickContextBuffer = {
+    now = 0,
+}
 
 local function GetCountdownConfig()
     return UIConfig
-end
-
-local function HasCurrentPhase(rowId)
-    if not UnifiedDataManager or not UnifiedDataManager.GetCurrentPhase then
-        return true;
-    end
-    local currentPhaseID = UnifiedDataManager:GetCurrentPhase(rowId);
-    return currentPhaseID ~= nil and currentPhaseID ~= "";
 end
 
 local function FormatRemaining(seconds)
@@ -235,39 +313,28 @@ local function FormatRemaining(seconds)
 end
 
 local function BuildTickContext(now)
-    return {
-        now = now or time(),
-    }
+    tickContextBuffer.now = now or time()
+    return tickContextBuffer
 end
 
-local function ShouldRealtimeUpdate(rowId, context)
-    if not Data or not Data.GetMap then
-        return false
+local function AcquireRowDisplayCache(rowId)
+    local cache = rowDisplayCache[rowId]
+    if not cache then
+        cache = {}
+        rowDisplayCache[rowId] = cache
     end
+    return cache
+end
 
-    local mapData = Data:GetMap(rowId)
+local function GetRemaining(rowId, context, cache)
+    if not Data then return nil, false, false end
+    local rowCache = cache or AcquireRowDisplayCache(rowId)
+    local mapData = rowCache.mapData
     if not mapData then
-        return false
+        mapData = Data:GetMap(rowId)
+        rowCache.mapData = mapData
     end
-
-    if Data and Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID) then
-        return false
-    end
-
-    if UnifiedDataManager and UnifiedDataManager.GetDisplayTime then
-        local display = UnifiedDataManager:GetDisplayTime(rowId, (context and context.now) or time())
-        if display and display.time then
-            return true
-        end
-    end
-
-    return false
-end
-
-local function GetRemaining(rowId, context)
-    if not Data then return nil, false end
-    local mapData = Data:GetMap(rowId)
-    if not mapData then return nil, false end
+    if not mapData then return nil, false, false end
 
     local now = (context and context.now) or time()
     local isHidden = Data and Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID)
@@ -275,19 +342,74 @@ local function GetRemaining(rowId, context)
     if isHidden then
         local frozen = Data and Data.GetHiddenRemainingValue and Data:GetHiddenRemainingValue(mapData.expansionID, mapData.mapID)
         if frozen and frozen < 0 then frozen = 0 end
-        return frozen, true
+        return frozen, true, false
     end
 
-    local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(rowId, now)
+    local displayTime = nil
+    if UnifiedDataManager then
+        if UnifiedDataManager.GetDisplayTimeInto then
+            rowCache.displayTimeBuffer = rowCache.displayTimeBuffer or {}
+            rowCache.persistentTimeRecordBuffer = rowCache.persistentTimeRecordBuffer or {}
+            displayTime = UnifiedDataManager:GetDisplayTimeInto(
+                rowId,
+                now,
+                rowCache.displayTimeBuffer,
+                rowCache.persistentTimeRecordBuffer
+            )
+        elseif UnifiedDataManager.GetDisplayTime then
+            displayTime = UnifiedDataManager:GetDisplayTime(rowId, now)
+        end
+    end
+    if not displayTime or not displayTime.time then
+        return nil, false, false
+    end
+
+    local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(rowId, now, displayTime)
     if remaining ~= nil then
         if remaining < 0 then remaining = 0 end
-        return remaining, false
+        return remaining, false, true
     end
 
-    return nil, false
+    return nil, false, true
 end
 
-local function GetCountdownColor(rowId, seconds, isHidden, isHovered)
+local function RefreshPhaseStateCache(rowId, cache)
+    if not cache then
+        return nil
+    end
+
+    cache.phaseStateDirty = false
+    cache.phaseStateRefreshAt = GetTime and GetTime() or 0
+    cache.hasCurrentPhase = false
+    cache.hasPhaseMismatch = false
+
+    if not UnifiedDataManager then
+        return cache
+    end
+
+    local comparison = nil
+    if UnifiedDataManager.ComparePhasesInto then
+        cache.phaseComparisonBuffer = cache.phaseComparisonBuffer or {}
+        comparison = UnifiedDataManager:ComparePhasesInto(rowId, cache.phaseComparisonBuffer)
+    elseif UnifiedDataManager.ComparePhases then
+        comparison = UnifiedDataManager:ComparePhases(rowId)
+    end
+
+    if not comparison then
+        return cache
+    end
+
+    local currentPhaseID = comparison.current
+    local persistentPhaseID = comparison.persistent
+    cache.hasCurrentPhase = currentPhaseID ~= nil and currentPhaseID ~= ""
+    cache.hasPhaseMismatch = cache.hasCurrentPhase
+        and persistentPhaseID ~= nil
+        and persistentPhaseID ~= ""
+        and currentPhaseID ~= persistentPhaseID
+    return cache
+end
+
+local function GetCountdownColor(rowId, seconds, isHidden, isHovered, cache)
     local cfg = GetCountdownConfig()
     if isHidden then
         return 0.5, 0.5, 0.5, 0.8
@@ -295,14 +417,11 @@ local function GetCountdownColor(rowId, seconds, isHidden, isHovered)
     if isHovered then
         return 1.0, 0.82, 0.20, 1.0
     end
-    if UnifiedDataManager and UnifiedDataManager.ComparePhases then
-        local compare = UnifiedDataManager:ComparePhases(rowId)
-        if compare and compare.status == "mismatch" then
-            local normal = cfg.GetTextColor("normal")
-            return normal[1], normal[2], normal[3], normal[4]
-        end
+    if cache and cache.hasPhaseMismatch then
+        local normal = cfg.GetTextColor("normal")
+        return normal[1], normal[2], normal[3], normal[4]
     end
-    if not HasCurrentPhase(rowId) then
+    if not cache or not cache.hasCurrentPhase then
         local normal = cfg.GetTextColor("normal")
         return normal[1], normal[2], normal[3], normal[4]
     end
@@ -342,10 +461,13 @@ local function IsPairOrdered(a, b, ascending, context, remainingCache)
         end
         local cache = remainingCache[rowId]
         if cache ~= nil then
-            return cache.value
+            if cache == NO_REMAINING_VALUE then
+                return nil
+            end
+            return cache
         end
         local remaining = GetRemaining(rowId, context)
-        remainingCache[rowId] = { value = remaining }
+        remainingCache[rowId] = remaining ~= nil and remaining or NO_REMAINING_VALUE
         return remaining
     end
 
@@ -381,7 +503,7 @@ local function IsCurrentSortOrderValid(context)
     end
 
     local ascending = sortState == "asc"
-    local remainingCache = {}
+    local remainingCache = ClearMap(sortValidationRemainingCache)
     for i = 1, (#rows - 1) do
         if not IsPairOrdered(rows[i], rows[i + 1], ascending, context, remainingCache) then
             return false
@@ -394,44 +516,119 @@ function CountdownSystem:SetSortRefreshCallback(callback)
     sortRefreshCallback = callback
 end
 
+local function UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
+    local cache = AcquireRowDisplayCache(rowId)
+    cache.remaining = remainingKey
+    cache.text = text
+    cache.r = r
+    cache.g = g
+    cache.b = b
+    cache.a = a
+    return cache
+end
+
+local function SetRealtimeRowState(rowId, isRealtime)
+    if rowId == nil then
+        return
+    end
+
+    local previousState = realtimeRowIds[rowId] == true
+    local nextState = isRealtime == true
+    if previousState == nextState then
+        return
+    end
+
+    if nextState then
+        realtimeRowIds[rowId] = true
+        activeRealtimeTextCount = activeRealtimeTextCount + 1
+    else
+        realtimeRowIds[rowId] = nil
+        if activeRealtimeTextCount > 0 then
+            activeRealtimeTextCount = activeRealtimeTextCount - 1
+        end
+    end
+end
+
+local function CancelRefreshTicker()
+    if updateTicker then
+        updateTicker:Cancel()
+        updateTicker = nil
+    end
+end
+
+local function EnsureRefreshTicker()
+    local shouldRun = countdownRunning == true and activeRealtimeTextCount > 0
+    if not shouldRun then
+        CancelRefreshTicker()
+        return
+    end
+
+    if updateTicker then
+        return
+    end
+
+    updateTicker = C_Timer.NewTicker(UPDATE_INTERVAL, function()
+        if not countdownRunning then
+            CancelRefreshTicker()
+            return
+        end
+        if CrateTrackerZKFrame and not CrateTrackerZKFrame:IsShown() then
+            return
+        end
+        if activeRealtimeTextCount <= 0 then
+            CancelRefreshTicker()
+            return
+        end
+
+        RefreshCountdownUI(time())
+    end)
+end
+
 function CountdownSystem:RegisterText(rowId, textObject)
     textByRowId[rowId] = textObject
     local context = BuildTickContext(time())
-    local remaining, isHidden = GetRemaining(rowId, context)
+    local cache = AcquireRowDisplayCache(rowId)
+    local remaining, isHidden, hasRealtimeUpdate = GetRemaining(rowId, context, cache)
+    RefreshPhaseStateCache(rowId, cache)
+    local remainingKey = remaining ~= nil and remaining or false
     local text = FormatRemaining(remaining)
     local isHovered = hoveredRowIds[rowId] == true
-    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
+    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
     textObject:SetText(text)
     textObject:SetTextColor(r, g, b, a)
-    rowDisplayCache[rowId] = {
-        text = text,
-        r = r, g = g, b = b, a = a,
-    }
+    UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
+    SetRealtimeRowState(rowId, hasRealtimeUpdate == true)
+    EnsureRefreshTicker()
 end
 
 function CountdownSystem:ClearTexts()
-    textByRowId = {}
-    rowDisplayCache = {}
-    hoveredRowIds = {}
+    ClearMap(textByRowId)
+    ClearMap(rowDisplayCache)
+    ClearMap(hoveredRowIds)
+    ClearMap(realtimeRowIds)
+    activeRealtimeTextCount = 0
+    EnsureRefreshTicker()
 end
 
-local function RefreshCountdownUI(now)
+function RefreshCountdownUI(now)
     local context = BuildTickContext(now)
+    local currentStateTime = GetTime and GetTime() or 0
 
     for rowId, textObject in pairs(textByRowId) do
-        if ShouldRealtimeUpdate(rowId, context) then
-            local remaining, isHidden = GetRemaining(rowId, context)
-            local text = FormatRemaining(remaining)
+        local cache = AcquireRowDisplayCache(rowId)
+        local remaining, isHidden, hasRealtimeUpdate = GetRemaining(rowId, context, cache)
+        if hasRealtimeUpdate then
+            if cache.phaseStateDirty or not cache.phaseStateRefreshAt or (currentStateTime - cache.phaseStateRefreshAt) >= PHASE_STATE_REFRESH_INTERVAL then
+                RefreshPhaseStateCache(rowId, cache)
+            end
+            local remainingKey = remaining ~= nil and remaining or false
+            local text = cache and cache.remaining == remainingKey and cache.text or FormatRemaining(remaining)
             local isHovered = hoveredRowIds[rowId] == true
-            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
-            local cache = rowDisplayCache[rowId]
-            if not cache or cache.text ~= text or cache.r ~= r or cache.g ~= g or cache.b ~= b or cache.a ~= a then
+            local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
+            if not cache or cache.remaining ~= remainingKey or cache.text ~= text or cache.r ~= r or cache.g ~= g or cache.b ~= b or cache.a ~= a then
                 textObject:SetText(text)
                 textObject:SetTextColor(r, g, b, a)
-                rowDisplayCache[rowId] = {
-                    text = text,
-                    r = r, g = g, b = b, a = a,
-                }
+                UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
             end
         end
     end
@@ -446,6 +643,15 @@ local function RefreshCountdownUI(now)
             SortingRef:SetLastSortTime(currentTime)
         end
     end
+end
+
+function CountdownSystem:MarkRowStateDirty(rowId)
+    if rowId == nil then
+        return
+    end
+
+    local cache = AcquireRowDisplayCache(rowId)
+    cache.phaseStateDirty = true
 end
 
 function CountdownSystem:SetRowHover(rowId, hovered)
@@ -465,45 +671,33 @@ function CountdownSystem:SetRowHover(rowId, hovered)
     end
 
     local context = BuildTickContext(time())
-    local remaining, isHidden = GetRemaining(rowId, context)
+    local cache = AcquireRowDisplayCache(rowId)
+    local remaining, isHidden = GetRemaining(rowId, context, cache)
+    if cache.phaseStateDirty then
+        RefreshPhaseStateCache(rowId, cache)
+    end
+    local remainingKey = remaining ~= nil and remaining or false
     local text = FormatRemaining(remaining)
     local isHovered = hoveredRowIds[rowId] == true
-    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered)
+    local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
 
     textObject:SetText(text)
     textObject:SetTextColor(r, g, b, a)
-    rowDisplayCache[rowId] = {
-        text = text,
-        r = r, g = g, b = b, a = a,
-    }
+    UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
 end
 
 function CountdownSystem:Start()
-    if not updateDriver then
-        updateDriver = CreateFrame("Frame")
-    end
-
-    updateElapsed = UPDATE_INTERVAL
-    updateDriver:SetScript("OnUpdate", function(_, elapsed)
-        if CrateTrackerZKFrame and not CrateTrackerZKFrame:IsShown() then
-            return
-        end
-
-        updateElapsed = updateElapsed + (elapsed or 0)
-        if updateElapsed < UPDATE_INTERVAL then
-            return
-        end
-        updateElapsed = 0
-
-        RefreshCountdownUI(time())
-    end)
+    countdownRunning = true
+    EnsureRefreshTicker()
 end
 
 function CountdownSystem:Stop()
-    if updateDriver and updateDriver:GetScript("OnUpdate") then
-        updateDriver:SetScript("OnUpdate", nil)
-    end
-    updateElapsed = 0
+    countdownRunning = false
+    CancelRefreshTicker()
+end
+
+function CountdownSystem:ReleaseRuntimeState()
+    self:ClearTexts()
 end
 
 return {

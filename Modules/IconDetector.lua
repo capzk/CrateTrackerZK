@@ -33,13 +33,8 @@ local function ExtractSpawnUID(objectGUID)
     if not objectGUID or type(objectGUID) ~= "string" then 
         return nil;
     end
-    
-    local parts = {strsplit("-", objectGUID)};
-    if #parts >= 7 then
-        return parts[7];
-    end
-    
-    return nil;
+
+    return select(7, strsplit("-", objectGUID));
 end
 
 -- 提取位面ID（GUID 第3和第5部分：ServerID-ZoneUID）
@@ -47,28 +42,34 @@ local function ExtractPhaseID(objectGUID)
     if not objectGUID or type(objectGUID) ~= "string" then 
         return nil;
     end
-    
-    local parts = {strsplit("-", objectGUID)};
-    if #parts >= 5 then
-        local serverID = parts[3];
-        local zoneUID = parts[5];
-        if serverID and zoneUID then
-            return serverID .. "-" .. zoneUID;
-        end
+
+    local _, _, serverID, _, zoneUID = strsplit("-", objectGUID);
+    if serverID and zoneUID then
+        return serverID .. "-" .. zoneUID;
     end
-    
+
     return nil;
 end
 
-function IconDetector:DetectIcon(currentMapID)
+local function ResetDetectionResult(outResult)
+    outResult.detected = false;
+    outResult.objectGUID = nil;
+    outResult.spawnUID = nil;
+    outResult.phaseID = nil;
+    outResult.vignetteGUID = nil;
+    outResult.vignetteID = nil;
+    return outResult;
+end
+
+function IconDetector:DetectIconInto(currentMapID, outResult)
+    outResult = type(outResult) == "table" and outResult or {};
     if not C_VignetteInfo or not C_VignetteInfo.GetVignettes or not C_VignetteInfo.GetVignetteInfo then
-        Logger:DebugLimited("icon_detection:api_unavailable", "IconDetector", "检测", "C_VignetteInfo API 不可用");
-        return { detected = false };
+        return ResetDetectionResult(outResult);
     end
     
     local vignettes = C_VignetteInfo.GetVignettes();
     if not vignettes then
-        return { detected = false };
+        return ResetDetectionResult(outResult);
     end
     
     -- 仅检测空投飞机图标
@@ -84,23 +85,22 @@ function IconDetector:DetectIcon(currentMapID)
                 end
                 
                 local phaseID = ExtractPhaseID(objectGUID);
-                
-                Logger:DebugLimited("icon_detection:detected_" .. tostring(currentMapID), "IconDetector", "检测", 
-                    string.format("检测到空投飞机：地图ID=%d，objectGUID=%s", currentMapID, objectGUID or "无"));
-                
-                return {
-                    detected = true,
-                    objectGUID = objectGUID,
-                    spawnUID = spawnUID,
-                    phaseID = phaseID,
-                    vignetteGUID = vignetteGUID,
-                    vignetteID = vignetteInfo.vignetteID
-                };
+                outResult.detected = true;
+                outResult.objectGUID = objectGUID;
+                outResult.spawnUID = spawnUID;
+                outResult.phaseID = phaseID;
+                outResult.vignetteGUID = vignetteGUID;
+                outResult.vignetteID = vignetteInfo.vignetteID;
+                return outResult;
             end
         end
     end
     
-    return { detected = false };
+    return ResetDetectionResult(outResult);
+end
+
+function IconDetector:DetectIcon(currentMapID)
+    return self:DetectIconInto(currentMapID, {});
 end
 
 IconDetector.ExtractSpawnUID = ExtractSpawnUID;

@@ -4,6 +4,7 @@ local EventRouter = BuildEnv("CrateTrackerZKEventRouter")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local AddonLifecycle = BuildEnv("CrateTrackerZKAddonLifecycle")
+local TickerController = BuildEnv("CrateTrackerZKTickerController")
 
 local MONSTER_CHAT_EVENTS = {
     CHAT_MSG_MONSTER_SAY = true,
@@ -28,7 +29,16 @@ local function HandleZoneChanged()
         end
         if CoreShared:IsAreaActive() then
             if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
-            if Phase then Phase:UpdatePhaseInfo(currentMapID) end
+            if Phase then
+                if Phase.RequestUpdate then
+                    Phase:RequestUpdate(currentMapID, 0.05)
+                else
+                    Phase:UpdatePhaseInfo(currentMapID)
+                end
+            end
+        end
+        if TickerController and TickerController.RefreshPhaseTicker then
+            TickerController:RefreshPhaseTicker(CrateTrackerZK)
         end
     end)
 end
@@ -42,14 +52,34 @@ end
 local function HandlePlayerTargetChanged()
     if CoreShared:IsAreaActive() and Phase then
         local currentMapID = CoreShared:GetCurrentMapID()
-        Phase:UpdatePhaseInfo(currentMapID)
+        if Phase.RequestUpdate then
+            Phase:RequestUpdate(currentMapID)
+        else
+            Phase:UpdatePhaseInfo(currentMapID)
+        end
+    end
+    if TickerController and TickerController.RefreshPhaseTicker then
+        TickerController:RefreshPhaseTicker(CrateTrackerZK)
+    end
+end
+
+local function HandleMouseoverUnitChanged()
+    if CoreShared:IsAreaActive() and Phase then
+        local currentMapID = CoreShared:GetCurrentMapID()
+        if Phase.RequestUpdate then
+            Phase:RequestUpdate(currentMapID)
+        else
+            Phase:UpdatePhaseInfo(currentMapID)
+        end
+    end
+    if TickerController and TickerController.RefreshPhaseTicker then
+        TickerController:RefreshPhaseTicker(CrateTrackerZK)
     end
 end
 
 local function HandlePlayerLogout()
     if Phase and Phase.Reset then
         Phase:Reset()
-        Logger:Debug("Core", "状态", "退出游戏，已清除位面ID缓存")
     end
     if not CrateTrackerZK.isReloading then
         CoreShared:ClearAllPhaseCaches()
@@ -73,6 +103,10 @@ local function HandleTeamAddon(event, ...)
     end
     if TeamCommListener and TeamCommListener.HandleAddonEvent then
         local prefix = select(1, ...)
+        local expectedPrefix = TeamCommListener.ADDON_PREFIX
+        if type(prefix) ~= "string" or type(expectedPrefix) ~= "string" or prefix ~= expectedPrefix then
+            return
+        end
         local payload = select(2, ...)
         local chatType = select(3, ...)
         local sender = select(4, ...)
@@ -95,6 +129,8 @@ function EventRouter:HandleEvent(event, ...)
         HandleGroupRosterUpdate()
     elseif event == "PLAYER_TARGET_CHANGED" then
         HandlePlayerTargetChanged()
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        HandleMouseoverUnitChanged()
     elseif event == "PLAYER_LOGOUT" then
         HandlePlayerLogout()
     elseif MONSTER_CHAT_EVENTS[event] then
@@ -120,6 +156,7 @@ function EventRouter:RegisterEventFrame()
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    eventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     eventFrame:RegisterEvent("PLAYER_LOGOUT")
     eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
     eventFrame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
@@ -142,7 +179,14 @@ function EventRouter:RegisterTooltipHooks()
     local updatePhase = function()
         if CoreShared:IsAreaActive() and Phase then
             local currentMapID = CoreShared:GetCurrentMapID()
-            Phase:UpdatePhaseInfo(currentMapID)
+            if Phase.RequestUpdate then
+                Phase:RequestUpdate(currentMapID)
+            else
+                Phase:UpdatePhaseInfo(currentMapID)
+            end
+        end
+        if TickerController and TickerController.RefreshPhaseTicker then
+            TickerController:RefreshPhaseTicker(CrateTrackerZK)
         end
     end
 

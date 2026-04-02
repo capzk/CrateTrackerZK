@@ -26,18 +26,6 @@ ShoutDetector.isInitialized = false;
 ShoutDetector.compiledShouts = ShoutDetector.compiledShouts or {};
 ShoutDetector.compiledLocale = ShoutDetector.compiledLocale or nil;
 
-local function IsDebugEnabled()
-    return Logger and Logger.debugEnabled == true;
-end
-
-local function SafeToString(value)
-    local ok, result = pcall(tostring, value);
-    if ok then
-        return result;
-    end
-    return "<secret>";
-end
-
 local function GetTrackedMap()
     if not C_Map or not C_Map.GetBestMapForUnit then
         return nil, nil;
@@ -88,9 +76,6 @@ local function OnShoutDetected(message)
         Notification.firstNotificationTime[mapName] = nil;
         Notification.playerSentNotification[mapName] = nil;
     end
-    if IsDebugEnabled() then
-        Logger:Debug("ShoutDetector", "触发", string.format("喊话触发通知：地图=%s，消息=%s", mapName, SafeToString(message)));
-    end
     -- 立即发送通知（遵循现有开关/频道规则）
     if Notification and Notification.NotifyAirdropDetected then
         Notification:NotifyAirdropDetected(mapName, "npc_shout");
@@ -108,7 +93,12 @@ local function OnShoutDetected(message)
             timestamp = currentTime,
         });
     end
-    if TimerManager and TimerManager.UpdateUI then
+    if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
+        UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {
+            affectsSort = true,
+            delay = 0.08,
+        });
+    elseif TimerManager and TimerManager.UpdateUI then
         TimerManager:UpdateUI();
     elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
         UIRefreshCoordinator:RefreshMainTable();
@@ -190,15 +180,9 @@ local function MessageMatchesShout(message)
 
     for _, entry in ipairs(ShoutDetector.compiledShouts) do
         if entry.full and entry.full ~= "" and msg:find(entry.full, 1, true) then
-            if IsDebugEnabled() then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（含前缀）：%s -> %s", SafeToString(message), entry.original));
-            end
             return true;
         end
         if entry.suffix and entry.suffix ~= "" and msg:find(entry.suffix, 1, true) then
-            if IsDebugEnabled() then
-                Logger:Debug("ShoutDetector", "匹配", string.format("匹配到喊话（去前缀）：%s -> %s", SafeToString(message), entry.original));
-            end
             return true;
         end
     end
@@ -207,13 +191,7 @@ local function MessageMatchesShout(message)
 end
 
 local function OnChatEvent(self, event, message)
-    if IsDebugEnabled() and Logger then
-        Logger:Debug("ShoutDetector", "事件", string.format("收到聊天事件：%s，消息=%s", SafeToString(event), SafeToString(message)));
-    end
     if not MessageMatchesShout(message) then
-        if IsDebugEnabled() and Logger then
-            Logger:Debug("ShoutDetector", "未匹配", string.format("未匹配喊话：事件=%s，消息=%s", SafeToString(event), SafeToString(message)));
-        end
         return;
     end
     OnShoutDetected(message);
@@ -224,12 +202,10 @@ function ShoutDetector:Initialize()
 
     local compiledCount = BuildShoutMatchers();
     if compiledCount == 0 then
-        Logger:Debug("ShoutDetector", "初始化", "未配置喊話內容，跳過初始化");
         return;
     end
 
     self.isInitialized = true;
-    Logger:Debug("ShoutDetector", "初始化", "NPC喊話檢測已啟用（被动）");
 end
 
 function ShoutDetector:HandleChatEvent(event, message)
