@@ -53,7 +53,7 @@ end
 
 local function sanitizeTimestamp(ts)
     if not ts or type(ts) ~= "number" then return nil end
-    local maxFuture = time() + 86400 * 365;
+    local maxFuture = Utils:GetCurrentTimestamp() + 86400 * 365;
     if ts < 0 or ts > maxFuture then return nil end
     return ts;
 end
@@ -65,7 +65,7 @@ local function PopulatePersistentSnapshot(outSnapshot, mapData, savedData)
 
     outSnapshot.expansionID = mapData.expansionID;
     outSnapshot.mapID = mapData.mapID;
-    outSnapshot.createTime = sanitizeTimestamp(savedData and savedData.createTime) or mapData.createTime or time();
+    outSnapshot.createTime = sanitizeTimestamp(savedData and savedData.createTime) or mapData.createTime or Utils:GetCurrentTimestamp();
     outSnapshot.lastRefresh = sanitizeTimestamp(savedData and savedData.lastRefresh) or nil;
     outSnapshot.lastRefreshSource = type(savedData and savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil;
     outSnapshot.currentAirdropObjectGUID = type(savedData and savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil;
@@ -400,7 +400,7 @@ function Data:Initialize()
             end
 
             local lastRefresh = sanitizeTimestamp(savedData.lastRefresh);
-            local createTime = sanitizeTimestamp(savedData.createTime) or time();
+            local createTime = sanitizeTimestamp(savedData.createTime) or Utils:GetCurrentTimestamp();
             local interval = cfg.interval or defaults.interval or self.DEFAULT_REFRESH_INTERVAL;
 
             local mapData = {
@@ -455,7 +455,7 @@ function Data:SavePersistentSnapshot(mapId, snapshot)
 
     local existingRecord = self:GetPersistentRecord(mapId);
     local savedData = {
-        createTime = sanitizeTimestamp((snapshot and snapshot.createTime) or (existingRecord and existingRecord.createTime)) or mapData.createTime or time(),
+        createTime = sanitizeTimestamp((snapshot and snapshot.createTime) or (existingRecord and existingRecord.createTime)) or mapData.createTime or Utils:GetCurrentTimestamp(),
         lastRefresh = sanitizeTimestamp(snapshot and snapshot.lastRefresh) or nil,
         lastRefreshSource = type(snapshot and snapshot.lastRefreshSource) == "string" and snapshot.lastRefreshSource or nil,
         currentAirdropObjectGUID = type(snapshot and snapshot.currentAirdropObjectGUID) == "string" and snapshot.currentAirdropObjectGUID or nil,
@@ -531,7 +531,7 @@ function Data:PersistAirdropState(mapId, state)
     end
 
     return self:SavePersistentSnapshot(mapId, {
-        createTime = (currentRecord and currentRecord.createTime) or mapData.createTime or time(),
+        createTime = (currentRecord and currentRecord.createTime) or mapData.createTime or Utils:GetCurrentTimestamp(),
         lastRefresh = state.lastRefresh ~= nil and state.lastRefresh or (currentRecord and currentRecord.lastRefresh),
         lastRefreshSource = state.lastRefreshSource ~= nil and state.lastRefreshSource or (currentRecord and currentRecord.lastRefreshSource),
         currentAirdropObjectGUID = state.currentAirdropObjectGUID ~= nil and state.currentAirdropObjectGUID or (currentRecord and currentRecord.currentAirdropObjectGUID),

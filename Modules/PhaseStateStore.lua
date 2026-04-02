@@ -62,7 +62,7 @@ function PhaseStateStore:SetTemporary(manager, mapId, phaseId, source, detectTim
     local phaseData = self:GetOrCreate(manager, mapId, true, resolvedExpansionID)
     phaseData.phaseId = phaseId
     phaseData.source = source
-    phaseData.detectTime = detectTime or time()
+    phaseData.detectTime = detectTime or Utils:GetCurrentTimestamp()
 
     if type(phaseCache) == "table" then
         phaseCache[BuildScopedMapKey(mapId, resolvedExpansionID)] = {
@@ -80,7 +80,7 @@ function PhaseStateStore:SetPersistent(manager, mapId, phaseId, source, detectTi
     local phaseData = self:GetOrCreate(manager, mapId, false, expansionID)
     phaseData.phaseId = phaseId
     phaseData.source = source
-    phaseData.detectTime = detectTime or time()
+    phaseData.detectTime = detectTime or Utils:GetCurrentTimestamp()
     return phaseData
 end
 
@@ -88,7 +88,7 @@ function PhaseStateStore:GetCurrent(manager, mapId, currentTime, expansionID)
     local scopedKey = BuildScopedMapKey(mapId, expansionID)
     local tempPhase = manager.temporaryPhases and manager.temporaryPhases[scopedKey]
     if tempPhase and tempPhase.phaseId then
-        local now = currentTime or time()
+        local now = currentTime or Utils:GetCurrentTimestamp()
         if now - tempPhase.detectTime <= manager.TEMPORARY_PHASE_EXPIRE then
             return tempPhase.phaseId
         end

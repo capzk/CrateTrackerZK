@@ -43,6 +43,8 @@ function TimerManager:Initialize()
     self.iconDetectionBuffer = self.iconDetectionBuffer or {};
     self.CONFIRM_TIME = 2;          -- 初筛防抖
     self.MIN_STABLE_TIME = 5;       -- 最短稳定存活时间（秒），达标后才广播/持久化
+    self.MAP_SWITCH_GUARD_TIME = 2; -- 配置地图切换后短暂延迟检测，作为地图归属过滤的兜底
+    self.mapSwitchGuardState = self.mapSwitchGuardState or {};
     
     -- 初始化UnifiedDataManager
     if UnifiedDataManager and UnifiedDataManager.Initialize then
@@ -61,7 +63,7 @@ local function AcquireIconDetectionBuffer(owner)
 end
 
 local function getCurrentTimestamp()
-    return time();
+    return Utils:GetCurrentTimestamp();
 end
 
 local function HasRecentShout(mapDisplayName, currentTime)
@@ -94,6 +96,44 @@ local function ResetNotificationStateForNewEvent(mapDisplayName, currentTime)
             Notification.playerSentNotification[mapDisplayName] = nil;
         end
     end
+end
+
+local function ActivateMapSwitchGuard(owner, targetMapData, currentTime)
+    if not owner or not targetMapData or targetMapData.id == nil then
+        return false
+    end
+
+    owner.mapSwitchGuardState = owner.mapSwitchGuardState or {}
+    owner.mapSwitchGuardState.mapId = targetMapData.id
+    owner.mapSwitchGuardState.untilTime = currentTime + (owner.MAP_SWITCH_GUARD_TIME or 2)
+    owner.detectionState[targetMapData.id] = nil
+    return true
+end
+
+local function IsMapSwitchGuardActive(owner, targetMapData, currentTime)
+    if not owner or not targetMapData or targetMapData.id == nil then
+        return false
+    end
+
+    local guardState = owner.mapSwitchGuardState
+    if type(guardState) ~= "table" then
+        return false
+    end
+    if guardState.mapId ~= targetMapData.id then
+        return false
+    end
+
+    local untilTime = tonumber(guardState.untilTime)
+    if not untilTime then
+        owner.mapSwitchGuardState = nil
+        return false
+    end
+    if currentTime < untilTime then
+        return true
+    end
+
+    owner.mapSwitchGuardState = nil
+    return false
 end
 
 function TimerManager:GetSourceDisplayName(source)
@@ -159,10 +199,20 @@ function TimerManager:DetectMapIcons(currentMapID)
     local mapDisplayName = Data:GetMapDisplayName(targetMapData);
     
     local currentTime = getCurrentTimestamp();
-    if MapTracker.UpdateCurrentMapState then
+    local mapChangeState = nil;
+    if MapTracker.OnMapChanged then
+        mapChangeState = MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
+    elseif MapTracker.UpdateCurrentMapState then
         MapTracker:UpdateCurrentMapState(playerMapID, targetMapData, currentTime);
     else
         MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
+    end
+
+    if mapChangeState and mapChangeState.configMapChanged then
+        ActivateMapSwitchGuard(self, targetMapData, currentTime);
+    end
+    if IsMapSwitchGuardActive(self, targetMapData, currentTime) then
+        return false;
     end
     
     if not IconDetector or not IconDetector.DetectIcon then
@@ -285,10 +335,8 @@ function TimerManager:DetectMapIcons(currentMapID)
         if success then
             if Notification and Notification.SendAirdropSync then
                 Notification:SendAirdropSync({
-                    syncType = "CONFIRMED",
-                    mapId = targetMapData.id,
+                    mapID = targetMapData.mapID,
                     timestamp = eventTimestamp,
-                    phaseId = phaseId,
                     objectGUID = objectGUID,
                 });
             end

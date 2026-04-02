@@ -72,7 +72,7 @@ function Localization:LogMissingTranslation(key, category, critical)
         category = category,
         locale = GetLocale(),
         critical = critical or false,
-        timestamp = time()
+        timestamp = Utils:GetCurrentTimestamp()
     };
     
     table.insert(self.missingTranslations, entry);

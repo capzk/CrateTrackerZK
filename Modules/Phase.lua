@@ -216,6 +216,8 @@ function Phase:UpdatePhaseInfo(currentMapID)
             if UnifiedDataManager and UnifiedDataManager.SetPhase then
                 UnifiedDataManager:SetPhase(targetMapData.id, currentPhaseID, UnifiedDataManager.PhaseSource.PHASE_DETECTION, false);
             end
+            -- 保留旧版 currentPhaseID 回写，兼容仍读取 mapData 的链路
+            targetMapData.currentPhaseID = currentPhaseID;
             if previousPhaseID ~= currentPhaseID then
                 uiNeedsRefresh = true;
             end

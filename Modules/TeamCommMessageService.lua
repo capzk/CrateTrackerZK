@@ -3,6 +3,7 @@
 local TeamCommMessageService = BuildEnv("TeamCommMessageService")
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local AirdropEventService = BuildEnv("AirdropEventService")
+local IconDetector = BuildEnv("IconDetector")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local TimerManager = BuildEnv("TimerManager")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
@@ -35,34 +36,6 @@ local function AcquireSyncContextBuffer()
     TeamCommMessageService.syncContextBuffer = buffer
     buffer.persistentStateBuffer = buffer.persistentStateBuffer or {}
     return buffer
-end
-
-function TeamCommMessageService:HasRecentLocalConfirmedAirdrop(listener, mapData, currentTime)
-    local persistentState = mapData;
-    if type(persistentState) ~= "table" then
-        return false
-    end
-    if type(persistentState.currentAirdropObjectGUID) ~= "string" or persistentState.currentAirdropObjectGUID == "" then
-        return false
-    end
-    if type(persistentState.currentAirdropTimestamp) ~= "number" then
-        return false
-    end
-    if type(currentTime) ~= "number" or currentTime < persistentState.currentAirdropTimestamp then
-        return false
-    end
-    local suppressWindow = listener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW or 300
-    if AirdropEventService and AirdropEventService.HasRecentTimestamp then
-        return AirdropEventService:HasRecentTimestamp(persistentState.currentAirdropTimestamp, currentTime, suppressWindow)
-    end
-    return (currentTime - persistentState.currentAirdropTimestamp) <= suppressWindow
-end
-
-function TeamCommMessageService:GetDuplicateMessageWindow(listener)
-    if type(listener) == "table" and type(listener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW) == "number" then
-        return listener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW
-    end
-    return 15
 end
 
 local function IsSameTrackedMapContext(currentMapID, mapData)
@@ -98,21 +71,36 @@ local function HasSameObjectGUID(localGUID, incomingGUID)
         and localGUID == incomingGUID
 end
 
-local function ResolveSyncContext(listener, mapId, sender, outContext)
-    local numericMapId = tonumber(mapId)
-    if not numericMapId then
+local function ExtractPhaseIDFromObjectGUID(objectGUID)
+    if IconDetector and IconDetector.ExtractPhaseID then
+        return IconDetector.ExtractPhaseID(objectGUID)
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return nil
+    end
+
+    local _, _, serverID, _, zoneUID = strsplit("-", objectGUID)
+    if serverID and zoneUID then
+        return serverID .. "-" .. zoneUID
+    end
+    return nil
+end
+
+local function ResolveSyncContext(listener, mapID, sender, outContext)
+    local numericMapID = tonumber(mapID)
+    if not numericMapID then
         return nil
     end
     if type(outContext) ~= "table" then
         outContext = {}
     end
 
-    local mapData = Data and Data.GetMap and Data:GetMap(numericMapId) or nil
+    local mapData = Data and Data.GetMapByMapID and Data:GetMapByMapID(numericMapID) or nil
     if not mapData then
         return nil
     end
 
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(numericMapId)
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(numericMapID)
 
     TeamCommMapCache:EnsurePlayerIdentity(listener)
     local isSelfSender = TeamCommMapCache and TeamCommMapCache.IsSelfSender
@@ -127,83 +115,33 @@ local function ResolveSyncContext(listener, mapId, sender, outContext)
     local persistentState = nil
     if not isOnMap then
         persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
-            and UnifiedDataManager:GetPersistentAirdropStateInto(numericMapId, outContext.persistentStateBuffer)
+            and UnifiedDataManager:GetPersistentAirdropStateInto(mapData.id, outContext.persistentStateBuffer)
             or nil
     end
-    outContext.mapId = numericMapId
+    outContext.mapId = mapData.id
+    outContext.mapID = numericMapID
     outContext.mapData = mapData
     outContext.mapName = mapName
     outContext.currentMapID = currentMapID
     outContext.persistentState = persistentState
     outContext.isOnMap = isOnMap
-    outContext.currentTime = time()
+    outContext.currentTime = Utils:GetCurrentTimestamp()
     outContext.sender = sender
     return outContext
 end
 
-function TeamCommMessageService:ProcessTemporarySync(listener, syncState, _, sender)
-    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender, AcquireSyncContextBuffer())
-    if not context then
-        return false
-    end
-
-    local syncTimestamp = tonumber(syncState and syncState.timestamp)
-    if not syncTimestamp then
-        return false
-    end
-
-    RecordVisibleMessageSuppress(context.mapName, context.currentTime)
-
-    if context.isOnMap then
-        return true
-    end
-
-    if self:HasRecentLocalConfirmedAirdrop(listener, context.persistentState, context.currentTime) then
-        return true
-    end
-
-    if context.persistentState
-        and type(context.persistentState.currentAirdropTimestamp) == "number"
-        and syncTimestamp <= context.persistentState.currentAirdropTimestamp then
-        return true
-    end
-
-    if UnifiedDataManager and UnifiedDataManager.GetValidTemporaryTime then
-        local tempRecord = UnifiedDataManager:GetValidTemporaryTime(context.mapId)
-        if tempRecord and type(tempRecord.timestamp) == "number" then
-            local duplicateWindow = self:GetDuplicateMessageWindow(listener)
-            local isDuplicate = math.abs(syncTimestamp - tempRecord.timestamp) <= duplicateWindow
-            if isDuplicate then
-                return true
-            end
-        end
-    end
-
-    local success = false
-    if UnifiedDataManager and UnifiedDataManager.SetTime then
-        local source = (TimerManager and TimerManager.detectionSources and TimerManager.detectionSources.TEAM_MESSAGE) or "team_message"
-        success = UnifiedDataManager:SetTime(context.mapId, syncTimestamp, source)
-    end
-
-    if not success then
-        if Logger and Logger.Error then
-            Logger:Error("TeamCommListener", "错误", string.format("更新隐藏临时时间失败：地图=%s", context.mapName))
-        end
-        return false
-    end
-
-    RequestSyncUIRefresh(context.mapId)
-    return true
-end
-
 function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sender)
-    local context = ResolveSyncContext(listener, syncState and syncState.mapId, sender, AcquireSyncContextBuffer())
+    local context = ResolveSyncContext(listener, syncState and syncState.mapID, sender, AcquireSyncContextBuffer())
     if not context then
         return false
     end
 
     local syncTimestamp = tonumber(syncState and syncState.timestamp)
+    local incomingGUID = syncState and syncState.objectGUID or nil
     if not syncTimestamp then
+        return false
+    end
+    if type(incomingGUID) ~= "string" or incomingGUID == "" then
         return false
     end
 
@@ -213,40 +151,23 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
         return true
     end
 
-    if self:HasRecentLocalConfirmedAirdrop(listener, context.persistentState, context.currentTime) then
-        return true
-    end
-
-    if context.persistentState and type(context.persistentState.currentAirdropTimestamp) == "number" then
-        local localTimestamp = context.persistentState.currentAirdropTimestamp
+    if context.persistentState then
         local localGUID = context.persistentState.currentAirdropObjectGUID
-        local incomingGUID = syncState and syncState.objectGUID or nil
 
-        if syncTimestamp < localTimestamp then
-            return true
-        end
-
-        -- 同一事件的确认时间必须保留最早值，不能被后到队友继续往后推。
-        if HasSameObjectGUID(localGUID, incomingGUID) and syncTimestamp >= localTimestamp then
-            return true
-        end
-
-        -- 无 GUID 的较弱确认结果，不允许覆盖已有的本地确认状态。
-        if type(localGUID) == "string" and localGUID ~= "" and incomingGUID == nil and syncTimestamp >= localTimestamp then
-            return true
-        end
-
-        if syncTimestamp == localTimestamp and (incomingGUID == nil or incomingGUID == localGUID) then
+        -- 同地图且同 objectGUID 视为同一事件，后续同步一律不覆盖本地记录。
+        if HasSameObjectGUID(localGUID, incomingGUID) then
             return true
         end
     end
+
+    local phaseId = ExtractPhaseIDFromObjectGUID(incomingGUID)
 
     local success = UnifiedDataManager and UnifiedDataManager.PersistConfirmedAirdropState
         and UnifiedDataManager:PersistConfirmedAirdropState(context.mapId, {
             lastRefresh = syncTimestamp,
             currentAirdropTimestamp = syncTimestamp,
-            currentAirdropObjectGUID = syncState and syncState.objectGUID or nil,
-            lastRefreshPhase = syncState and syncState.phaseId or nil,
+            currentAirdropObjectGUID = incomingGUID,
+            lastRefreshPhase = phaseId,
             source = UnifiedDataManager.TimeSource.TEAM_MESSAGE,
         })
 
@@ -266,13 +187,7 @@ function TeamCommMessageService:ProcessSync(listener, syncState, chatType, sende
         return false
     end
 
-    if syncState.syncType == "TEMP" then
-        return self:ProcessTemporarySync(listener, syncState, chatType, sender)
-    end
-    if syncState.syncType == "CONFIRMED" then
-        return self:ProcessConfirmedSync(listener, syncState, chatType, sender)
-    end
-    return false
+    return self:ProcessConfirmedSync(listener, syncState, chatType, sender)
 end
 
 return TeamCommMessageService

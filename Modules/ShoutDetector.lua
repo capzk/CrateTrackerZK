@@ -63,7 +63,7 @@ local function OnShoutDetected(message)
     end
 
     local mapName = Data:GetMapDisplayName(targetMapData);
-    local currentTime = time();
+    local currentTime = Utils:GetCurrentTimestamp();
     if Notification and Notification.RecordShout then
         Notification:RecordShout(mapName);
     end
@@ -82,16 +82,8 @@ local function OnShoutDetected(message)
     end
 
     -- 写入临时时间并刷新界面（用于即时显示）
-    local syncWritten = false;
     if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
-        syncWritten = UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE) == true;
-    end
-    if syncWritten and Notification and Notification.SendAirdropSync then
-        Notification:SendAirdropSync({
-            syncType = "TEMP",
-            mapId = targetMapData.id,
-            timestamp = currentTime,
-        });
+        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
         UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {

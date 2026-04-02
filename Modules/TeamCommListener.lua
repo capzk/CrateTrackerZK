@@ -15,9 +15,7 @@ local TeamCommMessageService = BuildEnv("TeamCommMessageService");
 TeamCommListener.isInitialized = false;
 TeamCommListener.ADDON_PREFIX = "CTKZK_SYNC";
 TeamCommListener.ADDON_MESSAGE_TYPE_AIRDROP = "AIRDROP";
-TeamCommListener.ADDON_PROTOCOL_VERSION = 1;
-TeamCommListener.SYNC_TYPE_TEMP = "TEMP";
-TeamCommListener.SYNC_TYPE_CONFIRMED = "CONFIRMED";
+TeamCommListener.ADDON_PROTOCOL_VERSION = 2;
 TeamCommListener.addonPrefixRegistered = false;
 TeamCommListener.addonPrefixRegistrationAttempted = false;
 TeamCommListener.playerName = nil;
@@ -25,7 +23,6 @@ TeamCommListener.fullPlayerName = nil;
 TeamCommListener.syncStateBuffer = TeamCommListener.syncStateBuffer or {};
 
 TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW = 300;
-TeamCommListener.DUPLICATE_MESSAGE_SUPPRESS_WINDOW = 15;
 
 local TEAM_CHAT_TYPES = {
     RAID = true,
@@ -165,23 +162,23 @@ function TeamCommListener:BuildAirdropPayload(syncState)
         return nil
     end
 
-    local syncType = syncState.syncType
-    local mapId = tonumber(syncState.mapId)
+    local mapID = tonumber(syncState.mapID)
     local timestamp = tonumber(syncState.timestamp)
-    if (syncType ~= self.SYNC_TYPE_TEMP and syncType ~= self.SYNC_TYPE_CONFIRMED)
-        or not mapId
+    local objectGUID = syncState.objectGUID
+    if not mapID
         or not timestamp then
+        return nil
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
         return nil
     end
 
     return table.concat({
         self.ADDON_MESSAGE_TYPE_AIRDROP,
         tostring(self.ADDON_PROTOCOL_VERSION),
-        syncType,
-        tostring(math.floor(mapId)),
+        tostring(math.floor(mapID)),
         tostring(math.floor(timestamp)),
-        EncodePayloadField(syncState.phaseId),
-        EncodePayloadField(syncState.objectGUID),
+        EncodePayloadField(objectGUID),
     }, "|")
 end
 
@@ -198,24 +195,25 @@ function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
         return nil
     end
 
-    local messageType, protocolVersionText, syncType, mapIdText, timestampText, phaseIdText, objectGUIDText =
-        payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)|([^|]*)$")
+    local messageType, protocolVersionText, mapIDText, timestampText, objectGUIDText =
+        payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
     local protocolVersion = tonumber(protocolVersionText)
-    local mapId = tonumber(mapIdText)
+    local mapID = tonumber(mapIDText)
     local timestamp = tonumber(timestampText)
+    local objectGUID = DecodePayloadField(objectGUIDText)
     if messageType ~= self.ADDON_MESSAGE_TYPE_AIRDROP
         or protocolVersion ~= self.ADDON_PROTOCOL_VERSION
-        or (syncType ~= self.SYNC_TYPE_TEMP and syncType ~= self.SYNC_TYPE_CONFIRMED)
-        or not mapId
+        or not mapID
         or not timestamp then
         return nil
     end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return nil
+    end
 
-    outState.syncType = syncType
-    outState.mapId = mapId
+    outState.mapID = mapID
     outState.timestamp = timestamp
-    outState.phaseId = DecodePayloadField(phaseIdText)
-    outState.objectGUID = DecodePayloadField(objectGUIDText)
+    outState.objectGUID = objectGUID
     return outState
 end
 

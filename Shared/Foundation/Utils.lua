@@ -9,4 +9,19 @@ end
 
 local Utils = BuildEnv('Utils')
 
+local function ResolveCurrentTimestamp()
+    if type(GetServerTime) == "function" then
+        local ok, timestamp = pcall(GetServerTime)
+        if ok and type(timestamp) == "number" and timestamp > 0 then
+            return timestamp
+        end
+    end
+
+    return time()
+end
+
+function Utils:GetCurrentTimestamp()
+    return ResolveCurrentTimestamp()
+end
+
 return Utils;

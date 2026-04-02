@@ -253,7 +253,7 @@ function RowViewModelBuilder:BuildRowById(rowId, outRow)
         return nil
     end
 
-    local now = time()
+    local now = Utils:GetCurrentTimestamp()
     local rowCacheById = self.rowCacheById or {}
     self.rowCacheById = rowCacheById
     local hiddenMapsByExpansion = GetReusableMap(self, "singleHiddenMapsByExpansionBuffer")
@@ -269,7 +269,7 @@ end
 function RowViewModelBuilder:BuildRows()
     local rows = GetReusableArray(self, "rowsBuffer")
     local maps = Data and Data.GetAllMaps and Data:GetAllMaps() or {}
-    local now = time()
+    local now = Utils:GetCurrentTimestamp()
     local hiddenMapsByExpansion = GetReusableMap(self, "hiddenMapsByExpansionBuffer")
     local hiddenRemainingByExpansion = GetReusableMap(self, "hiddenRemainingByExpansionBuffer")
     local rowCacheById = self.rowCacheById or {}

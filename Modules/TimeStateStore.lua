@@ -54,7 +54,7 @@ function TimeStateStore:GetValidTemporary(manager, mapId, currentTime, expansion
         return nil
     end
 
-    local now = currentTime or time()
+    local now = currentTime or Utils:GetCurrentTimestamp()
     local record = timeData.temporaryTime
     if now - record.setTime <= manager.TEMPORARY_TIME_EXPIRE then
         return record
@@ -80,7 +80,7 @@ function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime,
     end
     temporaryTime.timestamp = timestamp
     temporaryTime.source = source
-    temporaryTime.setTime = setTime or time()
+    temporaryTime.setTime = setTime or Utils:GetCurrentTimestamp()
     return timeData
 end
 
@@ -89,7 +89,7 @@ function TimeStateStore:CalculateNextRefreshTime(lastRefresh, interval, currentT
         return nil
     end
 
-    local now = currentTime or time()
+    local now = currentTime or Utils:GetCurrentTimestamp()
     if now <= lastRefresh then
         return lastRefresh + interval
     end

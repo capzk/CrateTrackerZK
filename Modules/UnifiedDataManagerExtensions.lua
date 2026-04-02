@@ -23,7 +23,7 @@ function UnifiedDataManager:ClearExpiredTemporaryTimes()
         return;
     end
 
-    local now = time();
+    local now = Utils:GetCurrentTimestamp();
     local expiredCount = 0;
 
     for scopedKey, timeData in pairs(self.temporaryTimes) do
@@ -46,7 +46,7 @@ function UnifiedDataManager:ClearExpiredTemporaryPhases()
         return;
     end
 
-    local now = time();
+    local now = Utils:GetCurrentTimestamp();
     local expiredCount = 0;
     local phaseCache = GetPhaseCacheStore();
 
@@ -73,7 +73,7 @@ function UnifiedDataManager:RestoreTemporaryPhaseCache()
     if type(phaseCache) ~= "table" then
         return;
     end
-    local now = time();
+    local now = Utils:GetCurrentTimestamp();
     for scopedKey, record in pairs(phaseCache) do
         local mapId = tonumber(record and record.mapId) or tonumber(tostring(scopedKey):match(":(%d+)$")) or tonumber(scopedKey);
         local expansionID = record and record.expansionID or nil;
@@ -87,6 +87,7 @@ function UnifiedDataManager:RestoreTemporaryPhaseCache()
                 phaseData.phaseId = record.phaseId;
                 phaseData.source = self.PhaseSource.PHASE_DETECTION;
                 phaseData.detectTime = record.detectTime;
+                mapData.currentPhaseID = record.phaseId;
             end
         end
     end

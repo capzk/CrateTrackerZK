@@ -108,7 +108,7 @@ local function SanitizePersistentTimestamp(timestamp)
     if type(timestamp) ~= "number" then
         return nil;
     end
-    local maxFuture = time() + 86400 * 365;
+    local maxFuture = Utils:GetCurrentTimestamp() + 86400 * 365;
     if timestamp < 0 or timestamp > maxFuture then
         return nil;
     end
@@ -210,7 +210,7 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
     end
 
     if TimeStateStore and TimeStateStore.SetTemporary then
-        TimeStateStore:SetTemporary(self, mapId, timestamp, source, time(), expansionID);
+        TimeStateStore:SetTemporary(self, mapId, timestamp, source, Utils:GetCurrentTimestamp(), expansionID);
     end
     
     return true;
@@ -219,7 +219,7 @@ end
 -- 获取未过期的临时时间（不清除）
 function UnifiedDataManager:GetValidTemporaryTime(mapId)
     if TimeStateStore and TimeStateStore.GetValidTemporary then
-        return TimeStateStore:GetValidTemporary(self, mapId, time(), ResolveMapExpansionID(mapId));
+        return TimeStateStore:GetValidTemporary(self, mapId, Utils:GetCurrentTimestamp(), ResolveMapExpansionID(mapId));
     end
     return nil;
 end
@@ -339,7 +339,7 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
         return false;
     end
 
-    local now = time();
+    local now = Utils:GetCurrentTimestamp();
     local maps = Data:GetAllMaps() or {};
     local previousTimeState = self.temporaryTimes or {};
     local previousTemporaryPhases = self.temporaryPhases or {};
@@ -380,7 +380,7 @@ end
 
 -- 选择事件时间戳：优先采用未过期且与检测时间相近的临时时间
 function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp)
-    local fallback = detectionTimestamp or time();
+    local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
     local record = self:GetValidTemporaryTime(mapId);
     if not record then
         return fallback, false;
@@ -446,7 +446,7 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
     
     local scopedKey = GetTimeScopedKey(mapId);
     local timeData = scopedKey and self.temporaryTimes[scopedKey] or nil;
-    local now = currentTime or time();
+    local now = currentTime or Utils:GetCurrentTimestamp();
 
     local tempRecord = nil;
     local recordBuffer = persistentRecordBuffer or outDisplayTime.__ctkPersistentRecordBuffer or {};
@@ -521,7 +521,7 @@ function UnifiedDataManager:SetTemporaryPhase(mapId, phaseId, source)
     end
 
     if PhaseStateStore and PhaseStateStore.SetTemporary then
-        PhaseStateStore:SetTemporary(self, mapId, phaseId, source, time(), GetPhaseCacheStore(), expansionID);
+        PhaseStateStore:SetTemporary(self, mapId, phaseId, source, Utils:GetCurrentTimestamp(), GetPhaseCacheStore(), expansionID);
     end
     
     return true;
@@ -589,7 +589,7 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     
     -- 优先使用临时位面（如果存在且未过期）
     if PhaseStateStore and PhaseStateStore.GetCurrent then
-        return PhaseStateStore:GetCurrent(self, mapId, time(), ResolveMapExpansionID(mapId));
+        return PhaseStateStore:GetCurrent(self, mapId, Utils:GetCurrentTimestamp(), ResolveMapExpansionID(mapId));
     end
     return nil;
 end
@@ -711,7 +711,7 @@ function UnifiedDataManager:GetRemainingTime(mapId, currentTime, displayTime)
         return nil;
     end
     
-    local now = currentTime or time();
+    local now = currentTime or Utils:GetCurrentTimestamp();
     displayTime = displayTime or self:GetDisplayTime(mapId, now);
     if not displayTime then
         return nil;

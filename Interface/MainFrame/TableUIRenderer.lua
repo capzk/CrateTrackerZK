@@ -476,24 +476,10 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
 
     local lastRefreshText = rowInfo.lastRefresh and UnifiedDataManager:FormatDateTime(rowInfo.lastRefresh) or (L["NoRecord"] or "--:--")
     local lastColor = normalTextColor
-    if rowInfo.lastRefresh and not rowInfo.isPersistent then
-        rowFrame.lastColorBuffer = rowFrame.lastColorBuffer or {}
-        lastColor = SetColorBuffer(
-            rowFrame.lastColorBuffer,
-            planeIdTextColor[1],
-            planeIdTextColor[2],
-            planeIdTextColor[3],
-            0.7
-        )
-    elseif hasCurrentPhase and rowInfo.lastRefresh and rowInfo.isPersistent then
-        local compareStatus = rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.compareStatus or nil
-        if compareStatus == nil and UnifiedDataManager and UnifiedDataManager.ComparePhases then
-            local compare = UnifiedDataManager:ComparePhases(rowInfo.rowId)
-            compareStatus = compare and compare.status or nil
-        end
-        if compareStatus == "match" then
+    if rowInfo.lastRefresh then
+        if rowInfo.isPersistent then
             lastColor = planeIdTextColor
-        elseif compareStatus == "mismatch" then
+        else
             rowFrame.lastColorBuffer = rowFrame.lastColorBuffer or {}
             lastColor = SetColorBuffer(
                 rowFrame.lastColorBuffer,

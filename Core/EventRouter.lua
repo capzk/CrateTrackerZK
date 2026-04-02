@@ -30,11 +30,7 @@ local function HandleZoneChanged()
         if CoreShared:IsAreaActive() then
             if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
             if Phase then
-                if Phase.RequestUpdate then
-                    Phase:RequestUpdate(currentMapID, 0.05)
-                else
-                    Phase:UpdatePhaseInfo(currentMapID)
-                end
+                Phase:UpdatePhaseInfo(currentMapID)
             end
         end
         if TickerController and TickerController.RefreshPhaseTicker then
@@ -52,11 +48,7 @@ end
 local function HandlePlayerTargetChanged()
     if CoreShared:IsAreaActive() and Phase then
         local currentMapID = CoreShared:GetCurrentMapID()
-        if Phase.RequestUpdate then
-            Phase:RequestUpdate(currentMapID)
-        else
-            Phase:UpdatePhaseInfo(currentMapID)
-        end
+        Phase:UpdatePhaseInfo(currentMapID)
     end
     if TickerController and TickerController.RefreshPhaseTicker then
         TickerController:RefreshPhaseTicker(CrateTrackerZK)
@@ -66,11 +58,7 @@ end
 local function HandleMouseoverUnitChanged()
     if CoreShared:IsAreaActive() and Phase then
         local currentMapID = CoreShared:GetCurrentMapID()
-        if Phase.RequestUpdate then
-            Phase:RequestUpdate(currentMapID)
-        else
-            Phase:UpdatePhaseInfo(currentMapID)
-        end
+        Phase:UpdatePhaseInfo(currentMapID)
     end
     if TickerController and TickerController.RefreshPhaseTicker then
         TickerController:RefreshPhaseTicker(CrateTrackerZK)
@@ -179,11 +167,7 @@ function EventRouter:RegisterTooltipHooks()
     local updatePhase = function()
         if CoreShared:IsAreaActive() and Phase then
             local currentMapID = CoreShared:GetCurrentMapID()
-            if Phase.RequestUpdate then
-                Phase:RequestUpdate(currentMapID)
-            else
-                Phase:UpdatePhaseInfo(currentMapID)
-            end
+            Phase:UpdatePhaseInfo(currentMapID)
         end
         if TickerController and TickerController.RefreshPhaseTicker then
             TickerController:RefreshPhaseTicker(CrateTrackerZK)

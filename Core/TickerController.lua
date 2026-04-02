@@ -134,7 +134,7 @@ function TickerController:StartCleanupTicker(owner)
         return
     end
     owner.cleanupTicker = C_Timer.NewTicker(300, function()
-        local cleanupTime = time()
+        local cleanupTime = Utils:GetCurrentTimestamp()
         UnifiedDataManager:ClearExpiredTemporaryData()
         if Notification and Notification.ClearExpiredTransientState then
             Notification:ClearExpiredTransientState(cleanupTime)

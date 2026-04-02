@@ -313,7 +313,7 @@ local function FormatRemaining(seconds)
 end
 
 local function BuildTickContext(now)
-    tickContextBuffer.now = now or time()
+    tickContextBuffer.now = now or Utils:GetCurrentTimestamp()
     return tickContextBuffer
 end
 
@@ -336,7 +336,7 @@ local function GetRemaining(rowId, context, cache)
     end
     if not mapData then return nil, false, false end
 
-    local now = (context and context.now) or time()
+    local now = (context and context.now) or Utils:GetCurrentTimestamp()
     local isHidden = Data and Data.IsMapHidden and Data:IsMapHidden(mapData.expansionID, mapData.mapID)
 
     if isHidden then
@@ -580,13 +580,13 @@ local function EnsureRefreshTicker()
             return
         end
 
-        RefreshCountdownUI(time())
+        RefreshCountdownUI(Utils:GetCurrentTimestamp())
     end)
 end
 
 function CountdownSystem:RegisterText(rowId, textObject)
     textByRowId[rowId] = textObject
-    local context = BuildTickContext(time())
+    local context = BuildTickContext(Utils:GetCurrentTimestamp())
     local cache = AcquireRowDisplayCache(rowId)
     local remaining, isHidden, hasRealtimeUpdate = GetRemaining(rowId, context, cache)
     RefreshPhaseStateCache(rowId, cache)
@@ -670,7 +670,7 @@ function CountdownSystem:SetRowHover(rowId, hovered)
         return
     end
 
-    local context = BuildTickContext(time())
+    local context = BuildTickContext(Utils:GetCurrentTimestamp())
     local cache = AcquireRowDisplayCache(rowId)
     local remaining, isHidden = GetRemaining(rowId, context, cache)
     if cache.phaseStateDirty then

@@ -30,7 +30,7 @@ end
 function NotificationDedupService:ClearExpiredTransientState(notification, currentTime)
     self:EnsureState(notification)
 
-    local now = currentTime or time()
+    local now = currentTime or Utils:GetCurrentTimestamp()
     local shoutGraceWindow = math.max((notification.SHOUT_DEDUP_WINDOW or 20) * 4, 120)
     local syncGraceWindow = math.max((notification.RECEIVED_SYNC_SUPPRESS_WINDOW or 15) * 4, 120)
 
@@ -55,7 +55,7 @@ function NotificationDedupService:CanSendNotification(notification, mapName)
         return false
     end
     self:EnsureState(notification)
-    local currentTime = time()
+    local currentTime = Utils:GetCurrentTimestamp()
     local firstNotificationTime = notification.firstNotificationTime[mapName]
     if not firstNotificationTime then
         return true
@@ -108,7 +108,7 @@ function NotificationDedupService:RecordShout(notification, mapName, timestamp)
         return
     end
     self:EnsureState(notification)
-    notification.lastShoutTime[mapName] = timestamp or time()
+    notification.lastShoutTime[mapName] = timestamp or Utils:GetCurrentTimestamp()
 end
 
 function NotificationDedupService:RecordReceivedSync(notification, mapName, timestamp)
@@ -116,7 +116,7 @@ function NotificationDedupService:RecordReceivedSync(notification, mapName, time
         return
     end
     self:EnsureState(notification)
-    notification.lastReceivedSyncTime[mapName] = timestamp or time()
+    notification.lastReceivedSyncTime[mapName] = timestamp or Utils:GetCurrentTimestamp()
 end
 
 function NotificationDedupService:HasRecentReceivedSync(notification, mapName, windowSeconds, currentTime)
@@ -128,7 +128,7 @@ function NotificationDedupService:HasRecentReceivedSync(notification, mapName, w
     if not lastTime then
         return false, nil
     end
-    currentTime = currentTime or time()
+    currentTime = currentTime or Utils:GetCurrentTimestamp()
     local isRecent = AirdropEventService and AirdropEventService.HasRecentTimestamp
         and AirdropEventService:HasRecentTimestamp(lastTime, currentTime, windowSeconds)
         or ((currentTime - lastTime) <= (windowSeconds or 0))
@@ -145,7 +145,7 @@ function NotificationDedupService:IsRecentShout(notification, mapName, windowSec
         return false, nil
     end
     windowSeconds = windowSeconds or notification.SHOUT_DEDUP_WINDOW or 20
-    currentTime = currentTime or time()
+    currentTime = currentTime or Utils:GetCurrentTimestamp()
     local isRecent = AirdropEventService and AirdropEventService.HasRecentTimestamp
         and AirdropEventService:HasRecentTimestamp(lastTime, currentTime, windowSeconds)
         or ((currentTime - lastTime) <= windowSeconds)

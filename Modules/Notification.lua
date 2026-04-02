@@ -239,7 +239,7 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     
     local chatType = self:GetTeamChatType();
     local outboundChatType = chatType;
-    local currentTime = time();
+    local currentTime = Utils:GetCurrentTimestamp();
     -- 记录喊话时间，用于后续图标检测的去重
     if detectionSource == "npc_shout" then
         self:RecordShout(mapName, currentTime);
