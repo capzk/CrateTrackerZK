@@ -63,7 +63,6 @@ local function RefreshTrackedMapRuntime()
 
     if TeamCommListener and TeamCommListener.Initialize then
         TeamCommListener.isInitialized = false
-        TeamCommListener:Initialize()
     end
 
     if Area then
@@ -74,6 +73,10 @@ local function RefreshTrackedMapRuntime()
         else
             Area.detectionPaused = true
         end
+    end
+
+    if TeamCommListener and TeamCommListener.Initialize then
+        TeamCommListener:Initialize()
     end
 
     if MainPanel and MainPanel.RefreshTrackedMapConfiguration then
@@ -142,7 +145,6 @@ function AddonControlService:ClearDataAndReinitialize()
         end
         if TeamCommListener then
             TeamCommListener.isInitialized = false
-            TeamCommListener.messagePatterns = {}
         end
         if ShoutDetector then
             ShoutDetector.isInitialized = false
@@ -217,7 +219,6 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         end
         if TeamCommListener then
             TeamCommListener.isInitialized = false
-            TeamCommListener.messagePatterns = {}
         end
         if ShoutDetector then
             ShoutDetector.isInitialized = false

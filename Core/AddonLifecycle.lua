@@ -94,10 +94,6 @@ function AddonLifecycle:OnLogin()
         return
     end
 
-    if TeamCommListener then TeamCommListener:Initialize() end
-    if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
-    if TimerManager then TimerManager:Initialize() end
-
     if MainPanel then MainPanel:CreateMainFrame() end
     if CrateTrackerZK.CreateFloatingButton then
         CrateTrackerZK:CreateFloatingButton()
@@ -114,6 +110,10 @@ function AddonLifecycle:OnLogin()
             Area.lastAccessMode = nil
         end
     end
+
+    if TeamCommListener then TeamCommListener:Initialize() end
+    if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
+    if TimerManager then TimerManager:Initialize() end
 
     if addonEnabled and CoreShared:IsAreaActive() then
         TickerController:StartMapIconDetection(CrateTrackerZK, 1)

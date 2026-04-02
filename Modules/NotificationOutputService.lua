@@ -2,6 +2,15 @@
 
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local Logger = BuildEnv("Logger")
+local TeamCommListener = BuildEnv("TeamCommListener")
+
+local function NormalizeAddonCallResult(...)
+    local secondary = select(2, ...)
+    if secondary ~= nil then
+        return secondary
+    end
+    return select(1, ...)
+end
 
 local function TryPlaySound(path)
     if not path or path == "" or not PlaySoundFile then
@@ -43,6 +52,16 @@ function NotificationOutputService:PlayDelayedAlertSound(notification)
     self:PlayAirdropAlertSound(notification)
 end
 
+local function ResolveAddonDistribution(chatType)
+    if chatType == "RAID_WARNING" then
+        return "RAID"
+    end
+    if chatType == "RAID" or chatType == "PARTY" or chatType == "INSTANCE_CHAT" then
+        return chatType
+    end
+    return nil
+end
+
 function NotificationOutputService:SendMessage(notification, message, chatType)
     if chatType and notification and notification.teamNotificationEnabled then
         if IsInRaid() then
@@ -73,6 +92,41 @@ function NotificationOutputService:SendManualMessage(message, chatType)
         return success, err
     end
     return false, nil
+end
+
+function NotificationOutputService:SendAirdropSync(syncState, chatType)
+    local distribution = ResolveAddonDistribution(chatType)
+    if type(syncState) ~= "table" or not distribution then
+        return false
+    end
+
+    if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
+        if TeamCommListener:RegisterAddonPrefix() ~= true then
+            return false
+        end
+    end
+
+    local prefix = TeamCommListener and TeamCommListener.ADDON_PREFIX or nil
+    local payload = TeamCommListener and TeamCommListener.BuildAirdropPayload and TeamCommListener:BuildAirdropPayload(syncState) or nil
+    if type(prefix) ~= "string" or prefix == "" then
+        return false
+    end
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+    local sendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
+    if type(sendAddonMessage) ~= "function" then
+        return false
+    end
+
+    local ok, result = pcall(function()
+        return NormalizeAddonCallResult(sendAddonMessage(prefix, payload, distribution))
+    end)
+    local success = ok and (result == true or result == 0)
+    if not success and Logger and Logger.Warn then
+        Logger:Warn("Notification", "通知", string.format("发送隐藏团队同步失败：prefix=%s，频道=%s", prefix, distribution))
+    end
+    return success
 end
 
 return NotificationOutputService

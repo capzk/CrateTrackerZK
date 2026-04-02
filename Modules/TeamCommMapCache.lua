@@ -1,99 +1,45 @@
--- TeamCommMapCache.lua - 团队消息地图名缓存与身份缓存
+-- TeamCommMapCache.lua - 团队隐藏同步身份缓存
 
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
-local Data = BuildEnv("Data")
 
-function TeamCommMapCache:Build(listener)
-    listener.mapNameToID = {}
-    listener.mapNameCacheSignature = nil
-    listener.mapNameCacheMapsRef = nil
-    listener.mapNameCacheCount = nil
-    listener.mapNameCacheExpansionID = nil
-
-    if not Data or not Data.GetAllMaps then
-        return
-    end
-    local maps = Data:GetAllMaps()
-    if not maps or #maps == 0 then
-        return
-    end
-
-    local signatureParts = { tostring(#maps) }
-    for _, mapData in ipairs(maps) do
-        if mapData then
-            table.insert(signatureParts, table.concat({
-                tostring(mapData.expansionID or "default"),
-                tostring(mapData.id),
-                tostring(mapData.mapID)
-            }, ":"))
-        end
-    end
-
-    listener.mapNameCacheSignature = table.concat(signatureParts, "|")
-    listener.mapNameCacheMapsRef = maps
-    listener.mapNameCacheCount = #maps
-
-    for _, mapData in ipairs(maps) do
-        if mapData then
-            local displayName = Data:GetMapDisplayName(mapData)
-            if type(displayName) == "string" and displayName ~= "" then
-                listener.mapNameToID[displayName] = mapData.id
-            end
-        end
-    end
-
-    local LocaleManager = BuildEnv("LocaleManager")
-    if LocaleManager and LocaleManager.GetLocaleRegistry then
-        local localeRegistry = LocaleManager.GetLocaleRegistry()
-        if localeRegistry then
-            for _, mapData in ipairs(maps) do
-                if mapData and mapData.mapID then
-                    for _, localeData in pairs(localeRegistry) do
-                        local localizedName = localeData and localeData.MapNames and localeData.MapNames[mapData.mapID]
-                        if type(localizedName) == "string" and localizedName ~= "" and not listener.mapNameToID[localizedName] then
-                            listener.mapNameToID[localizedName] = mapData.id
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-function TeamCommMapCache:Ensure(listener)
-    if not Data or not Data.GetAllMaps then
-        return
-    end
-    local maps = Data:GetAllMaps()
-    if not maps then
-        return
-    end
-    local signatureParts = { tostring(#maps) }
-    for _, mapData in ipairs(maps) do
-        if mapData then
-            table.insert(signatureParts, table.concat({
-                tostring(mapData.expansionID or "default"),
-                tostring(mapData.id),
-                tostring(mapData.mapID)
-            }, ":"))
-        end
-    end
-    local currentSignature = table.concat(signatureParts, "|")
-    if listener.mapNameCacheMapsRef ~= maps
-        or listener.mapNameCacheCount ~= #maps
-        or listener.mapNameCacheSignature ~= currentSignature
-        or not listener.mapNameToID then
-        self:Build(listener)
-    end
-end
-
-function TeamCommMapCache:GetMapIdByName(listener, mapName)
-    local name = type(mapName) == "string" and mapName:match("^%s*(.-)%s*$") or nil
-    if not name or name == "" then
+local function NormalizeIdentityText(value)
+    if type(value) ~= "string" or value == "" then
         return nil
     end
-    self:Ensure(listener)
-    return listener.mapNameToID and listener.mapNameToID[name] or nil
+    local normalized = value
+        :gsub("’", "'")
+        :gsub("‘", "'")
+        :gsub("＇", "'")
+        :lower()
+        :gsub("[%s%-%_'`]", "")
+    if normalized == "" then
+        return nil
+    end
+    return normalized
+end
+
+local function ParsePlayerSender(sender)
+    if type(sender) ~= "string" or sender == "" then
+        return nil, nil
+    end
+    local name, realm = sender:match("^([^%-]+)%-(.+)$")
+    if name then
+        return name, realm
+    end
+    return sender, nil
+end
+
+local function BuildRealmIdentityKeys(realmDisplayName, realmNormalizedName)
+    local keys = {}
+    local displayKey = NormalizeIdentityText(realmDisplayName)
+    if displayKey then
+        keys[displayKey] = true
+    end
+    local normalizedKey = NormalizeIdentityText(realmNormalizedName)
+    if normalizedKey then
+        keys[normalizedKey] = true
+    end
+    return keys
 end
 
 function TeamCommMapCache:EnsurePlayerIdentity(listener)
@@ -102,12 +48,42 @@ function TeamCommMapCache:EnsurePlayerIdentity(listener)
     end
     local playerName = UnitName("player")
     local realmName = GetRealmName()
+    local normalizedRealmName = GetNormalizedRealmName and GetNormalizedRealmName() or nil
     listener.playerName = playerName
+    listener.playerNameNormalized = NormalizeIdentityText(playerName)
+    listener.realmName = realmName
+    listener.normalizedRealmName = normalizedRealmName
+    listener.realmIdentityKeys = BuildRealmIdentityKeys(realmName, normalizedRealmName)
     if playerName and realmName and realmName ~= "" then
         listener.fullPlayerName = playerName .. "-" .. realmName
     else
         listener.fullPlayerName = playerName
     end
+end
+
+function TeamCommMapCache:IsSelfSender(listener, sender)
+    self:EnsurePlayerIdentity(listener)
+    if type(sender) ~= "string" or sender == "" then
+        return false
+    end
+
+    local senderName, senderRealm = ParsePlayerSender(sender)
+    local senderNameKey = NormalizeIdentityText(senderName)
+    if not senderNameKey or not listener.playerNameNormalized or senderNameKey ~= listener.playerNameNormalized then
+        return false
+    end
+
+    if not senderRealm or senderRealm == "" then
+        return true
+    end
+
+    local senderRealmKey = NormalizeIdentityText(senderRealm)
+    if not senderRealmKey then
+        return false
+    end
+
+    local realmKeys = listener.realmIdentityKeys or {}
+    return realmKeys[senderRealmKey] == true
 end
 
 return TeamCommMapCache

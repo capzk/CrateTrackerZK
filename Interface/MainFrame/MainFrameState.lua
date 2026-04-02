@@ -33,7 +33,7 @@ function MainFrameState:MigrateUIState(frameCfg, widthProfileVersion, uiStateMig
             db.mainFrameSize = nil
         else
             size.width = math.max(frameCfg.minWidth, math.min(frameCfg.maxWidth, savedWidth))
-            size.height = math.max(frameCfg.minHeight, math.min(frameCfg.maxHeight, savedHeight))
+            size.height = math.max(frameCfg.minHeight, savedHeight)
             size.userControlledWidth = size.userControlledWidth == true
             size.userControlledHeight = size.userControlledHeight == true
             size.widthProfileVersion = widthProfileVersion

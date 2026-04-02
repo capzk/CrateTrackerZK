@@ -75,7 +75,7 @@ function AirdropEventService:IsDuplicateTeamMessage(temporaryTimestamp, currentT
         return false
     end
 
-    if currentTime <= temporaryTimestamp then
+    if currentTime < temporaryTimestamp then
         return false
     end
 

@@ -1,4 +1,4 @@
--- TeamCommListener.lua - 读取团队通知消息，自动更新空投刷新时间
+-- TeamCommListener.lua - 读取隐藏插件同步消息，更新空投时间状态
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -9,48 +9,17 @@ end
 
 local TeamCommListener = BuildEnv('TeamCommListener');
 
-local CrateTrackerZK = BuildEnv("CrateTrackerZK");
-local L = CrateTrackerZK.L;
-local TeamCommParserRegistry = BuildEnv("TeamCommParserRegistry");
 local TeamCommMapCache = BuildEnv("TeamCommMapCache");
 local TeamCommMessageService = BuildEnv("TeamCommMessageService");
 
-if not Data then
-    Data = BuildEnv('Data')
-end
-
-if not Utils then
-    Utils = BuildEnv('Utils')
-end
-
-if not AirdropEventService then
-    AirdropEventService = BuildEnv('AirdropEventService')
-end
-
-if not UnifiedDataManager then
-    UnifiedDataManager = BuildEnv('UnifiedDataManager')
-end
-
-if not TimerManager then
-    TimerManager = BuildEnv('TimerManager')
-end
-
-if not Area then
-    Area = BuildEnv('Area')
-end
-
 TeamCommListener.isInitialized = false;
-TeamCommListener.messagePatterns = {};       -- 兼容保留
-TeamCommListener.autoReportPatterns = {};    -- 兼容保留
-TeamCommListener.preferredMessageParsers = {};
-TeamCommListener.fallbackMessageParsers = {};
-TeamCommListener.preferredAutoReportParsers = {};
-TeamCommListener.fallbackAutoReportParsers = {};
-TeamCommListener.mapNameToID = {};
-TeamCommListener.mapNameCacheSignature = nil;
-TeamCommListener.mapNameCacheMapsRef = nil;
-TeamCommListener.mapNameCacheCount = nil;
-TeamCommListener.mapNameCacheExpansionID = nil;
+TeamCommListener.ADDON_PREFIX = "CTKZK_SYNC";
+TeamCommListener.ADDON_MESSAGE_TYPE_AIRDROP = "AIRDROP";
+TeamCommListener.ADDON_PROTOCOL_VERSION = 1;
+TeamCommListener.SYNC_TYPE_TEMP = "TEMP";
+TeamCommListener.SYNC_TYPE_CONFIRMED = "CONFIRMED";
+TeamCommListener.addonPrefixRegistered = false;
+TeamCommListener.addonPrefixRegistrationAttempted = false;
 TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
 
@@ -64,48 +33,195 @@ local TEAM_CHAT_TYPES = {
     INSTANCE_CHAT = true
 };
 
-local CHAT_EVENT_TO_TYPE = {
-    CHAT_MSG_RAID = "RAID",
-    CHAT_MSG_RAID_LEADER = "RAID",
-    CHAT_MSG_RAID_WARNING = "RAID_WARNING",
-    CHAT_MSG_PARTY = "PARTY",
-    CHAT_MSG_PARTY_LEADER = "PARTY",
-    CHAT_MSG_INSTANCE_CHAT = "INSTANCE_CHAT",
-    CHAT_MSG_INSTANCE_CHAT_LEADER = "INSTANCE_CHAT"
-};
-
 local function IsDebugEnabled()
     return Logger and Logger.debugEnabled == true;
 end
 
-function TeamCommListener:ProcessTeamMessage(message, chatType, sender)
-    if not message or type(message) ~= "string" then
+local function NormalizeAddonCallResult(...)
+    local secondary = select(2, ...)
+    if secondary ~= nil then
+        return secondary
+    end
+    return select(1, ...)
+end
+
+local function HasTeamChatContext()
+    if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return true
+    end
+    if IsInRaid and IsInRaid() then
+        return true
+    end
+    if IsInGroup and IsInGroup() then
+        return true
+    end
+    return false
+end
+
+function TeamCommListener:CanEnableHiddenSync()
+    if not HasTeamChatContext() then
+        return false
+    end
+    if Area and Area.IsActive then
+        return Area:IsActive() == true
+    end
+    return false
+end
+
+function TeamCommListener:CanReceiveHiddenSync()
+    if not HasTeamChatContext() then
+        return false
+    end
+    if Area and Area.CanProcessTeamMessages then
+        return Area:CanProcessTeamMessages() == true
+    end
+    if IsInInstance and IsInInstance() then
+        return false
+    end
+    return true
+end
+
+local function EncodePayloadField(value)
+    if value == nil then
+        return "-"
+    end
+    local text = tostring(value)
+    if text == "" then
+        return "-"
+    end
+    local sanitized = text:gsub("|", "/")
+    return sanitized
+end
+
+local function DecodePayloadField(value)
+    if type(value) ~= "string" or value == "" or value == "-" then
+        return nil
+    end
+    return value
+end
+
+local function RegisterAddonPrefixInternal(prefix)
+    if type(prefix) ~= "string" or prefix == "" then
+        return false, nil;
+    end
+
+    if C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered then
+        local ok, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix);
+        if ok and isRegistered == true then
+            return true, 0;
+        end
+    end
+
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        local ok, result = pcall(function()
+            return NormalizeAddonCallResult(C_ChatInfo.RegisterAddonMessagePrefix(prefix));
+        end);
+        if not ok then
+            return false, nil;
+        end
+        if result == true or result == 0 then
+            return true, result;
+        end
+        if C_ChatInfo.IsAddonMessagePrefixRegistered then
+            local verifyOk, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix);
+            if verifyOk and isRegistered == true then
+                return true, result;
+            end
+        end
+        return false, result;
+    end
+    if RegisterAddonMessagePrefix then
+        local ok, result = pcall(function()
+            return NormalizeAddonCallResult(RegisterAddonMessagePrefix(prefix));
+        end);
+        if not ok then
+            return false, nil;
+        end
+        return result == true or result == 0, result;
+    end
+    return false, nil;
+end
+
+function TeamCommListener:RegisterAddonPrefix()
+    if self.addonPrefixRegistered == true then
+        return true;
+    end
+    if self.CanReceiveHiddenSync and self:CanReceiveHiddenSync() ~= true then
         return false;
     end
-    if not self.isInitialized then
-        self:Initialize();
-    end
-    if not chatType or not TEAM_CHAT_TYPES[chatType] then
+    if self.addonPrefixRegistrationAttempted == true then
         return false;
     end
-    if TeamCommMessageService and TeamCommMessageService.Process then
-        return TeamCommMessageService:Process(self, message, chatType, sender);
+
+    self.addonPrefixRegistrationAttempted = true;
+    local registered = RegisterAddonPrefixInternal(self.ADDON_PREFIX);
+    self.addonPrefixRegistered = registered == true;
+    self.addonPrefixRegistrationAttempted = self.addonPrefixRegistered == true;
+    if not self.addonPrefixRegistered and Logger and Logger.Warn then
+        Logger:Warn("TeamCommListener", tostring(self.ADDON_PREFIX), "注册失败");
     end
-    return false;
+    return self.addonPrefixRegistered == true;
+end
+
+function TeamCommListener:BuildAirdropPayload(syncState)
+    if type(syncState) ~= "table" then
+        return nil
+    end
+
+    local syncType = syncState.syncType
+    local mapId = tonumber(syncState.mapId)
+    local timestamp = tonumber(syncState.timestamp)
+    if (syncType ~= self.SYNC_TYPE_TEMP and syncType ~= self.SYNC_TYPE_CONFIRMED)
+        or not mapId
+        or not timestamp then
+        return nil
+    end
+
+    return table.concat({
+        self.ADDON_MESSAGE_TYPE_AIRDROP,
+        tostring(self.ADDON_PROTOCOL_VERSION),
+        syncType,
+        tostring(math.floor(mapId)),
+        tostring(math.floor(timestamp)),
+        EncodePayloadField(syncState.phaseId),
+        EncodePayloadField(syncState.objectGUID),
+    }, "|")
+end
+
+function TeamCommListener:ParseAddonPayload(prefix, payload)
+    if prefix ~= self.ADDON_PREFIX or type(payload) ~= "string" then
+        return nil
+    end
+
+    local messageType, protocolVersionText, syncType, mapIdText, timestampText, phaseIdText, objectGUIDText =
+        payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)|([^|]*)$")
+    local protocolVersion = tonumber(protocolVersionText)
+    local mapId = tonumber(mapIdText)
+    local timestamp = tonumber(timestampText)
+    if messageType ~= self.ADDON_MESSAGE_TYPE_AIRDROP
+        or protocolVersion ~= self.ADDON_PROTOCOL_VERSION
+        or (syncType ~= self.SYNC_TYPE_TEMP and syncType ~= self.SYNC_TYPE_CONFIRMED)
+        or not mapId
+        or not timestamp then
+        return nil
+    end
+
+    return {
+        syncType = syncType,
+        mapId = mapId,
+        timestamp = timestamp,
+        phaseId = DecodePayloadField(phaseIdText),
+        objectGUID = DecodePayloadField(objectGUIDText),
+    }
 end
 
 function TeamCommListener:Initialize()
-    if TeamCommParserRegistry and TeamCommParserRegistry.Initialize then
-        TeamCommParserRegistry:Initialize(self);
-    end
-    if TeamCommMapCache and TeamCommMapCache.Build then
-        TeamCommMapCache:Build(self);
-    end
     self.playerName = nil;
     self.fullPlayerName = nil;
     if TeamCommMapCache and TeamCommMapCache.EnsurePlayerIdentity then
         TeamCommMapCache:EnsurePlayerIdentity(self);
     end
+    self:RegisterAddonPrefix();
 
     self.isInitialized = true;
 
@@ -114,31 +230,26 @@ function TeamCommListener:Initialize()
     end
 end
 
-function TeamCommListener:HandleChatEvent(event, message, sender)
+function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
+    if self.CanReceiveHiddenSync and self:CanReceiveHiddenSync() ~= true then
+        return false;
+    end
     if not self.isInitialized then
         self:Initialize();
     end
-    if Area then
-        if Area.CanProcessTeamMessages then
-            if not Area:CanProcessTeamMessages() then
-                return;
-            end
-        elseif Area.IsActive and not Area:IsActive() then
-            return;
-        end
-    end
-    if IsInInstance and IsInInstance() then
-        return;
-    end
-    if not event or not message or type(message) ~= "string" then
-        return;
+    if type(chatType) ~= "string" or not TEAM_CHAT_TYPES[chatType] then
+        return false;
     end
 
-    local chatType = CHAT_EVENT_TO_TYPE[event];
-    if not chatType then
-        return;
+    local syncState = self:ParseAddonPayload(prefix, payload);
+    if not syncState then
+        return false;
     end
-    self:ProcessTeamMessage(message, chatType, sender);
+
+    if TeamCommMessageService and TeamCommMessageService.ProcessSync then
+        return TeamCommMessageService:ProcessSync(self, syncState, chatType, sender);
+    end
+    return false;
 end
 
 return TeamCommListener;

@@ -34,7 +34,7 @@ function UnifiedDataManager:ClearExpiredTemporaryTimes()
             end
         end
 
-        if not timeData.temporaryTime and not timeData.persistentTime then
+        if not timeData.temporaryTime then
             self.temporaryTimes[scopedKey] = nil;
         end
     end

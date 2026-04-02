@@ -15,15 +15,7 @@ local MONSTER_CHAT_EVENTS = {
     CHAT_MSG_RAID_BOSS_WHISPER = true,
 }
 
-local TEAM_CHAT_EVENTS = {
-    CHAT_MSG_RAID = true,
-    CHAT_MSG_RAID_LEADER = true,
-    CHAT_MSG_RAID_WARNING = true,
-    CHAT_MSG_PARTY = true,
-    CHAT_MSG_PARTY_LEADER = true,
-    CHAT_MSG_INSTANCE_CHAT = true,
-    CHAT_MSG_INSTANCE_CHAT_LEADER = true,
-}
+local TEAM_ADDON_EVENT = "CHAT_MSG_ADDON"
 
 local function HandleZoneChanged()
     C_Timer.After(0.1, function()
@@ -31,11 +23,20 @@ local function HandleZoneChanged()
         if Area then
             Area:CheckAndUpdateAreaValid(currentMapID)
         end
+        if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
+            TeamCommListener:RegisterAddonPrefix()
+        end
         if CoreShared:IsAreaActive() then
             if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
             if Phase then Phase:UpdatePhaseInfo(currentMapID) end
         end
     end)
+end
+
+local function HandleGroupRosterUpdate()
+    if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
+        TeamCommListener:RegisterAddonPrefix()
+    end
 end
 
 local function HandlePlayerTargetChanged()
@@ -66,14 +67,16 @@ local function HandleMonsterChat(event, ...)
     end
 end
 
-local function HandleTeamChat(event, ...)
+local function HandleTeamAddon(event, ...)
     if not CoreShared:CanProcessTeamMessages() then
         return
     end
-    if TeamCommListener and TeamCommListener.HandleChatEvent then
-        local message = select(1, ...)
-        local sender = select(2, ...)
-        TeamCommListener:HandleChatEvent(event, message, sender)
+    if TeamCommListener and TeamCommListener.HandleAddonEvent then
+        local prefix = select(1, ...)
+        local payload = select(2, ...)
+        local chatType = select(3, ...)
+        local sender = select(4, ...)
+        TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
     end
 end
 
@@ -88,14 +91,16 @@ function EventRouter:HandleEvent(event, ...)
         AddonLifecycle:OnLogin()
     elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
         HandleZoneChanged()
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        HandleGroupRosterUpdate()
     elseif event == "PLAYER_TARGET_CHANGED" then
         HandlePlayerTargetChanged()
     elseif event == "PLAYER_LOGOUT" then
         HandlePlayerLogout()
     elseif MONSTER_CHAT_EVENTS[event] then
         HandleMonsterChat(event, ...)
-    elseif TEAM_CHAT_EVENTS[event] then
-        HandleTeamChat(event, ...)
+    elseif event == TEAM_ADDON_EVENT then
+        HandleTeamAddon(event, ...)
     end
 end
 
@@ -113,6 +118,7 @@ function EventRouter:RegisterEventFrame()
     eventFrame:RegisterEvent("ZONE_CHANGED")
     eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     eventFrame:RegisterEvent("PLAYER_LOGOUT")
     eventFrame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
@@ -122,13 +128,7 @@ function EventRouter:RegisterEventFrame()
     eventFrame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER")
     eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_EMOTE")
     eventFrame:RegisterEvent("CHAT_MSG_RAID_BOSS_WHISPER")
-    eventFrame:RegisterEvent("CHAT_MSG_RAID")
-    eventFrame:RegisterEvent("CHAT_MSG_RAID_LEADER")
-    eventFrame:RegisterEvent("CHAT_MSG_RAID_WARNING")
-    eventFrame:RegisterEvent("CHAT_MSG_PARTY")
-    eventFrame:RegisterEvent("CHAT_MSG_PARTY_LEADER")
-    eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
-    eventFrame:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
+    eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 
     CrateTrackerZK.eventFrame = eventFrame
     return eventFrame

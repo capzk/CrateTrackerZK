@@ -36,8 +36,7 @@ end
 function Localization:ValidateCompleteness()
     if self.suppressWarnings then
         return {
-            keys = {},
-            mapNames = {}
+            keys = {}
         };
     end
     local LocaleManager = BuildEnv("LocaleManager");
@@ -50,13 +49,12 @@ function Localization:ValidateCompleteness()
     end
 
     local missing = {
-        keys = {},
-        mapNames = {}
+        keys = {}
     };
 
     if enUS and activeData then
         for k, _ in pairs(enUS) do
-            if k ~= "MapNames" and k ~= "AirdropShouts" then
+            if k ~= "AirdropShouts" then
                 if activeData[k] == nil then
                     table.insert(missing.keys, k);
                 end
@@ -64,25 +62,7 @@ function Localization:ValidateCompleteness()
         end
     end
 
-    local expectedMapIDs = {};
-    if Data and Data.MAP_CONFIG and Data.MAP_CONFIG.current_maps then
-        for _, mapCfg in ipairs(Data.MAP_CONFIG.current_maps) do
-            if mapCfg and mapCfg.mapID then
-                expectedMapIDs[mapCfg.mapID] = true;
-            end
-        end
-    end
-    local activeMapNames = activeData and activeData.MapNames;
-    for mapID, _ in pairs(expectedMapIDs) do
-        if type(activeMapNames) ~= "table" or activeMapNames[mapID] == nil then
-            table.insert(missing.mapNames, tostring(mapID));
-        end
-    end
-
     table.sort(missing.keys);
-    table.sort(missing.mapNames, function(a, b)
-        return tonumber(a) < tonumber(b);
-    end);
 
     return missing;
 end
@@ -152,14 +132,12 @@ function Localization:ReportInitializationStatus()
     
     local missing = self:ValidateCompleteness();
     local missingKeyCount = #(missing.keys or {});
-    local missingMapCount = #(missing.mapNames or {});
-    local missingCount = missingKeyCount + missingMapCount;
+    local missingCount = missingKeyCount;
     
     if missingCount > 0 then
         Logger:Debug("Localization", "本地化", string.format(
-            "Missing locale data detected: keys=%d, mapNames=%d, total=%d",
+            "Missing locale data detected: keys=%d, total=%d",
             missingKeyCount,
-            missingMapCount,
             missingCount
         ));
     end

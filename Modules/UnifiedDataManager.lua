@@ -1,5 +1,5 @@
 -- UnifiedDataManager.lua - 统一数据管理模块
--- 负责管理时间数据（临时时间和持久化时间）和位面数据（临时位面和持久化位面）
+-- 负责管理运行时临时时间/位面，并统一读取持久层快照
 
 if not BuildEnv then
     BuildEnv = function(name)
@@ -97,23 +97,10 @@ local function BuildPersistentTimeRecord(manager, snapshot)
 
     return {
         timestamp = snapshot.lastRefresh,
-        source = manager.TimeSource.ICON_DETECTION,
+        source = snapshot.lastRefreshSource or manager.TimeSource.ICON_DETECTION,
         phaseId = snapshot.lastRefreshPhase,
         objectGUID = snapshot.currentAirdropObjectGUID,
         eventTimestamp = snapshot.currentAirdropTimestamp or snapshot.lastRefresh,
-    };
-end
-
-local function BuildPersistentPhaseRecord(manager, mapId, snapshot)
-    if not snapshot or not snapshot.lastRefreshPhase then
-        return nil;
-    end
-
-    return {
-        mapId = mapId,
-        phaseId = snapshot.lastRefreshPhase,
-        source = manager.PhaseSource.ICON_DETECTION,
-        detectTime = snapshot.currentAirdropTimestamp or snapshot.lastRefresh,
     };
 end
 
@@ -123,12 +110,11 @@ function UnifiedDataManager:Initialize()
     
     self.isInitialized = true;
     
-    -- 时间数据存储 {mapId -> TimeData}
+    -- 时间数据存储 {mapId -> TimeData}（仅运行时临时态）
     self.temporaryTimes = {};
     
-    -- 位面数据存储 {mapId -> PhaseData}
+    -- 位面数据存储 {mapId -> PhaseData}（仅运行时临时态）
     self.temporaryPhases = {};
-    self.persistentPhases = {};
     
     self:SynchronizeTrackedMaps();
     self:RestoreTemporaryPhaseCache();
@@ -244,9 +230,15 @@ function UnifiedDataManager:GetPersistentTimeRecord(mapId)
         return nil;
     end
 
-    local scopedKey = GetTimeScopedKey(mapId);
-    local timeData = scopedKey and self.temporaryTimes and self.temporaryTimes[scopedKey] or nil;
-    return timeData and timeData.persistentTime or nil;
+    if Data and Data.GetPersistentSnapshot then
+        local snapshot = Data:GetPersistentSnapshot(mapId);
+        local fallbackRecord = BuildPersistentTimeRecord(self, snapshot);
+        if fallbackRecord then
+            return fallbackRecord;
+        end
+    end
+
+    return nil;
 end
 
 function UnifiedDataManager:GetPersistentAirdropState(mapId)
@@ -268,10 +260,10 @@ function UnifiedDataManager:ClearPersistentPhase(mapId)
     if not self.isInitialized then
         return false;
     end
-
-    local scopedKey = GetPhaseScopedKey(mapId);
-    if scopedKey and self.persistentPhases then
-        self.persistentPhases[scopedKey] = nil;
+    if Data and Data.PersistAirdropState then
+        return Data:PersistAirdropState(mapId, {
+            lastRefreshPhase = false,
+        }) == true;
     end
     return true;
 end
@@ -282,7 +274,7 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
         return false;
     end
 
-    if not Data or not Data.GetAllMaps or not Data.GetPersistentSnapshot then
+    if not Data or not Data.GetAllMaps then
         Logger:Error("UnifiedDataManager", "错误", "Data模块未加载");
         return false;
     end
@@ -293,21 +285,18 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
     local previousTemporaryPhases = self.temporaryPhases or {};
     local synchronizedTimes = {};
     local synchronizedTemporaryPhases = {};
-    local synchronizedPersistentPhases = {};
 
     for _, mapData in ipairs(maps) do
         if mapData and mapData.id then
             local expansionID = ResolveMapExpansionID(mapData.id, mapData.expansionID);
             local timeScopedKey = GetTimeScopedKey(mapData.id, expansionID);
             local phaseScopedKey = GetPhaseScopedKey(mapData.id, expansionID);
-            local snapshot = Data:GetPersistentSnapshot(mapData.id);
             local previousTimeData = previousTimeState[timeScopedKey];
             local previousTemporaryPhase = previousTemporaryPhases[phaseScopedKey];
 
             synchronizedTimes[timeScopedKey] = {
                 mapId = mapData.id,
                 temporaryTime = previousTimeData and previousTimeData.temporaryTime or nil,
-                persistentTime = BuildPersistentTimeRecord(self, snapshot),
             };
 
             if synchronizedTimes[timeScopedKey].temporaryTime
@@ -321,19 +310,13 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
                 and now - previousTemporaryPhase.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
                 synchronizedTemporaryPhases[phaseScopedKey] = previousTemporaryPhase;
             end
-
-            local persistentPhaseRecord = BuildPersistentPhaseRecord(self, mapData.id, snapshot);
-            if persistentPhaseRecord then
-                synchronizedPersistentPhases[phaseScopedKey] = persistentPhaseRecord;
-            end
         end
     end
 
     self.temporaryTimes = synchronizedTimes;
     self.temporaryPhases = synchronizedTemporaryPhases;
-    self.persistentPhases = synchronizedPersistentPhases;
 
-    Logger:Debug("UnifiedDataManager", "同步", string.format("已同步 %d 个追踪地图的持久化状态", #maps));
+    Logger:Debug("UnifiedDataManager", "同步", string.format("已同步 %d 个追踪地图的运行时状态", #maps));
     return true;
 end
 
@@ -365,20 +348,28 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId,
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
     end
-    
+
+    local persisted = true;
+    if Data and Data.PersistAirdropState then
+        local persistState = {
+            lastRefresh = timestamp,
+            lastRefreshSource = source,
+            currentAirdropObjectGUID = metadata and metadata.currentAirdropObjectGUID or nil,
+            currentAirdropTimestamp = metadata and (metadata.currentAirdropTimestamp or metadata.eventTimestamp) or timestamp,
+        };
+        if metadata and metadata.persistPhaseState == true then
+            persistState.lastRefreshPhase = metadata.lastRefreshPhase;
+        end
+        persisted = Data:PersistAirdropState(mapId, persistState) == true;
+    end
+    if not persisted then
+        return false;
+    end
+
     local expansionID = ResolveMapExpansionID(mapId);
     local timeData = self:GetOrCreateTimeData(mapId, expansionID);
-    if TimeStateStore and TimeStateStore.SetPersistent then
-        timeData = TimeStateStore:SetPersistent(self, mapId, timestamp, source, phaseId, expansionID);
-    end
-
-    if timeData and timeData.persistentTime then
-        timeData.persistentTime.phaseId = phaseId;
-        timeData.persistentTime.objectGUID = metadata and metadata.currentAirdropObjectGUID or nil;
-        timeData.persistentTime.eventTimestamp = metadata and (metadata.currentAirdropTimestamp or metadata.eventTimestamp) or timestamp;
-    end
-
     if timeData and timeData.temporaryTime then
+        timeData.temporaryTime = nil;
         Logger:Debug("UnifiedDataManager", "优先级", string.format("持久化时间优先级更高，清除临时时间：地图ID=%d", mapId));
     end
     
@@ -399,14 +390,9 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
     local now = currentTime or time();
 
     local tempRecord = nil;
-    local persistentRecord = nil;
+    local persistentRecord = self:GetPersistentTimeRecord(mapId);
 
     if timeData then
-        -- 持久化记录
-        if timeData.persistentTime then
-            persistentRecord = timeData.persistentTime;
-        end
-
         -- 临时记录（先检查是否过期）
         if timeData.temporaryTime then
             if now - timeData.temporaryTime.setTime <= self.TEMPORARY_TIME_EXPIRE then
@@ -492,16 +478,13 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
     end
-    
-    local expansionID = ResolveMapExpansionID(mapId);
-    local phaseData = self:GetOrCreatePhaseData(mapId, false, expansionID);
-    if not phaseData then
-        Logger:Error("UnifiedDataManager", "错误", string.format("无法创建持久化位面数据：mapId=%s", tostring(mapId)));
-        return false;
-    end
-
-    if PhaseStateStore and PhaseStateStore.SetPersistent then
-        PhaseStateStore:SetPersistent(self, mapId, phaseId, source, time(), expansionID);
+    if Data and Data.PersistAirdropState then
+        local success = Data:PersistAirdropState(mapId, {
+            lastRefreshPhase = phaseId or false,
+        }) == true;
+        if not success then
+            return false;
+        end
     end
     
     Logger:Debug("UnifiedDataManager", "持久化位面", string.format("设置持久化位面成功：地图ID=%d，位面ID=%s，来源=%s", 
@@ -535,25 +518,12 @@ function UnifiedDataManager:PersistConfirmedAirdropState(mapId, state)
         {
             currentAirdropObjectGUID = state.currentAirdropObjectGUID,
             currentAirdropTimestamp = state.currentAirdropTimestamp or timestamp,
+            persistPhaseState = true,
+            lastRefreshPhase = phaseId or false,
         }
     );
     if not success then
         return false;
-    end
-
-    if phaseId then
-        self:SetPersistentPhase(mapId, phaseId, state.phaseSource or self.PhaseSource.ICON_DETECTION);
-    else
-        self:ClearPersistentPhase(mapId);
-    end
-
-    if Data and Data.PersistAirdropState then
-        Data:PersistAirdropState(mapId, {
-            lastRefresh = timestamp,
-            currentAirdropObjectGUID = state.currentAirdropObjectGUID,
-            currentAirdropTimestamp = state.currentAirdropTimestamp or timestamp,
-            lastRefreshPhase = phaseId or false,
-        });
     end
 
     return true;
@@ -577,9 +547,12 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
     if not self.isInitialized then
         return nil;
     end
-    
-    if PhaseStateStore and PhaseStateStore.GetPersistent then
-        return PhaseStateStore:GetPersistent(self, mapId, ResolveMapExpansionID(mapId));
+
+    if Data and Data.GetPersistentSnapshot then
+        local snapshot = Data:GetPersistentSnapshot(mapId);
+        if snapshot and snapshot.lastRefreshPhase then
+            return snapshot.lastRefreshPhase;
+        end
     end
     return nil;
 end

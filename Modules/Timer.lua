@@ -329,6 +329,16 @@ function TimerManager:DetectMapIcons(currentMapID)
                 UnifiedDataManager:FormatDateTime(eventTimestamp),
                 usedTemporary and "来自团队消息" or "本地检测"));
 
+            if Notification and Notification.SendAirdropSync then
+                Notification:SendAirdropSync({
+                    syncType = "CONFIRMED",
+                    mapId = targetMapData.id,
+                    timestamp = eventTimestamp,
+                    phaseId = phaseId,
+                    objectGUID = objectGUID,
+                });
+            end
+
             if phaseId then
                 Logger:Debug("Timer", "保存", string.format("已保存位面ID（从objectGUID提取）：地图=%s，位面ID=%s",
                     Data:GetMapDisplayName(targetMapData), phaseId));

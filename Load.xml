@@ -53,7 +53,6 @@
     <Script file="Modules/NotificationDedupService.lua"/>
     <Script file="Modules/NotificationOutputService.lua"/>
     <Script file="Modules/NotificationQueryService.lua"/>
-    <Script file="Modules/TeamCommParserRegistry.lua"/>
     <Script file="Modules/TeamCommMapCache.lua"/>
     <Script file="Modules/TeamCommMessageService.lua"/>
     <Script file="Modules/Notification.lua"/>

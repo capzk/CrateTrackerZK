@@ -97,8 +97,16 @@ local function OnShoutDetected(message)
     end
 
     -- 写入临时时间并刷新界面（用于即时显示）
+    local syncWritten = false;
     if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
-        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE);
+        syncWritten = UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE) == true;
+    end
+    if syncWritten and Notification and Notification.SendAirdropSync then
+        Notification:SendAirdropSync({
+            syncType = "TEMP",
+            mapId = targetMapData.id,
+            timestamp = currentTime,
+        });
     end
     if TimerManager and TimerManager.UpdateUI then
         TimerManager:UpdateUI();

@@ -33,12 +33,7 @@ local function LoadLocaleData(localeData)
     if not localeData then return end;
     
     for k, v in pairs(localeData) do
-        if k ~= "MapNames" then
-            L[k] = v;
-        end
-    end
-    if localeData.MapNames then
-        L.MapNames = localeData.MapNames;
+        L[k] = v;
     end
 end
 
@@ -78,21 +73,15 @@ LocaleManager.failedLocales = LocaleManager.failedLocales or {};
 -- 语言选择逻辑（统一管理）- 在所有文件加载后执行
 -- ============================================================================
 local function SelectLocale()
-    local mapNamesLoaded = L.MapNames and type(L.MapNames) == "table" and next(L.MapNames) ~= nil;
-    
     if LocaleRegistry[currentLocale] then
-        if not mapNamesLoaded then
-            LoadLocaleData(LocaleRegistry[currentLocale]);
-            LocaleLoadStatus.activeLocale = currentLocale;
-            LocaleLoadStatus.fallbackUsed = false;
-        end
+        LoadLocaleData(LocaleRegistry[currentLocale]);
+        LocaleLoadStatus.activeLocale = currentLocale;
+        LocaleLoadStatus.fallbackUsed = false;
     else
         if LocaleRegistry["enUS"] then
-            if not mapNamesLoaded then
-                LoadLocaleData(LocaleRegistry["enUS"]);
-                LocaleLoadStatus.activeLocale = "enUS";
-                LocaleLoadStatus.fallbackUsed = true;
-            end
+            LoadLocaleData(LocaleRegistry["enUS"]);
+            LocaleLoadStatus.activeLocale = "enUS";
+            LocaleLoadStatus.fallbackUsed = true;
         else
             table.insert(LocaleLoadStatus.failedLocales, {
                 locale = "enUS",

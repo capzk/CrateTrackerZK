@@ -19,11 +19,11 @@ localeData["FloatingButtonTooltipLine3"] = "Right-click to open settings";
 -- Notifications (Airdrop)
 localeData["Enabled"] = "Team notifications enabled";
 localeData["Disabled"] = "Team notifications disabled";
-localeData["AirdropDetected"] = "[%s] Detected War Supplies airdrop!!!";  -- Auto detection message (with "Detected" keyword)
-localeData["AirdropDetectedManual"] = "[%s] War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
-localeData["NoTimeRecord"] = "[%s] No time record!!!";
-localeData["TimeRemaining"] = "[%s] War Supplies airdrop in: %s!!!";
-localeData["AutoTeamReportMessage"] = "Current [%s] War Supplies airdrop in: %s!!";
+localeData["AirdropDetected"] = "[%s]Detected War Supplies airdrop!!!";  -- Auto detection message (with "Detected" keyword)
+localeData["AirdropDetectedManual"] = "[%s]War Supplies airdrop!!!";  -- Manual notification message (without "Detected" keyword)
+localeData["NoTimeRecord"] = "[%s]No time record!!!";
+localeData["TimeRemaining"] = "[%s]War Supplies airdrop in: %s!!!";
+localeData["AutoTeamReportMessage"] = "Current[%s]War Supplies airdrop in: %s!!";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Current phase: |cffffff00%s|r";

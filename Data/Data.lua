@@ -17,9 +17,11 @@ Data.mapsById = {};
 Data.mapsByMapID = {};
 Data.SCHEMA_VERSION = 4;
 
-local function ensureDB()
+local function ensureDB(clearLegacyMapData)
     AppContext:EnsurePersistentState();
-    CRATETRACKERZK_DB.mapData = nil;
+    if clearLegacyMapData == true then
+        CRATETRACKERZK_DB.mapData = nil;
+    end
     if type(CRATETRACKERZK_DB.expansionData) ~= "table" then
         CRATETRACKERZK_DB.expansionData = {};
     end
@@ -80,10 +82,148 @@ local function getScopedMapLookup(expansionID, mapID)
     return Data.mapsByMapID[mapID];
 end
 
+local function resolveMapExpansionID(mapID)
+    if type(mapID) ~= "number" then
+        return nil;
+    end
+    if ExpansionConfig and ExpansionConfig.GetMapExpansionID then
+        return ExpansionConfig:GetMapExpansionID(mapID);
+    end
+    return nil;
+end
+
+local function ensureSchemaExpansionBucket(db, expansionID)
+    expansionID = expansionID or "default";
+    if type(db.expansionData) ~= "table" then
+        db.expansionData = {};
+    end
+    if type(db.expansionData[expansionID]) ~= "table" then
+        db.expansionData[expansionID] = {};
+    end
+    if type(db.expansionData[expansionID].mapData) ~= "table" then
+        db.expansionData[expansionID].mapData = {};
+    end
+    return db.expansionData[expansionID].mapData;
+end
+
+local function migrateLegacyMapData(db, legacyMapData)
+    if type(legacyMapData) ~= "table" then
+        return 0;
+    end
+    local movedCount = 0;
+    for rawMapID, savedData in pairs(legacyMapData) do
+        local mapID = tonumber(rawMapID);
+        if mapID and type(savedData) == "table" then
+            local expansionID = resolveMapExpansionID(mapID) or "default";
+            local mapStore = ensureSchemaExpansionBucket(db, expansionID);
+            if type(mapStore[mapID]) ~= "table" then
+                mapStore[mapID] = savedData;
+                movedCount = movedCount + 1;
+            end
+        end
+    end
+    return movedCount;
+end
+
+local function migrateLegacyHiddenState(uiDB)
+    local legacyHiddenMaps = uiDB.hiddenMaps;
+    local legacyHiddenRemaining = uiDB.hiddenRemaining;
+    if type(legacyHiddenMaps) ~= "table" and type(legacyHiddenRemaining) ~= "table" then
+        return 0;
+    end
+
+    if type(uiDB.expansionUIData) ~= "table" then
+        uiDB.expansionUIData = {};
+    end
+
+    local movedCount = 0;
+    for rawMapID, isHidden in pairs(legacyHiddenMaps or {}) do
+        local mapID = tonumber(rawMapID);
+        if mapID and isHidden == true then
+            local expansionID = resolveMapExpansionID(mapID) or "default";
+            if type(uiDB.expansionUIData[expansionID]) ~= "table" then
+                uiDB.expansionUIData[expansionID] = {};
+            end
+            local bucket = uiDB.expansionUIData[expansionID];
+            if type(bucket.hiddenMaps) ~= "table" then
+                bucket.hiddenMaps = {};
+            end
+            if type(bucket.hiddenRemaining) ~= "table" then
+                bucket.hiddenRemaining = {};
+            end
+
+            bucket.hiddenMaps[mapID] = true;
+            local remainingValue = legacyHiddenRemaining and (legacyHiddenRemaining[rawMapID] or legacyHiddenRemaining[mapID]) or nil;
+            if remainingValue ~= nil then
+                bucket.hiddenRemaining[mapID] = remainingValue;
+            end
+            movedCount = movedCount + 1;
+        end
+    end
+
+    uiDB.hiddenMaps = nil;
+    uiDB.hiddenRemaining = nil;
+    return movedCount;
+end
+
+function Data:TryMigrateSchema(oldVersion)
+    local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil;
+    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or nil;
+    if type(db) ~= "table" or type(uiDB) ~= "table" then
+        return false;
+    end
+
+    local migratedCount = 0;
+    if type(db.expansionData) ~= "table" then
+        db.expansionData = {};
+    end
+
+    local movedMapDataCount = migrateLegacyMapData(db, db.mapData);
+    if movedMapDataCount > 0 then
+        migratedCount = migratedCount + movedMapDataCount;
+    end
+    db.mapData = nil;
+
+    for expansionID, bucket in pairs(db.expansionData) do
+        if type(bucket) ~= "table" then
+            db.expansionData[expansionID] = { mapData = {} };
+            migratedCount = migratedCount + 1;
+        elseif type(bucket.mapData) ~= "table" then
+            bucket.mapData = {};
+            migratedCount = migratedCount + 1;
+        end
+    end
+
+    local movedHiddenStateCount = migrateLegacyHiddenState(uiDB);
+    if movedHiddenStateCount > 0 then
+        migratedCount = migratedCount + movedHiddenStateCount;
+    end
+
+    if type(uiDB.expansionUIData) ~= "table" then
+        uiDB.expansionUIData = {};
+    end
+    if uiDB.phaseCache ~= nil and type(uiDB.phaseCache) ~= "table" then
+        uiDB.phaseCache = {};
+        migratedCount = migratedCount + 1;
+    end
+
+    db.schemaVersion = self.SCHEMA_VERSION;
+    if Logger and Logger.Info then
+        Logger:Info("Data", "迁移", string.format(
+            "数据结构迁移完成：%s -> %d（迁移项=%d）",
+            tostring(oldVersion or "unknown"),
+            self.SCHEMA_VERSION,
+            migratedCount
+        ));
+    end
+    return true;
+end
+
 function Data:ResetDatabaseIfNeeded(forceReset)
-    ensureDB();
-    local shouldReset = forceReset == true or CRATETRACKERZK_DB.schemaVersion ~= self.SCHEMA_VERSION;
-    if shouldReset then
+    ensureDB(false);
+    local currentVersion = tonumber(CRATETRACKERZK_DB.schemaVersion) or 0;
+    local shouldUpgrade = currentVersion ~= self.SCHEMA_VERSION;
+    if forceReset == true then
         CRATETRACKERZK_DB = {
             schemaVersion = self.SCHEMA_VERSION,
             expansionData = {},
@@ -95,10 +235,34 @@ function Data:ResetDatabaseIfNeeded(forceReset)
             CRATETRACKERZK_UI_DB.phaseCache = nil;
         end
         if Logger and Logger.Info then
-            Logger:Info("Data", "初始化", string.format("检测到新数据结构版本，已重置数据（schema=%d）", self.SCHEMA_VERSION));
+            Logger:Info("Data", "初始化", string.format("执行强制重置（schema=%d）", self.SCHEMA_VERSION));
+        end
+    elseif shouldUpgrade then
+        local migrated = false;
+        if currentVersion <= self.SCHEMA_VERSION and self.TryMigrateSchema then
+            migrated = self:TryMigrateSchema(currentVersion) == true;
+        end
+        if not migrated then
+            CRATETRACKERZK_DB = {
+                schemaVersion = self.SCHEMA_VERSION,
+                expansionData = {},
+            };
+            if type(CRATETRACKERZK_UI_DB) == "table" then
+                CRATETRACKERZK_UI_DB.expansionUIData = {};
+                CRATETRACKERZK_UI_DB.hiddenMaps = nil;
+                CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
+                CRATETRACKERZK_UI_DB.phaseCache = nil;
+            end
+            if Logger and Logger.Warn then
+                Logger:Warn("Data", "初始化", string.format(
+                    "迁移失败，已回退为重置策略（from=%s,to=%d）",
+                    tostring(currentVersion),
+                    self.SCHEMA_VERSION
+                ));
+            end
         end
     end
-    ensureDB();
+    ensureDB(true);
     CRATETRACKERZK_DB.schemaVersion = self.SCHEMA_VERSION;
 end
 
@@ -294,6 +458,7 @@ function Data:SavePersistentSnapshot(mapId, snapshot)
     local savedData = {
         createTime = sanitizeTimestamp((snapshot and snapshot.createTime) or existingSnapshot.createTime) or mapData.createTime or time(),
         lastRefresh = sanitizeTimestamp(snapshot and snapshot.lastRefresh) or nil,
+        lastRefreshSource = type(snapshot and snapshot.lastRefreshSource) == "string" and snapshot.lastRefreshSource or nil,
         currentAirdropObjectGUID = type(snapshot and snapshot.currentAirdropObjectGUID) == "string" and snapshot.currentAirdropObjectGUID or nil,
         currentAirdropTimestamp = sanitizeTimestamp(snapshot and snapshot.currentAirdropTimestamp) or nil,
         lastRefreshPhase = type(snapshot and snapshot.lastRefreshPhase) == "string" and snapshot.lastRefreshPhase or nil,
@@ -351,6 +516,7 @@ function Data:GetPersistentSnapshot(mapId)
         mapID = mapData.mapID,
         createTime = sanitizeTimestamp(savedData and savedData.createTime) or mapData.createTime or time(),
         lastRefresh = sanitizeTimestamp(savedData and savedData.lastRefresh) or nil,
+        lastRefreshSource = type(savedData and savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil,
         currentAirdropObjectGUID = type(savedData and savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil,
         currentAirdropTimestamp = sanitizeTimestamp(savedData and savedData.currentAirdropTimestamp) or nil,
         lastRefreshPhase = type(savedData and savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil,
@@ -372,6 +538,7 @@ function Data:PersistAirdropState(mapId, state)
     return self:SavePersistentSnapshot(mapId, {
         createTime = currentSnapshot.createTime or mapData.createTime or time(),
         lastRefresh = state.lastRefresh ~= nil and state.lastRefresh or currentSnapshot.lastRefresh,
+        lastRefreshSource = state.lastRefreshSource ~= nil and state.lastRefreshSource or currentSnapshot.lastRefreshSource,
         currentAirdropObjectGUID = state.currentAirdropObjectGUID ~= nil and state.currentAirdropObjectGUID or currentSnapshot.currentAirdropObjectGUID,
         currentAirdropTimestamp = state.currentAirdropTimestamp ~= nil and state.currentAirdropTimestamp or currentSnapshot.currentAirdropTimestamp,
         lastRefreshPhase = lastRefreshPhase,

@@ -34,6 +34,8 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     if Notification then
         Notification.firstNotificationTime = {};
         Notification.playerSentNotification = {};
+        Notification.lastShoutTime = {};
+        Notification.lastReceivedSyncTime = {};
     end
 
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
@@ -108,7 +110,6 @@ function RuntimeResetManager:ResetCommandRuntimeState()
 
     if TeamCommListener then
         TeamCommListener.isInitialized = false;
-        TeamCommListener.messagePatterns = {};
     end
 
     if ShoutDetector then

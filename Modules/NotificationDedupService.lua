@@ -9,6 +9,7 @@ function NotificationDedupService:EnsureState(notification)
     notification.firstNotificationTime = notification.firstNotificationTime or {}
     notification.playerSentNotification = notification.playerSentNotification or {}
     notification.lastShoutTime = notification.lastShoutTime or {}
+    notification.lastReceivedSyncTime = notification.lastReceivedSyncTime or {}
 end
 
 function NotificationDedupService:UpdateFirstNotificationTime(notification, mapName, notificationTime)
@@ -49,18 +50,20 @@ end
 
 function NotificationDedupService:ResetMapNotificationState(notification, mapName)
     self:EnsureState(notification)
+    if not mapName then
+        return false
+    end
     if AirdropEventService and AirdropEventService.ResetNotificationState then
-        return AirdropEventService:ResetNotificationState(
+        AirdropEventService:ResetNotificationState(
             notification.firstNotificationTime,
             notification.playerSentNotification,
             mapName
         )
+    else
+        notification.firstNotificationTime[mapName] = nil
+        notification.playerSentNotification[mapName] = nil
     end
-    if not mapName then
-        return false
-    end
-    notification.firstNotificationTime[mapName] = nil
-    notification.playerSentNotification[mapName] = nil
+    notification.lastReceivedSyncTime[mapName] = nil
     return true
 end
 
@@ -88,6 +91,32 @@ function NotificationDedupService:RecordShout(notification, mapName, timestamp)
     notification.lastShoutTime[mapName] = timestamp or time()
     Logger:Debug("Notification", "记录", string.format("记录喊话时间：地图=%s，时间=%s",
         mapName, UnifiedDataManager:FormatDateTime(notification.lastShoutTime[mapName])))
+end
+
+function NotificationDedupService:RecordReceivedSync(notification, mapName, timestamp)
+    if not mapName then
+        return
+    end
+    self:EnsureState(notification)
+    notification.lastReceivedSyncTime[mapName] = timestamp or time()
+    Logger:Debug("Notification", "记录", string.format("记录收到隐藏同步时间：地图=%s，时间=%s",
+        mapName, UnifiedDataManager:FormatDateTime(notification.lastReceivedSyncTime[mapName])))
+end
+
+function NotificationDedupService:HasRecentReceivedSync(notification, mapName, windowSeconds, currentTime)
+    if not mapName then
+        return false, nil
+    end
+    self:EnsureState(notification)
+    local lastTime = notification.lastReceivedSyncTime[mapName]
+    if not lastTime then
+        return false, nil
+    end
+    currentTime = currentTime or time()
+    local isRecent = AirdropEventService and AirdropEventService.HasRecentTimestamp
+        and AirdropEventService:HasRecentTimestamp(lastTime, currentTime, windowSeconds)
+        or ((currentTime - lastTime) <= (windowSeconds or 0))
+    return isRecent, lastTime
 end
 
 function NotificationDedupService:IsRecentShout(notification, mapName, windowSeconds, currentTime)

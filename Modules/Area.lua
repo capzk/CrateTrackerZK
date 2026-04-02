@@ -71,12 +71,6 @@ function Area:CanProcessTeamMessages(currentMapID)
     if IsInInstance and IsInInstance() then
         return false;
     end
-
-    local playerMapID = self:GetCurrentMapId(currentMapID);
-    if not playerMapID then
-        return false;
-    end
-
     return true;
 end
 

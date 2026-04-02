@@ -10,6 +10,7 @@ local NotificationSettingsStore = BuildEnv("NotificationSettingsStore");
 local NotificationDedupService = BuildEnv("NotificationDedupService");
 local NotificationOutputService = BuildEnv("NotificationOutputService");
 local NotificationQueryService = BuildEnv("NotificationQueryService");
+local TeamCommListener = BuildEnv("TeamCommListener");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
@@ -24,7 +25,10 @@ Notification.firstNotificationTime = {};
 Notification.playerSentNotification = {};
 -- 最近喊话时间记录（用于图标检测去重）
 Notification.lastShoutTime = Notification.lastShoutTime or {};
+-- 最近收到隐藏同步时间记录（用于抑制可见团队消息）
+Notification.lastReceivedSyncTime = Notification.lastReceivedSyncTime or {};
 Notification.SHOUT_DEDUP_WINDOW = 20;
+Notification.RECEIVED_SYNC_SUPPRESS_WINDOW = 15;
 
 local function DebugPrint(msg, ...)
     Logger:Debug("Notification", "调试", msg, ...);
@@ -187,9 +191,41 @@ function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
     return false, nil;
 end
 
+function Notification:RecordReceivedSync(mapName, timestamp)
+    if NotificationDedupService and NotificationDedupService.RecordReceivedSync then
+        return NotificationDedupService:RecordReceivedSync(self, mapName, timestamp);
+    end
+end
+
+function Notification:HasRecentReceivedSync(mapName, windowSeconds, currentTime)
+    if NotificationDedupService and NotificationDedupService.HasRecentReceivedSync then
+        return NotificationDedupService:HasRecentReceivedSync(self, mapName, windowSeconds, currentTime);
+    end
+    return false, nil;
+end
+
 function Notification:PlayAirdropAlertSound()
     if NotificationOutputService and NotificationOutputService.PlayAirdropAlertSound then
         return NotificationOutputService:PlayAirdropAlertSound(self);
+    end
+    return false;
+end
+
+function Notification:SendAirdropSync(syncState)
+    if not self.isInitialized then
+        self:Initialize();
+    end
+    if TeamCommListener and TeamCommListener.CanEnableHiddenSync and TeamCommListener:CanEnableHiddenSync() ~= true then
+        return false;
+    end
+
+    local chatType = self:GetTeamChatType();
+    if not chatType then
+        return false;
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendAirdropSync then
+        return NotificationOutputService:SendAirdropSync(syncState, chatType);
     end
     return false;
 end
@@ -202,6 +238,7 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
     end
     
     local chatType = self:GetTeamChatType();
+    local outboundChatType = chatType;
     local currentTime = time();
     -- 记录喊话时间，用于后续图标检测的去重
     if detectionSource == "npc_shout" then
@@ -221,8 +258,28 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
             self.SHOUT_DEDUP_WINDOW, mapName, currentTime - (lastShoutTime or currentTime)));
         return;
     end
+
+    local hasRecentReceivedSync = false;
+    local lastReceivedSyncTime = nil;
+    if outboundChatType and self.teamNotificationEnabled then
+        hasRecentReceivedSync, lastReceivedSyncTime = self:HasRecentReceivedSync(
+            mapName,
+            self.RECEIVED_SYNC_SUPPRESS_WINDOW,
+            currentTime
+        );
+        if hasRecentReceivedSync then
+            outboundChatType = nil;
+            Logger:Debug("Notification", "限制", string.format(
+                "最近%ds内已收到隐藏同步，跳过团队可见消息：地图=%s，来源=%s，间隔=%ds",
+                self.RECEIVED_SYNC_SUPPRESS_WINDOW,
+                mapName,
+                detectionSource or "未知",
+                currentTime - (lastReceivedSyncTime or currentTime)
+            ));
+        end
+    end
     
-    if chatType and self.teamNotificationEnabled then
+    if outboundChatType and self.teamNotificationEnabled then
         -- 个人发送限制检查
         if self:HasPlayerSentNotification(mapName) then
             Logger:Debug("Notification", "通知", string.format("玩家已发送过通知，跳过发送：地图=%s，来源=%s", 
@@ -265,7 +322,7 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         tostring(chatType), tostring(self.teamNotificationEnabled), tostring(IsInRaid()), tostring(IsInGroup())));
     
     if NotificationOutputService and NotificationOutputService.SendMessage then
-        local sentToTeam = NotificationOutputService:SendMessage(self, message, chatType);
+        local sentToTeam = NotificationOutputService:SendMessage(self, message, outboundChatType);
         if chatType and not self.teamNotificationEnabled and not sentToTeam then
             Logger:Debug("Notification", "通知", string.format("团队通知已禁用，仅发送系统消息：地图=%s", mapName));
         end

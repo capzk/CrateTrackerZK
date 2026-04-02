@@ -31,7 +31,6 @@ local function CreateTimeData(mapId)
     return {
         mapId = mapId,
         temporaryTime = nil,
-        persistentTime = nil,
     }
 end
 
@@ -79,19 +78,6 @@ function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime,
         source = source,
         setTime = setTime or time(),
     }
-    return timeData
-end
-
-function TimeStateStore:SetPersistent(manager, mapId, timestamp, source, phaseId, expansionID)
-    local timeData = self:GetOrCreate(manager, mapId, expansionID)
-    timeData.persistentTime = {
-        timestamp = timestamp,
-        source = source,
-        phaseId = phaseId,
-    }
-    if timeData.temporaryTime then
-        timeData.temporaryTime = nil
-    end
     return timeData
 end
 

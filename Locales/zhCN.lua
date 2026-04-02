@@ -19,10 +19,10 @@ localeData["FloatingButtonTooltipLine3"] = "右键打开设置";
 -- 通知（空投）
 localeData["Enabled"] = "团队通知已开启";
 localeData["Disabled"] = "团队通知已关闭";
-localeData["AirdropDetected"] = "【%s】 检测到战争物资正在空投！！！";  -- 自动检测消息（带"检测到"关键字）
-localeData["AirdropDetectedManual"] = "【%s】 战争物资正在空投！！！";  -- 手动通知消息（不带"检测到"关键字）
-localeData["NoTimeRecord"] = "【%s】 暂无时间记录！！！";
-localeData["TimeRemaining"] = "【%s】 距离战争物资空投还有：%s！！！";
+localeData["AirdropDetected"] = "【%s】检测到战争物资正在空投！！！";  -- 自动检测消息（带"检测到"关键字）
+localeData["AirdropDetectedManual"] = "【%s】战争物资正在空投！！！";  -- 手动通知消息（不带"检测到"关键字）
+localeData["NoTimeRecord"] = "【%s】暂无时间记录！！！";
+localeData["TimeRemaining"] = "【%s】距离战争物资空投还有：%s！！！";
 localeData["AutoTeamReportMessage"] = "当前【%s】距离战争物资空投还有：%s！！";
 
 -- 位面检测提示
