@@ -10,10 +10,7 @@ end
 
 local UnifiedDataManager = BuildEnv('UnifiedDataManager')
 
-local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local AppContext = BuildEnv("AppContext");
-local L = CrateTrackerZK.L;
-local ExpansionConfig = BuildEnv("ExpansionConfig");
 local PhaseStateStore = BuildEnv("PhaseStateStore");
 local StateBuckets = BuildEnv("StateBuckets");
 local TimeStateStore = BuildEnv("TimeStateStore");
@@ -88,20 +85,6 @@ local function GetPhaseScopedKey(mapId, expansionID)
         return PhaseStateStore:GetScopedKey(mapId, ResolveMapExpansionID(mapId, expansionID));
     end
     return tostring(ResolveMapExpansionID(mapId, expansionID)) .. ":" .. tostring(mapId);
-end
-
-local function BuildPersistentTimeRecord(manager, snapshot)
-    if not snapshot or not snapshot.lastRefresh then
-        return nil;
-    end
-
-    return {
-        timestamp = snapshot.lastRefresh,
-        source = snapshot.lastRefreshSource or manager.TimeSource.ICON_DETECTION,
-        phaseId = snapshot.lastRefreshPhase,
-        objectGUID = snapshot.currentAirdropObjectGUID,
-        eventTimestamp = snapshot.currentAirdropTimestamp or snapshot.lastRefresh,
-    };
 end
 
 local function SanitizePersistentTimestamp(timestamp)

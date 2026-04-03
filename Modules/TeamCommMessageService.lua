@@ -14,9 +14,9 @@ TeamCommMessageService.syncContextBuffer = TeamCommMessageService.syncContextBuf
     persistentStateBuffer = {},
 }
 
-local function RecordVisibleMessageSuppress(mapName, currentTime)
+local function RecordVisibleMessageWindow(mapKey, mapName, currentTime, eventContext)
     if Notification and Notification.RecordReceivedSync then
-        Notification:RecordReceivedSync(mapName, currentTime)
+        Notification:RecordReceivedSync(mapKey or mapName, currentTime, eventContext)
     end
 end
 
@@ -42,24 +42,7 @@ local function IsSameTrackedMapContext(currentMapID, mapData)
     if type(currentMapID) ~= "number" or type(mapData) ~= "table" or type(mapData.mapID) ~= "number" then
         return false
     end
-
-    local inspectMapID = currentMapID
-    local visited = {}
-    while type(inspectMapID) == "number" and not visited[inspectMapID] do
-        if inspectMapID == mapData.mapID then
-            return true
-        end
-        visited[inspectMapID] = true
-
-        if not C_Map or not C_Map.GetMapInfo then
-            break
-        end
-
-        local mapInfo = C_Map.GetMapInfo(inspectMapID)
-        inspectMapID = mapInfo and mapInfo.parentMapID or nil
-    end
-
-    return false
+    return currentMapID == mapData.mapID
 end
 
 local function HasSameObjectGUID(localGUID, incomingGUID)
@@ -69,6 +52,31 @@ local function HasSameObjectGUID(localGUID, incomingGUID)
     return type(localGUID) == "string"
         and type(incomingGUID) == "string"
         and localGUID == incomingGUID
+end
+
+local function GetConfirmedTimestamp(state)
+    if type(state) ~= "table" then
+        return nil
+    end
+    return tonumber(state.currentAirdropTimestamp or state.lastRefresh)
+end
+
+local function ShouldPersistIncomingConfirmedState(persistentState, incomingTimestamp, incomingGUID)
+    if type(persistentState) ~= "table" then
+        return true
+    end
+
+    local localGUID = persistentState.currentAirdropObjectGUID
+    if HasSameObjectGUID(localGUID, incomingGUID) then
+        return false
+    end
+
+    local localTimestamp = GetConfirmedTimestamp(persistentState)
+    if type(localTimestamp) == "number" and incomingTimestamp <= localTimestamp then
+        return false
+    end
+
+    return true
 end
 
 local function ExtractPhaseIDFromObjectGUID(objectGUID)
@@ -145,19 +153,21 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
         return false
     end
 
-    RecordVisibleMessageSuppress(context.mapName, context.currentTime)
+    RecordVisibleMessageWindow(context.mapId, context.mapName, context.currentTime, {
+        mapKey = context.mapId,
+        eventTimestamp = syncTimestamp,
+        objectGUID = incomingGUID,
+    })
 
     if context.isOnMap then
         return true
     end
 
-    if context.persistentState then
-        local localGUID = context.persistentState.currentAirdropObjectGUID
-
-        -- 同地图且同 objectGUID 视为同一事件，后续同步一律不覆盖本地记录。
-        if HasSameObjectGUID(localGUID, incomingGUID) then
-            return true
-        end
+    -- 同地图确认状态采用单调更新规则：
+    -- 1. 同 objectGUID 视为同一空投事件，忽略重复同步；
+    -- 2. 不同 objectGUID 只有时间更晚时才允许覆盖。
+    if not ShouldPersistIncomingConfirmedState(context.persistentState, syncTimestamp, incomingGUID) then
+        return true
     end
 
     local phaseId = ExtractPhaseIDFromObjectGUID(incomingGUID)

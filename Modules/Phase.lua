@@ -9,13 +9,8 @@ local MapTracker = BuildEnv("MapTracker");
 local ExpansionConfig = BuildEnv("ExpansionConfig");
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator");
 
-Phase.lastReportedInstanceID = nil;
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
-Phase.lastUpdateAt = Phase.lastUpdateAt or 0;
-Phase.pendingUpdateTimer = Phase.pendingUpdateTimer or nil;
-Phase.pendingMapID = Phase.pendingMapID or nil;
-Phase.MIN_UPDATE_INTERVAL = 0.12;
 
 local function GetExpansionAwareCacheKey(expansionID, mapID)
     return tostring(expansionID or "default") .. ":" .. tostring(mapID);
@@ -65,69 +60,8 @@ local function ResolveTargetMapData(currentMapID)
 end
 
 function Phase:Reset()
-    self.lastReportedInstanceID = nil;
     self.lastReportedMapPhaseKey = nil;
     self.phaseCache = {};
-    self.lastUpdateAt = 0;
-    self.pendingMapID = nil;
-    if self.pendingUpdateTimer and self.pendingUpdateTimer.Cancel then
-        self.pendingUpdateTimer:Cancel();
-    end
-    self.pendingUpdateTimer = nil;
-end
-
-function Phase:RequestUpdate(currentMapID, delay)
-    local now = GetTime and GetTime() or 0;
-    local minInterval = self.MIN_UPDATE_INTERVAL or 0.12;
-    local resolvedDelay = tonumber(delay);
-    if resolvedDelay == nil then
-        local elapsed = now - (self.lastUpdateAt or 0);
-        if elapsed >= minInterval then
-            resolvedDelay = 0;
-        else
-            resolvedDelay = minInterval - elapsed;
-        end
-    end
-
-    self.pendingMapID = currentMapID;
-    if resolvedDelay <= 0 then
-        if self.pendingUpdateTimer and self.pendingUpdateTimer.Cancel then
-            self.pendingUpdateTimer:Cancel();
-        end
-        self.pendingUpdateTimer = nil;
-        local pendingMapID = self.pendingMapID;
-        self.pendingMapID = nil;
-        return self:UpdatePhaseInfo(pendingMapID);
-    end
-
-    if self.pendingUpdateTimer then
-        return true;
-    end
-
-    if C_Timer and C_Timer.NewTimer then
-        self.pendingUpdateTimer = C_Timer.NewTimer(resolvedDelay, function()
-            self.pendingUpdateTimer = nil;
-            local pendingMapID = self.pendingMapID;
-            self.pendingMapID = nil;
-            self:UpdatePhaseInfo(pendingMapID);
-        end);
-        return true;
-    end
-
-    if C_Timer and C_Timer.After then
-        self.pendingUpdateTimer = true;
-        C_Timer.After(resolvedDelay, function()
-            self.pendingUpdateTimer = nil;
-            local pendingMapID = self.pendingMapID;
-            self.pendingMapID = nil;
-            self:UpdatePhaseInfo(pendingMapID);
-        end);
-        return true;
-    end
-
-    local pendingMapID = self.pendingMapID;
-    self.pendingMapID = nil;
-    return self:UpdatePhaseInfo(pendingMapID);
 end
 
 function Phase:GetLayerFromNPC()
@@ -167,8 +101,6 @@ function Phase:UpdatePhaseInfo(currentMapID)
     if Area and Area.IsActive and not Area:IsActive() then
         return;
     end
-    self.lastUpdateAt = GetTime and GetTime() or 0;
-    
     local playerMapID = Area:GetCurrentMapId(currentMapID);
     if not playerMapID then
         return;
@@ -235,24 +167,19 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 end
                 
                 if lastReportedKey == mapPhaseKey then
-                    if self.lastReportedMapPhaseKey ~= mapPhaseKey then
-                        self.lastReportedMapPhaseKey = mapPhaseKey;
-                    end
+                    -- 同地图同位面重复检测，不重复记录
                 elseif not lastReportedKey then
                     local mapName = Data:GetMapDisplayName(targetMapData);
                     Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
-                    self.lastReportedInstanceID = currentPhaseID;
                     self.lastReportedMapPhaseKey = mapPhaseKey;
                 elseif lastReportedMapID == targetMapData.mapID then
                     if isPhaseChanged then
                         local mapName = Data:GetMapDisplayName(targetMapData);
                         Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], mapName, currentPhaseID));
-                        self.lastReportedInstanceID = currentPhaseID;
                         self.lastReportedMapPhaseKey = mapPhaseKey;
                     else
                         local mapName = Data:GetMapDisplayName(targetMapData);
                         Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
-                        self.lastReportedInstanceID = currentPhaseID;
                         self.lastReportedMapPhaseKey = mapPhaseKey;
                     end
                 else
@@ -261,7 +188,6 @@ function Phase:UpdatePhaseInfo(currentMapID)
                     else
                         local mapName = Data:GetMapDisplayName(targetMapData);
                         Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
-                        self.lastReportedInstanceID = currentPhaseID;
                         self.lastReportedMapPhaseKey = mapPhaseKey;
                     end
                 end

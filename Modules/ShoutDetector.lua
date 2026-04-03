@@ -63,22 +63,21 @@ local function OnShoutDetected(message)
     end
 
     local mapName = Data:GetMapDisplayName(targetMapData);
+    local mapNotificationKey = targetMapData.id;
     local currentTime = Utils:GetCurrentTimestamp();
     if Notification and Notification.RecordShout then
-        Notification:RecordShout(mapName);
+        Notification:RecordShout(mapNotificationKey);
     end
     -- 喊话触发视为新事件，清除通知去重，确保立即广播
     if Notification and Notification.ResetMapNotificationState then
-        Notification:ResetMapNotificationState(mapName);
-    elseif Notification then
-        Notification.firstNotificationTime = Notification.firstNotificationTime or {};
-        Notification.playerSentNotification = Notification.playerSentNotification or {};
-        Notification.firstNotificationTime[mapName] = nil;
-        Notification.playerSentNotification[mapName] = nil;
+        Notification:ResetMapNotificationState(mapNotificationKey);
     end
     -- 立即发送通知（遵循现有开关/频道规则）
     if Notification and Notification.NotifyAirdropDetected then
-        Notification:NotifyAirdropDetected(mapName, "npc_shout");
+        Notification:NotifyAirdropDetected(mapName, "npc_shout", {
+            mapKey = mapNotificationKey,
+            eventTimestamp = currentTime,
+        });
     end
 
     -- 写入临时时间并刷新界面（用于即时显示）

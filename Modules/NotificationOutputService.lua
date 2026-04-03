@@ -62,7 +62,30 @@ local function ResolveAddonDistribution(chatType)
     return nil
 end
 
-local function ResolveAutomaticVisibleChatType()
+local function ResolveAutomaticVisibleChatType(chatType)
+    if chatType == "INSTANCE_CHAT" then
+        if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+            return "INSTANCE_CHAT"
+        end
+        return nil
+    end
+    if chatType == "RAID" or chatType == "RAID_WARNING" then
+        if not IsInRaid() then
+            return nil
+        end
+        local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
+        return hasPermission and "RAID_WARNING" or "RAID"
+    end
+    if chatType == "PARTY" then
+        if IsInGroup() then
+            return "PARTY"
+        end
+        return nil
+    end
+
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return "INSTANCE_CHAT"
+    end
     if IsInRaid() then
         local hasPermission = UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
         return hasPermission and "RAID_WARNING" or "RAID"
@@ -73,11 +96,33 @@ local function ResolveAutomaticVisibleChatType()
     return nil
 end
 
-function NotificationOutputService:GetAutomaticVisibleChatType()
-    return ResolveAutomaticVisibleChatType()
+function NotificationOutputService:GetAutomaticVisibleChatType(chatType)
+    return ResolveAutomaticVisibleChatType(chatType)
 end
 
-local function ResolveStandardVisibleChatType()
+local function ResolveStandardVisibleChatType(chatType)
+    if chatType == "INSTANCE_CHAT" then
+        if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+            return "INSTANCE_CHAT"
+        end
+        return nil
+    end
+    if chatType == "RAID" or chatType == "RAID_WARNING" then
+        if IsInRaid() then
+            return "RAID"
+        end
+        return nil
+    end
+    if chatType == "PARTY" then
+        if IsInGroup() then
+            return "PARTY"
+        end
+        return nil
+    end
+
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return "INSTANCE_CHAT"
+    end
     if IsInRaid() then
         return "RAID"
     end
@@ -87,21 +132,21 @@ local function ResolveStandardVisibleChatType()
     return nil
 end
 
-function NotificationOutputService:GetStandardVisibleChatType()
-    return ResolveStandardVisibleChatType()
+function NotificationOutputService:GetStandardVisibleChatType(chatType)
+    return ResolveStandardVisibleChatType(chatType)
 end
 
 function NotificationOutputService:SendMessage(notification, message, chatType)
-    local autoChatType = self:GetAutomaticVisibleChatType()
-    if chatType and notification and notification.teamNotificationEnabled and autoChatType then
+    local outboundChatType = self:GetAutomaticVisibleChatType(chatType)
+    if chatType and notification and notification.teamNotificationEnabled and outboundChatType then
         local success, err = pcall(function()
-            SendChatMessage(message, autoChatType)
+            SendChatMessage(message, outboundChatType)
         end)
         if not success and Logger and Logger.Warn then
             Logger:Warn(
                 "Notification",
                 "通知",
-                string.format("发送自动团队消息失败：类型=%s，错误=%s", autoChatType, tostring(err))
+                string.format("发送自动团队消息失败：类型=%s，错误=%s", outboundChatType, tostring(err))
             )
         end
         return success
@@ -112,7 +157,7 @@ function NotificationOutputService:SendMessage(notification, message, chatType)
 end
 
 function NotificationOutputService:SendManualMessage(message, chatType)
-    local standardChatType = self:GetStandardVisibleChatType()
+    local standardChatType = self:GetStandardVisibleChatType(chatType)
     if chatType and standardChatType then
         local success, err = pcall(function()
             SendChatMessage(message, standardChatType)

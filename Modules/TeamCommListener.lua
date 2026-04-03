@@ -22,8 +22,6 @@ TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
 TeamCommListener.syncStateBuffer = TeamCommListener.syncStateBuffer or {};
 
-TeamCommListener.LOCAL_CONFIRMED_MESSAGE_SUPPRESS_WINDOW = 300;
-
 local TEAM_CHAT_TYPES = {
     RAID = true,
     RAID_WARNING = true,

@@ -11,7 +11,6 @@ local TimerManager = BuildEnv('TimerManager')
 
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local AirdropEventService = BuildEnv("AirdropEventService");
-local L = CrateTrackerZK.L;
 
 if not Data then
     Data = BuildEnv('Data')
@@ -66,15 +65,15 @@ local function getCurrentTimestamp()
     return Utils:GetCurrentTimestamp();
 end
 
-local function HasRecentShout(mapDisplayName, currentTime)
+local function HasRecentShout(mapNotificationKey, currentTime)
     if Notification and Notification.IsRecentShout then
-        return Notification:IsRecentShout(mapDisplayName, Notification.SHOUT_DEDUP_WINDOW, currentTime);
+        return Notification:IsRecentShout(mapNotificationKey, Notification.SHOUT_DEDUP_WINDOW, currentTime);
     end
     return false, nil;
 end
 
-local function ResetNotificationStateForNewEvent(mapDisplayName, currentTime)
-    local isRecentShout, lastShoutTime = HasRecentShout(mapDisplayName, currentTime);
+local function ResetNotificationStateForNewEvent(mapNotificationKey, currentTime)
+    local isRecentShout, lastShoutTime = HasRecentShout(mapNotificationKey, currentTime);
     local shouldReset = nil;
     if AirdropEventService and AirdropEventService.ShouldResetNotificationStateForNewEvent then
         shouldReset = AirdropEventService:ShouldResetNotificationStateForNewEvent(
@@ -87,14 +86,7 @@ local function ResetNotificationStateForNewEvent(mapDisplayName, currentTime)
     end
 
     if shouldReset and Notification and Notification.ResetMapNotificationState then
-        Notification:ResetMapNotificationState(mapDisplayName);
-    elseif shouldReset and Notification then
-        if Notification.firstNotificationTime and Notification.firstNotificationTime[mapDisplayName] then
-            Notification.firstNotificationTime[mapDisplayName] = nil;
-        end
-        if Notification.playerSentNotification and Notification.playerSentNotification[mapDisplayName] then
-            Notification.playerSentNotification[mapDisplayName] = nil;
-        end
+        Notification:ResetMapNotificationState(mapNotificationKey);
     end
 end
 
@@ -136,14 +128,6 @@ local function IsMapSwitchGuardActive(owner, targetMapData, currentTime)
     return false
 end
 
-function TimerManager:GetSourceDisplayName(source)
-    local displayNames = {
-        [self.detectionSources.MAP_ICON] = "地图图标检测"
-    };
-    
-    return displayNames[source] or "Unknown";
-end
-
 function TimerManager:UpdateUI()
     if UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
         UIRefreshCoordinator:RefreshMainTable();
@@ -151,16 +135,20 @@ function TimerManager:UpdateUI()
 end
 
 
--- 检查是否应该发送通知（30秒限制）
+-- 检查同地图同一空投事件是否仍在自动通知窗口内
 local function ShouldSendNotification(eventTimestamp, currentTime)
     if AirdropEventService and AirdropEventService.ShouldBroadcastByEventAge then
-        return AirdropEventService:ShouldBroadcastByEventAge(eventTimestamp, currentTime, 30);
+        return AirdropEventService:ShouldBroadcastByEventAge(
+            eventTimestamp,
+            currentTime,
+            Notification and Notification.NOTIFICATION_WINDOW or 15
+        );
     end
     if not eventTimestamp then
         return true;
     end
     local timeSinceAirdrop = currentTime - eventTimestamp;
-    return timeSinceAirdrop <= 30;
+    return timeSinceAirdrop <= (Notification and Notification.NOTIFICATION_WINDOW or 15);
 end
 
 function TimerManager:DetectMapIcons(currentMapID)
@@ -197,6 +185,7 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
 
     local mapDisplayName = Data:GetMapDisplayName(targetMapData);
+    local mapNotificationKey = targetMapData.id;
     
     local currentTime = getCurrentTimestamp();
     local mapChangeState = nil;
@@ -226,15 +215,7 @@ function TimerManager:DetectMapIcons(currentMapID)
         or IconDetector:DetectIcon(playerMapID);
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
-        if self.detectionState[targetMapData.id] then
-            local detectionState = self.detectionState[targetMapData.id];
-            local timeSinceFirst = currentTime - (detectionState.firstDetectedTime or currentTime);
-            if timeSinceFirst < self.CONFIRM_TIME then
-                self.detectionState[targetMapData.id] = nil;
-            else
-                self.detectionState[targetMapData.id] = nil;
-            end
-        end
+        self.detectionState[targetMapData.id] = nil;
         return false;
     end
     
@@ -259,7 +240,6 @@ function TimerManager:DetectMapIcons(currentMapID)
         and UnifiedDataManager:GetPersistentAirdropStateInto(targetMapData.id, AcquirePersistentStateBuffer(self))
         or nil;
     local persistentObjectGUID = persistentState and persistentState.currentAirdropObjectGUID or nil;
-    local persistentTimestamp = persistentState and persistentState.currentAirdropTimestamp or nil;
     local hasSameObjectGUID = AirdropEventService and AirdropEventService.HasSameObjectGUID
         and AirdropEventService:HasSameObjectGUID(persistentObjectGUID, objectGUID)
         or (persistentObjectGUID and persistentObjectGUID == objectGUID);
@@ -271,7 +251,7 @@ function TimerManager:DetectMapIcons(currentMapID)
         return true;
     elseif hasDifferentObjectGUID then
         -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
-        ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
+        ResetNotificationStateForNewEvent(mapNotificationKey, currentTime);
     end
     
     local detectionState = self.detectionState[targetMapData.id];
@@ -291,7 +271,7 @@ function TimerManager:DetectMapIcons(currentMapID)
         and AirdropEventService:HasDifferentObjectGUID(detectionState.detectedObjectGUID, objectGUID))
         or (detectionState.detectedObjectGUID ~= objectGUID) then
         -- 新事件：清除通知记录
-        ResetNotificationStateForNewEvent(mapDisplayName, currentTime);
+        ResetNotificationStateForNewEvent(mapNotificationKey, currentTime);
         self.detectionState[targetMapData.id] = AirdropEventService
             and AirdropEventService.CreateDetectionState
             and AirdropEventService:CreateDetectionState(currentTime, objectGUID)
@@ -309,14 +289,19 @@ function TimerManager:DetectMapIcons(currentMapID)
         end
         
         -- 选择事件时间：若存在未过期的团队消息临时时间且与检测时间接近，则优先采用该时间
-        local eventTimestamp, usedTemporary = UnifiedDataManager:SelectEventTimestamp(targetMapData.id, detectionState.firstDetectedTime);
+        local eventTimestamp = UnifiedDataManager:SelectEventTimestamp(targetMapData.id, detectionState.firstDetectedTime);
         local shouldSendNotification = ShouldSendNotification(eventTimestamp, currentTime);
         
         -- 首次检测：根据事件时间决定是否发送团队消息
         if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
             Notification:NotifyAirdropDetected(
                 mapDisplayName,
-                self.detectionSources.MAP_ICON
+                self.detectionSources.MAP_ICON,
+                {
+                    mapKey = mapNotificationKey,
+                    eventTimestamp = eventTimestamp,
+                    objectGUID = objectGUID,
+                }
             );
         end
         

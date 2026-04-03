@@ -45,10 +45,8 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     ResetMapPhaseState();
 
     if Notification then
-        Notification.firstNotificationTime = {};
-        Notification.playerSentNotification = {};
+        Notification.visibleAutoEventStateByMap = {};
         Notification.lastShoutTime = {};
-        Notification.lastReceivedSyncTime = {};
     end
 
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then

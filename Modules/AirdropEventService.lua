@@ -2,7 +2,7 @@
 
 local AirdropEventService = BuildEnv("AirdropEventService")
 
-AirdropEventService.DEFAULT_NOTIFICATION_WINDOW = 30
+AirdropEventService.DEFAULT_NOTIFICATION_WINDOW = 15
 AirdropEventService.DEFAULT_SHOUT_DEDUP_WINDOW = 20
 
 local function NormalizeWindow(windowSeconds, defaultValue)
@@ -53,21 +53,6 @@ end
 
 function AirdropEventService:ShouldResetNotificationStateForNewEvent(lastShoutTime, currentTime, windowSeconds)
     return not self:ShouldSuppressMapIconNotification(lastShoutTime, currentTime, windowSeconds)
-end
-
-function AirdropEventService:ResetNotificationState(firstNotificationTime, playerSentNotification, mapName)
-    if type(mapName) ~= "string" or mapName == "" then
-        return false
-    end
-
-    if type(firstNotificationTime) == "table" then
-        firstNotificationTime[mapName] = nil
-    end
-    if type(playerSentNotification) == "table" then
-        playerSentNotification[mapName] = nil
-    end
-
-    return true
 end
 
 function AirdropEventService:IsDuplicateTeamMessage(temporaryTimestamp, currentTime, windowSeconds)

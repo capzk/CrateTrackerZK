@@ -18,17 +18,15 @@ Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
 Notification.airdropAlertSoundFile = "Interface\\AddOns\\CrateTrackerZK\\Assets\\Sounds\\ctk_airdrop_detected_v1.ogg";
-Notification.NOTIFICATION_WINDOW = 30;
--- 首次通知时间记录（用于30秒限制）
-Notification.firstNotificationTime = {};
--- 玩家发送通知记录（防止重复发送）
-Notification.playerSentNotification = {};
+-- 同地图同一空投事件的自动通知统一窗口（秒）
+Notification.NOTIFICATION_WINDOW = 15;
 -- 最近喊话时间记录（用于图标检测去重）
 Notification.lastShoutTime = Notification.lastShoutTime or {};
--- 最近收到隐藏同步时间记录（用于抑制可见团队消息）
-Notification.lastReceivedSyncTime = Notification.lastReceivedSyncTime or {};
+-- 同地图同一空投事件收到隐藏同步后的可见自动团队消息窗口
+Notification.RECEIVED_SYNC_VISIBLE_WINDOW = Notification.NOTIFICATION_WINDOW;
+-- 同地图同一空投事件的可见自动消息门禁状态
+Notification.visibleAutoEventStateByMap = Notification.visibleAutoEventStateByMap or {};
 Notification.SHOUT_DEDUP_WINDOW = 20;
-Notification.RECEIVED_SYNC_SUPPRESS_WINDOW = 15;
 
 function Notification:Initialize()
     if self.isInitialized then return end
@@ -105,6 +103,25 @@ local function NormalizeInterval(value)
     return numberValue;
 end
 
+local function BuildVisibleAutoDispatchState(notification, mapRef, eventContext, outboundChatType, currentTime)
+    if NotificationDedupService and NotificationDedupService.ResolveVisibleAutoDispatchState then
+        return NotificationDedupService:ResolveVisibleAutoDispatchState(
+            notification,
+            mapRef,
+            eventContext,
+            outboundChatType,
+            currentTime
+        );
+    end
+
+    return {
+        outboundChatType = outboundChatType,
+        shouldAbortNotification = false,
+        shouldTrackVisibleSend = false,
+        blockReason = nil,
+    };
+end
+
 function Notification:SetAutoTeamReportEnabled(enabled)
     if enabled and not self:IsTeamNotificationEnabled() then
         self.autoTeamReportEnabled = false;
@@ -137,57 +154,50 @@ function Notification:SetAutoTeamReportInterval(seconds)
     return value;
 end
 
--- 更新首次通知时间（团队消息同步）
-function Notification:UpdateFirstNotificationTime(mapName, notificationTime)
-    if NotificationDedupService and NotificationDedupService.UpdateFirstNotificationTime then
-        return NotificationDedupService:UpdateFirstNotificationTime(self, mapName, notificationTime);
-    end
-end
-
--- 检查30秒限制
-function Notification:CanSendNotification(mapName)
+-- 检查同地图同一空投事件是否仍在自动通知窗口内
+function Notification:CanSendNotification(mapRef, eventContext, currentTime)
     if NotificationDedupService and NotificationDedupService.CanSendNotification then
-        return NotificationDedupService:CanSendNotification(self, mapName);
+        return NotificationDedupService:CanSendNotification(self, mapRef, eventContext, currentTime);
     end
     return false;
 end
 
-function Notification:ResetMapNotificationState(mapName)
+function Notification:ResetMapNotificationState(mapRef, eventContext)
     if NotificationDedupService and NotificationDedupService.ResetMapNotificationState then
-        return NotificationDedupService:ResetMapNotificationState(self, mapName);
+        return NotificationDedupService:ResetMapNotificationState(self, mapRef, eventContext);
     end
     return false;
 end
 
-function Notification:MarkPlayerSentNotification(mapName)
+function Notification:MarkPlayerSentNotification(mapRef, eventContext, currentTime)
     if NotificationDedupService and NotificationDedupService.MarkPlayerSentNotification then
-        return NotificationDedupService:MarkPlayerSentNotification(self, mapName);
+        return NotificationDedupService:MarkPlayerSentNotification(self, mapRef, eventContext, currentTime);
     end
 end
 
-function Notification:HasPlayerSentNotification(mapName)
+function Notification:HasPlayerSentNotification(mapRef, eventContext)
     if NotificationDedupService and NotificationDedupService.HasPlayerSentNotification then
-        return NotificationDedupService:HasPlayerSentNotification(self, mapName);
+        return NotificationDedupService:HasPlayerSentNotification(self, mapRef, eventContext);
     end
     return false;
 end
 
-function Notification:RecordShout(mapName, timestamp)
+function Notification:RecordShout(mapRef, timestamp)
     if NotificationDedupService and NotificationDedupService.RecordShout then
-        return NotificationDedupService:RecordShout(self, mapName, timestamp);
+        return NotificationDedupService:RecordShout(self, mapRef, timestamp);
     end
 end
 
-function Notification:IsRecentShout(mapName, windowSeconds, currentTime)
+function Notification:IsRecentShout(mapRef, windowSeconds, currentTime)
     if NotificationDedupService and NotificationDedupService.IsRecentShout then
-        return NotificationDedupService:IsRecentShout(self, mapName, windowSeconds, currentTime);
+        return NotificationDedupService:IsRecentShout(self, mapRef, windowSeconds, currentTime);
     end
     return false, nil;
 end
 
-function Notification:RecordReceivedSync(mapName, timestamp)
+function Notification:RecordReceivedSync(mapRef, timestamp, eventContext)
     if NotificationDedupService and NotificationDedupService.RecordReceivedSync then
-        return NotificationDedupService:RecordReceivedSync(self, mapName, timestamp);
+        return NotificationDedupService:RecordReceivedSync(self, mapRef, timestamp, eventContext);
     end
 end
 
@@ -198,11 +208,25 @@ function Notification:ClearExpiredTransientState(currentTime)
     return 0;
 end
 
-function Notification:HasRecentReceivedSync(mapName, windowSeconds, currentTime)
+function Notification:HasRecentReceivedSync(mapRef, windowSeconds, currentTime, eventContext)
     if NotificationDedupService and NotificationDedupService.HasRecentReceivedSync then
-        return NotificationDedupService:HasRecentReceivedSync(self, mapName, windowSeconds, currentTime);
+        return NotificationDedupService:HasRecentReceivedSync(self, mapRef, windowSeconds, currentTime, eventContext);
     end
     return false, nil;
+end
+
+function Notification:CommitVisibleAutoDispatch(mapRef, eventContext, currentTime)
+    if NotificationDedupService and NotificationDedupService.CommitVisibleAutoDispatch then
+        return NotificationDedupService:CommitVisibleAutoDispatch(self, mapRef, eventContext, currentTime);
+    end
+    return false;
+end
+
+function Notification:NoteSuppressedVisibleAutoDispatch(mapRef, eventContext, timestamp)
+    if NotificationDedupService and NotificationDedupService.NoteSuppressedVisibleAutoDispatch then
+        return NotificationDedupService:NoteSuppressedVisibleAutoDispatch(self, mapRef, eventContext, timestamp);
+    end
+    return false;
 end
 
 function Notification:PlayAirdropAlertSound()
@@ -231,20 +255,22 @@ function Notification:SendAirdropSync(syncState)
     return false;
 end
 
-function Notification:NotifyAirdropDetected(mapName, detectionSource)
+function Notification:NotifyAirdropDetected(mapName, detectionSource, eventContext)
     if not self.isInitialized then self:Initialize() end
     if not mapName then 
         return 
     end
     
+    eventContext = eventContext or {};
+    local mapNotificationKey = eventContext.mapKey or mapName;
     local chatType = self:GetTeamChatType();
     local outboundChatType = chatType;
     local currentTime = Utils:GetCurrentTimestamp();
     -- 记录喊话时间，用于后续图标检测的去重
     if detectionSource == "npc_shout" then
-        self:RecordShout(mapName, currentTime);
+        self:RecordShout(mapNotificationKey, currentTime);
     end
-    local isRecentShout, lastShoutTime = self:IsRecentShout(mapName, self.SHOUT_DEDUP_WINDOW, currentTime);
+    local isRecentShout, lastShoutTime = self:IsRecentShout(mapNotificationKey, self.SHOUT_DEDUP_WINDOW, currentTime);
     local shouldSuppressMapIcon = detectionSource == "map_icon"
         and (
             (AirdropEventService and AirdropEventService.ShouldSuppressMapIconNotification
@@ -252,45 +278,22 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
             or isRecentShout
         );
     if shouldSuppressMapIcon then
-        self:UpdateFirstNotificationTime(mapName, lastShoutTime or currentTime);
-        self:MarkPlayerSentNotification(mapName);
+        self:NoteSuppressedVisibleAutoDispatch(mapNotificationKey, eventContext, lastShoutTime or currentTime);
         return;
     end
 
-    local hasRecentReceivedSync = false;
-    local lastReceivedSyncTime = nil;
-    if outboundChatType and self.teamNotificationEnabled then
-        hasRecentReceivedSync, lastReceivedSyncTime = self:HasRecentReceivedSync(
-            mapName,
-            self.RECEIVED_SYNC_SUPPRESS_WINDOW,
-            currentTime
-        );
-        if hasRecentReceivedSync then
-            outboundChatType = nil;
-        end
-    end
-    
-    if outboundChatType and self.teamNotificationEnabled then
-        -- 个人发送限制检查
-        if self:HasPlayerSentNotification(mapName) then
-            local message = string.format(L["AirdropDetected"], mapName);
-            Logger:Info("Notification", "通知", message);
-            return;
-        end
-        
-        -- 30秒限制检查
-        if not self:CanSendNotification(mapName) then
-            local message = string.format(L["AirdropDetected"], mapName);
-            Logger:Info("Notification", "通知", message);
-            return;
-        end
-        
-        -- 记录首次通知时间
-        if not self.firstNotificationTime[mapName] then
-            self.firstNotificationTime[mapName] = currentTime;
-        end
-        
-        self:MarkPlayerSentNotification(mapName);
+    local visibleAutoDispatchState = BuildVisibleAutoDispatchState(
+        self,
+        mapNotificationKey,
+        eventContext,
+        outboundChatType,
+        currentTime
+    );
+    outboundChatType = visibleAutoDispatchState.outboundChatType;
+    if visibleAutoDispatchState.shouldAbortNotification then
+        local message = string.format(L["AirdropDetected"], mapName);
+        Logger:Info("Notification", "通知", message);
+        return;
     end
     
     local message = string.format(L["AirdropDetected"], mapName);
@@ -301,8 +304,13 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource)
         self:PlayAirdropAlertSound();
     end
     
+    local visibleSendSuccess = false;
     if NotificationOutputService and NotificationOutputService.SendMessage then
-        NotificationOutputService:SendMessage(self, message, outboundChatType);
+        visibleSendSuccess = NotificationOutputService:SendMessage(self, message, outboundChatType) == true;
+    end
+
+    if visibleAutoDispatchState.shouldTrackVisibleSend and outboundChatType and visibleSendSuccess then
+        self:CommitVisibleAutoDispatch(mapNotificationKey, eventContext, currentTime);
     end
 end
 
