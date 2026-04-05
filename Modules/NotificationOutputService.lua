@@ -100,6 +100,12 @@ function NotificationOutputService:GetAutomaticVisibleChatType(chatType)
     return ResolveAutomaticVisibleChatType(chatType)
 end
 
+local function HasRaidWarningPermission()
+    local isLeader = UnitIsGroupLeader and UnitIsGroupLeader("player") == true
+    local isAssistant = UnitIsGroupAssistant and UnitIsGroupAssistant("player") == true
+    return isLeader or isAssistant
+end
+
 local function ResolveStandardVisibleChatType(chatType)
     if chatType == "INSTANCE_CHAT" then
         if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
@@ -136,6 +142,20 @@ function NotificationOutputService:GetStandardVisibleChatType(chatType)
     return ResolveStandardVisibleChatType(chatType)
 end
 
+function NotificationOutputService:GetManualAirdropChatType(notification, chatType)
+    local standardChatType = self:GetStandardVisibleChatType(chatType)
+    if standardChatType ~= "RAID" then
+        return standardChatType
+    end
+    if not notification or not notification.IsLeaderModeEnabled or notification:IsLeaderModeEnabled() ~= true then
+        return standardChatType
+    end
+    if not HasRaidWarningPermission() then
+        return standardChatType
+    end
+    return "RAID_WARNING"
+end
+
 function NotificationOutputService:SendMessage(notification, message, chatType)
     local outboundChatType = self:GetAutomaticVisibleChatType(chatType)
     if chatType and notification and notification.teamNotificationEnabled and outboundChatType then
@@ -157,7 +177,12 @@ function NotificationOutputService:SendMessage(notification, message, chatType)
 end
 
 function NotificationOutputService:SendManualMessage(message, chatType)
-    local standardChatType = self:GetStandardVisibleChatType(chatType)
+    local standardChatType = nil
+    if chatType == "RAID_WARNING" then
+        standardChatType = IsInRaid() and "RAID_WARNING" or nil
+    else
+        standardChatType = self:GetStandardVisibleChatType(chatType)
+    end
     if chatType and standardChatType then
         local success, err = pcall(function()
             SendChatMessage(message, standardChatType)

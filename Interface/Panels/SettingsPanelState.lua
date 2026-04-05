@@ -37,6 +37,16 @@ function SettingsPanelState:IsTeamNotificationEnabled()
     return true
 end
 
+function SettingsPanelState:IsLeaderModeEnabled()
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.leaderModeEnabled ~= nil then
+        return CRATETRACKERZK_UI_DB.leaderModeEnabled == true
+    end
+    if Notification and Notification.IsLeaderModeEnabled then
+        return Notification:IsLeaderModeEnabled()
+    end
+    return false
+end
+
 function SettingsPanelState:IsSoundAlertEnabled()
     if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.soundAlertEnabled ~= nil then
         return CRATETRACKERZK_UI_DB.soundAlertEnabled == true
@@ -148,6 +158,8 @@ function SettingsPanelState:GetSettingsSnapshot()
         addonEnabled = addonEnabled,
         teamNotificationEnabled = teamEnabled,
         teamNotificationInteractable = addonEnabled,
+        leaderModeEnabled = self:IsLeaderModeEnabled(),
+        leaderModeInteractable = addonEnabled,
         soundAlertEnabled = soundEnabled,
         soundAlertInteractable = addonEnabled,
         autoReportEnabled = autoEnabled,

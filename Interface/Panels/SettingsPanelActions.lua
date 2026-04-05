@@ -20,6 +20,12 @@ function SettingsPanelActions:SetTeamNotificationEnabled(enabled)
     end
 end
 
+function SettingsPanelActions:SetLeaderModeEnabled(enabled)
+    if Notification and Notification.SetLeaderModeEnabled then
+        Notification:SetLeaderModeEnabled(enabled == true)
+    end
+end
+
 function SettingsPanelActions:SetSoundAlertEnabled(enabled)
     if Notification and Notification.SetSoundAlertEnabled then
         Notification:SetSoundAlertEnabled(enabled == true)

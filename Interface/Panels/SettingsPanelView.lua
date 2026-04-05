@@ -225,6 +225,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.teamNotification.label, snapshot.teamNotificationInteractable == true)
     end
 
+    if controls.leaderMode then
+        controls.leaderMode:SetChecked(snapshot.leaderModeEnabled == true)
+        controls.leaderMode:SetEnabled(snapshot.leaderModeInteractable == true)
+        SetTextEnabled(controls.leaderMode.label, snapshot.leaderModeInteractable == true)
+    end
+
     if controls.soundAlert then
         controls.soundAlert:SetChecked(snapshot.soundAlertEnabled == true)
         controls.soundAlert:SetEnabled(snapshot.soundAlertInteractable == true)

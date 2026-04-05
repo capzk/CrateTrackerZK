@@ -16,17 +16,6 @@ local function GetExpansionAwareCacheKey(expansionID, mapID)
     return tostring(expansionID or "default") .. ":" .. tostring(mapID);
 end
 
-local function SafeSplitGuid(guid)
-    if not guid or type(guid) ~= "string" then
-        return nil;
-    end
-    local ok, unitType, _, serverID, _, zoneUID = pcall(strsplit, "-", guid);
-    if not ok then
-        return nil;
-    end
-    return unitType, serverID, zoneUID;
-end
-
 local function ResolveTargetMapData(currentMapID)
     if MapTracker and MapTracker.GetTargetMapData then
         return MapTracker:GetTargetMapData(currentMapID);
@@ -65,33 +54,15 @@ function Phase:Reset()
 end
 
 function Phase:GetLayerFromNPC()
-    local unit = "mouseover";
-    local guid = UnitGUID(unit);
-    
-    if not guid then
-        unit = "target";
-        guid = UnitGUID(unit);
-    end
-    
-    if guid then
-        -- 位面ID = ServerID-ZoneUID（GUID第3和第5部分）
-        local unitType, serverID, zoneUID = SafeSplitGuid(guid);
-        if (unitType == "Creature" or unitType == "Vehicle") and serverID and zoneUID then
-            return serverID .. "-" .. zoneUID;
-        end
+    if PhaseProbeService and PhaseProbeService.GetPreferredPhase then
+        return PhaseProbeService:GetPreferredPhase("mouseover", "target");
     end
     return nil;
 end
 
 function Phase:HasProbeUnit()
-    if not UnitGUID then
-        return false;
-    end
-    if UnitGUID("mouseover") then
-        return true;
-    end
-    if UnitGUID("target") then
-        return true;
+    if PhaseProbeService and PhaseProbeService.HasValidProbeUnit then
+        return PhaseProbeService:HasValidProbeUnit("mouseover", "target");
     end
     return false;
 end

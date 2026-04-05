@@ -133,7 +133,12 @@ function Area:CheckAndUpdateAreaValid(currentMapID)
         return false;
     end
     
-    if not C_Map.GetMapInfo(playerMapID) then return false end
+    if not C_Map.GetMapInfo(playerMapID) then
+        self.lastAccessMode = self.AccessMode.DISABLED;
+        self.lastAreaValidState = false;
+        self:PauseAllDetections();
+        return false;
+    end
 
     if targetMapData then
         self.lastAccessMode = self.AccessMode.FULL_TRACKING;

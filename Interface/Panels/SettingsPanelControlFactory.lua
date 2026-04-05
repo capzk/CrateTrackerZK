@@ -1,6 +1,25 @@
 local SettingsPanelControlFactory = BuildEnv("CrateTrackerZKSettingsPanelFactory")
 local SettingsPanelLayout = BuildEnv("CrateTrackerZKSettingsPanelLayout")
 
+local function ShowTooltip(owner, titleText, bodyText)
+    if not GameTooltip or not owner then
+        return
+    end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:ClearLines()
+    GameTooltip:SetText(titleText or "")
+    if type(bodyText) == "string" and bodyText ~= "" then
+        GameTooltip:AddLine(bodyText, 1, 1, 1, true)
+    end
+    GameTooltip:Show()
+end
+
+local function HideTooltip()
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
+end
+
 function SettingsPanelControlFactory:CreateDivider(parent, anchor, offsetY)
     local divider = parent:CreateTexture(nil, "ARTWORK")
     divider:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY or -8)
@@ -21,7 +40,22 @@ function SettingsPanelControlFactory:CreatePageFrame(parent)
     return page
 end
 
-function SettingsPanelControlFactory:CreateCheckbox(parent, anchor, labelText, onClick)
+function SettingsPanelControlFactory:AttachTooltip(frame, titleText, bodyText)
+    if not frame or type(bodyText) ~= "string" or bodyText == "" then
+        return frame
+    end
+
+    frame:SetScript("OnEnter", function(self)
+        ShowTooltip(self, titleText, bodyText)
+    end)
+    frame:SetScript("OnLeave", function()
+        HideTooltip()
+    end)
+
+    return frame
+end
+
+function SettingsPanelControlFactory:CreateCheckbox(parent, anchor, labelText, onClick, tooltipText)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -14)
 
@@ -31,11 +65,21 @@ function SettingsPanelControlFactory:CreateCheckbox(parent, anchor, labelText, o
     label:SetText(labelText or "")
     check.label = label
 
+    local labelWidth = 0
+    if label.GetStringWidth then
+        labelWidth = math.ceil(label:GetStringWidth() or 0)
+    end
+    if check.SetHitRectInsets then
+        check:SetHitRectInsets(0, -(labelWidth + 12), 0, 0)
+    end
+
     check:SetScript("OnClick", function(self)
         if onClick then
             onClick(self:GetChecked() == true)
         end
     end)
+
+    self:AttachTooltip(check, labelText, tooltipText)
 
     return check
 end

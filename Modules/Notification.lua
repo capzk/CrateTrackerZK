@@ -14,6 +14,7 @@ local TeamCommListener = BuildEnv("TeamCommListener");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
+Notification.leaderModeEnabled = false;
 Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
@@ -34,6 +35,7 @@ function Notification:Initialize()
     if NotificationSettingsStore and NotificationSettingsStore.Load then
         local settings = NotificationSettingsStore:Load();
         self.teamNotificationEnabled = settings.teamNotificationEnabled;
+        self.leaderModeEnabled = settings.leaderModeEnabled;
         self.soundAlertEnabled = settings.soundAlertEnabled;
         self.autoTeamReportEnabled = settings.autoTeamReportEnabled;
         self.autoTeamReportInterval = settings.autoTeamReportInterval;
@@ -45,6 +47,10 @@ end
 
 function Notification:IsTeamNotificationEnabled()
     return self.teamNotificationEnabled;
+end
+
+function Notification:IsLeaderModeEnabled()
+    return self.leaderModeEnabled == true;
 end
 
 function Notification:IsSoundAlertEnabled()
@@ -80,6 +86,13 @@ function Notification:SetSoundAlertEnabled(enabled)
     self.soundAlertEnabled = enabled == true;
     if NotificationSettingsStore and NotificationSettingsStore.SetSoundAlertEnabled then
         NotificationSettingsStore:SetSoundAlertEnabled(self.soundAlertEnabled);
+    end
+end
+
+function Notification:SetLeaderModeEnabled(enabled)
+    self.leaderModeEnabled = enabled == true;
+    if NotificationSettingsStore and NotificationSettingsStore.SetLeaderModeEnabled then
+        NotificationSettingsStore:SetLeaderModeEnabled(self.leaderModeEnabled);
     end
 end
 
@@ -363,8 +376,8 @@ function Notification:SendAutoTeamReport()
     local chatType = self:GetTeamChatType();
     if chatType then
         local visibleChatType = NotificationOutputService
-            and NotificationOutputService.GetStandardVisibleChatType
-            and NotificationOutputService:GetStandardVisibleChatType();
+            and NotificationOutputService.GetManualAirdropChatType
+            and NotificationOutputService:GetManualAirdropChatType(self, chatType);
         if NotificationOutputService and NotificationOutputService.SendManualMessage then
             NotificationOutputService:SendManualMessage(message, visibleChatType);
         end
@@ -417,8 +430,8 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     
     if chatType then
         local visibleChatType = NotificationOutputService
-            and NotificationOutputService.GetStandardVisibleChatType
-            and NotificationOutputService:GetStandardVisibleChatType();
+            and NotificationOutputService.GetManualAirdropChatType
+            and NotificationOutputService:GetManualAirdropChatType(self, chatType);
         local success, err = false, nil;
         if NotificationOutputService and NotificationOutputService.SendManualMessage then
             success, err = NotificationOutputService:SendManualMessage(message, visibleChatType);

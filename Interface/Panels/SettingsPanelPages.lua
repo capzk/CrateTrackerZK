@@ -194,7 +194,16 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
     local page = SettingsPanelFactory:CreatePageFrame(parent)
     pages[pageKey] = page
 
-    controls.teamNotification = SettingsPanelFactory:CreateCheckbox(page, page.topAnchor, lt("SettingsTeamNotify", "团队通知"), function(enabled)
+    controls.leaderMode = SettingsPanelFactory:CreateCheckbox(page, page.topAnchor, lt("SettingsLeaderMode", "团长模式"), function(enabled)
+        if SettingsPanelActions and SettingsPanelActions.SetLeaderModeEnabled then
+            SettingsPanelActions:SetLeaderModeEnabled(enabled)
+        end
+        if onRefresh then
+            onRefresh()
+        end
+    end, lt("SettingsLeaderModeTooltip", "开启后，手动空投通知会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。"))
+
+    controls.teamNotification = SettingsPanelFactory:CreateCheckbox(page, controls.leaderMode, lt("SettingsTeamNotify", "团队通知"), function(enabled)
         if SettingsPanelActions and SettingsPanelActions.SetTeamNotificationEnabled then
             SettingsPanelActions:SetTeamNotificationEnabled(enabled)
         end
@@ -203,7 +212,7 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         end
     end)
 
-    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.teamNotification, lt("SettingsSoundAlert", "声音提示"), function(enabled)
+    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.teamNotification, lt("SettingsSoundAlert", "声音提醒"), function(enabled)
         if SettingsPanelActions and SettingsPanelActions.SetSoundAlertEnabled then
             SettingsPanelActions:SetSoundAlertEnabled(enabled)
         end
