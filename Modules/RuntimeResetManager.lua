@@ -49,6 +49,16 @@ function RuntimeResetManager:ResetSharedRuntimeState()
         Notification.lastShoutTime = {};
     end
 
+    if PublicChannelSyncStore and PublicChannelSyncStore.Reset then
+        PublicChannelSyncStore:Reset();
+    end
+    if PublicSyncChannelService and PublicSyncChannelService.Reset then
+        PublicSyncChannelService:Reset();
+    end
+    if PublicChannelSyncListener then
+        PublicChannelSyncListener.isInitialized = false;
+    end
+
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
         CrateTrackerZK.phaseTimerTicker:Cancel();
         CrateTrackerZK.phaseTimerTicker = nil;
@@ -64,6 +74,10 @@ function RuntimeResetManager:ResetSharedRuntimeState()
 
     if MainPanel then
         MainPanel.lastNotifyClickTime = {};
+    end
+
+    if UnifiedDataManager then
+        UnifiedDataManager.sharedDisplayStateByMap = {};
     end
 end
 
@@ -121,6 +135,10 @@ function RuntimeResetManager:ResetCommandRuntimeState()
 
     if TeamCommListener then
         TeamCommListener.isInitialized = false;
+    end
+
+    if PublicChannelSyncListener then
+        PublicChannelSyncListener.isInitialized = false;
     end
 
     if ShoutDetector then

@@ -26,7 +26,8 @@ end
 -- 时间来源枚举
 UnifiedDataManager.TimeSource = {
     TEAM_MESSAGE = "team_message",
-    ICON_DETECTION = "icon_detection"
+    ICON_DETECTION = "icon_detection",
+    PUBLIC_CHANNEL_SYNC = "public_channel_sync",
 }
 
 -- 位面来源枚举
@@ -87,6 +88,47 @@ local function GetPhaseScopedKey(mapId, expansionID)
     return tostring(ResolveMapExpansionID(mapId, expansionID)) .. ":" .. tostring(mapId);
 end
 
+local function IsPlayerCurrentlyOnTrackedMap(mapId)
+    if type(mapId) ~= "number" then
+        return false;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    if type(mapData) ~= "table" or type(mapData.mapID) ~= "number" then
+        return false;
+    end
+
+    local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player") or nil;
+    return currentMapID == mapData.mapID;
+end
+
+local function CanUseTemporaryRecordForPhase(manager, mapId, phaseId, tempRecord)
+    if type(tempRecord) ~= "table" then
+        return false;
+    end
+    if type(phaseId) ~= "string" or phaseId == "" then
+        return true;
+    end
+
+    if type(tempRecord.phaseId) == "string" and tempRecord.phaseId ~= "" then
+        return tempRecord.phaseId == phaseId;
+    end
+
+    local sharedStateByMap = manager and manager.sharedDisplayStateByMap or nil;
+    local state = type(sharedStateByMap) == "table" and sharedStateByMap[mapId] or nil;
+    local phaseChangedAt = type(state) == "table" and tonumber(state.phaseChangedAt) or nil;
+    if type(phaseChangedAt) ~= "number" then
+        return true;
+    end
+
+    local setTime = tonumber(tempRecord.setTime);
+    if type(setTime) ~= "number" then
+        return true;
+    end
+
+    return setTime >= phaseChangedAt;
+end
+
 local function SanitizePersistentTimestamp(timestamp)
     if type(timestamp) ~= "number" then
         return nil;
@@ -114,6 +156,7 @@ function UnifiedDataManager:Initialize()
     
     -- 位面数据存储 {mapId -> PhaseData}（仅运行时临时态）
     self.temporaryPhases = {};
+    self.sharedDisplayStateByMap = {};
     
     self:SynchronizeTrackedMaps();
     self:RestoreTemporaryPhaseCache();
@@ -161,7 +204,7 @@ function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary, expansionID
 end
 
 -- 统一时间设置接口
-function UnifiedDataManager:SetTime(mapId, timestamp, source)
+function UnifiedDataManager:SetTime(mapId, timestamp, source, phaseId)
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -169,17 +212,17 @@ function UnifiedDataManager:SetTime(mapId, timestamp, source)
     
     -- 根据来源自动决定是临时时间还是持久化时间
     if source == self.TimeSource.TEAM_MESSAGE then
-        return self:SetTemporaryTime(mapId, timestamp, source);
+        return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
     elseif source == self.TimeSource.ICON_DETECTION then
         return self:SetPersistentTime(mapId, timestamp, source, nil);
     else
         -- 默认为临时时间
-        return self:SetTemporaryTime(mapId, timestamp, source);
+        return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
     end
 end
 
 -- 设置临时时间
-function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
+function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source, phaseId)
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -193,7 +236,7 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source)
     end
 
     if TimeStateStore and TimeStateStore.SetTemporary then
-        TimeStateStore:SetTemporary(self, mapId, timestamp, source, Utils:GetCurrentTimestamp(), expansionID);
+        TimeStateStore:SetTemporary(self, mapId, timestamp, source, Utils:GetCurrentTimestamp(), expansionID, phaseId);
     end
     
     return true;
@@ -362,10 +405,16 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
 end
 
 -- 选择事件时间戳：优先采用未过期且与检测时间相近的临时时间
-function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp)
+function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, currentPhaseId)
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
     local record = self:GetValidTemporaryTime(mapId);
     if not record then
+        return fallback, false;
+    end
+
+    if type(currentPhaseId) == "string"
+        and currentPhaseId ~= ""
+        and not CanUseTemporaryRecordForPhase(self, mapId, currentPhaseId, record) then
         return fallback, false;
     end
     
@@ -435,6 +484,13 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
     local recordBuffer = persistentRecordBuffer or outDisplayTime.__ctkPersistentRecordBuffer or {};
     local persistentRecord = self:GetPersistentTimeRecordInto(mapId, recordBuffer);
     outDisplayTime.__ctkPersistentRecordBuffer = recordBuffer;
+    local currentPhaseID = self.GetCurrentPhase and self:GetCurrentPhase(mapId) or nil;
+    local sharedRecordBuffer = outDisplayTime.__ctkSharedRecordBuffer or {};
+    local sharedRecord = nil;
+    if type(currentPhaseID) == "string" and self.GetSharedPhaseTimeRecordInto then
+        sharedRecord = self:GetSharedPhaseTimeRecordInto(mapId, currentPhaseID, sharedRecordBuffer);
+    end
+    outDisplayTime.__ctkSharedRecordBuffer = sharedRecordBuffer;
     outDisplayTime.time = nil;
     outDisplayTime.source = nil;
     outDisplayTime.isPersistent = nil;
@@ -451,6 +507,56 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
         end
     end
 
+    local isPlayerOnCurrentMap = IsPlayerCurrentlyOnTrackedMap(mapId);
+    if not isPlayerOnCurrentMap and self.ClearSharedDisplayPhaseGate then
+        self:ClearSharedDisplayPhaseGate(mapId);
+    end
+
+    if isPlayerOnCurrentMap and type(currentPhaseID) == "string" and currentPhaseID ~= "" then
+        local phaseTransitionEligible = self.CanUseSharedDisplayForPhase
+            and self:CanUseSharedDisplayForPhase(mapId, currentPhaseID) == true;
+        local tempRecordMatchesCurrentPhase = CanUseTemporaryRecordForPhase(self, mapId, currentPhaseID, tempRecord);
+        local persistentMatchesCurrentPhase = persistentRecord
+            and type(persistentRecord.phaseId) == "string"
+            and persistentRecord.phaseId == currentPhaseID;
+        local hasLocalCurrentPhaseSource = persistentMatchesCurrentPhase
+            or (tempRecord and tempRecordMatchesCurrentPhase) == true;
+        local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible;
+
+        if persistentMatchesCurrentPhase then
+            outDisplayTime.time = persistentRecord.timestamp;
+            outDisplayTime.source = persistentRecord.source;
+            outDisplayTime.isPersistent = true;
+            if self.OnSharedDisplayReleased then
+                self:OnSharedDisplayReleased(mapId);
+            end
+            return outDisplayTime;
+        elseif tempRecord and tempRecordMatchesCurrentPhase then
+            outDisplayTime.time = tempRecord.timestamp;
+            outDisplayTime.source = tempRecord.source;
+            outDisplayTime.isPersistent = false;
+            if self.OnSharedDisplayReleased then
+                self:OnSharedDisplayReleased(mapId);
+            end
+            return outDisplayTime;
+        elseif sharedRecord and shouldTrySharedDisplay then
+            -- 公共广播共享记录只作为当前位面缺少可用本地显示源时的备选显示数据；
+            -- 位面切换后也允许按当前地图+位面严格匹配尝试共享回退，但不会覆盖已有效的本地数据。
+            outDisplayTime.time = sharedRecord.timestamp;
+            outDisplayTime.source = sharedRecord.source or self.TimeSource.PUBLIC_CHANNEL_SYNC;
+            outDisplayTime.isPersistent = false;
+            if self.OnSharedDisplayActivated then
+                self:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord);
+            end
+            return outDisplayTime;
+        end
+
+        if self.OnSharedDisplayReleased then
+            self:OnSharedDisplayReleased(mapId);
+        end
+        return nil;
+    end
+
     -- 同时存在时，取时间更“新”的一条；否则按可用记录返回
     if tempRecord and persistentRecord then
         local useTemp = tempRecord.timestamp > persistentRecord.timestamp;
@@ -458,19 +564,31 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
         outDisplayTime.time = record.timestamp;
         outDisplayTime.source = record.source;
         outDisplayTime.isPersistent = not useTemp;
+        if self.OnSharedDisplayReleased then
+            self:OnSharedDisplayReleased(mapId);
+        end
         return outDisplayTime;
     elseif persistentRecord then
         outDisplayTime.time = persistentRecord.timestamp;
         outDisplayTime.source = persistentRecord.source;
         outDisplayTime.isPersistent = true;
+        if self.OnSharedDisplayReleased then
+            self:OnSharedDisplayReleased(mapId);
+        end
         return outDisplayTime;
     elseif tempRecord then
         outDisplayTime.time = tempRecord.timestamp;
         outDisplayTime.source = tempRecord.source;
         outDisplayTime.isPersistent = false;
+        if self.OnSharedDisplayReleased then
+            self:OnSharedDisplayReleased(mapId);
+        end
         return outDisplayTime;
     end
 
+    if self.OnSharedDisplayReleased then
+        self:OnSharedDisplayReleased(mapId);
+    end
     return nil;
 end
 

@@ -64,6 +64,9 @@ local function RefreshTrackedMapRuntime()
     if TeamCommListener and TeamCommListener.Initialize then
         TeamCommListener.isInitialized = false
     end
+    if PublicChannelSyncListener and PublicChannelSyncListener.Initialize then
+        PublicChannelSyncListener.isInitialized = false
+    end
 
     if Area then
         Area.lastAreaValidState = nil
@@ -77,6 +80,14 @@ local function RefreshTrackedMapRuntime()
 
     if TeamCommListener and TeamCommListener.Initialize then
         TeamCommListener:Initialize()
+    end
+    if AddonControlService:IsAddonEnabled() then
+        if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then
+            PublicChannelSyncStore:Initialize()
+        end
+        if PublicChannelSyncListener and PublicChannelSyncListener.Initialize then
+            PublicChannelSyncListener:Initialize()
+        end
     end
 
     if MainPanel and MainPanel.RefreshTrackedMapConfiguration then
@@ -198,6 +209,15 @@ function AddonControlService:ApplyAddonEnabled(enabled)
             TeamCommListener.isInitialized = false
             TeamCommListener:Initialize()
         end
+        if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then
+            PublicChannelSyncStore:Initialize()
+        end
+        if PublicChannelSyncListener then
+            PublicChannelSyncListener.isInitialized = false
+            if PublicChannelSyncListener.Initialize then
+                PublicChannelSyncListener:Initialize()
+            end
+        end
         if ShoutDetector and ShoutDetector.Initialize then
             ShoutDetector.isInitialized = false
             ShoutDetector:Initialize()
@@ -219,6 +239,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         end
         if TeamCommListener then
             TeamCommListener.isInitialized = false
+        end
+        if PublicChannelSyncListener then
+            PublicChannelSyncListener.isInitialized = false
         end
         if ShoutDetector then
             ShoutDetector.isInitialized = false

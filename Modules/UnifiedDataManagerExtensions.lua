@@ -7,6 +7,7 @@ local L = CrateTrackerZK and CrateTrackerZK.L or {};
 local Data = BuildEnv("Data");
 local Logger = BuildEnv("Logger");
 local StateBuckets = BuildEnv("StateBuckets");
+local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore");
 
 local function GetPhaseCacheStore()
     if StateBuckets and StateBuckets.GetPhaseCache then
@@ -96,6 +97,128 @@ end
 function UnifiedDataManager:ClearExpiredTemporaryData()
     self:ClearExpiredTemporaryTimes();
     self:ClearExpiredTemporaryPhases();
+    if PublicChannelSyncStore and PublicChannelSyncStore.ClearExpiredRecords then
+        PublicChannelSyncStore:ClearExpiredRecords(Utils:GetCurrentTimestamp());
+    end
+end
+
+local function GetSharedDisplayState(self, mapId)
+    self.sharedDisplayStateByMap = self.sharedDisplayStateByMap or {};
+    self.sharedDisplayStateByMap[mapId] = self.sharedDisplayStateByMap[mapId] or {};
+    return self.sharedDisplayStateByMap[mapId];
+end
+
+function UnifiedDataManager:MarkSharedDisplayPhaseTransition(mapId, previousPhaseId, currentPhaseId, changedAt)
+    if type(mapId) ~= "number" then
+        return;
+    end
+
+    local state = GetSharedDisplayState(self, mapId);
+    state.phaseTransitionEligible = false;
+    state.pendingPhaseId = nil;
+    state.activeRecordKey = nil;
+
+    if type(previousPhaseId) ~= "string" or previousPhaseId == "" then
+        return;
+    end
+    if type(currentPhaseId) ~= "string" or currentPhaseId == "" then
+        return;
+    end
+    if previousPhaseId == currentPhaseId then
+        return;
+    end
+
+    state.phaseChangedAt = changedAt or Utils:GetCurrentTimestamp();
+    state.phaseTransitionEligible = true;
+    state.pendingPhaseId = currentPhaseId;
+end
+
+function UnifiedDataManager:CanUseSharedDisplayForPhase(mapId, phaseId)
+    if type(mapId) ~= "number"
+        or type(phaseId) ~= "string"
+        or phaseId == ""
+        or type(self.sharedDisplayStateByMap) ~= "table" then
+        return false;
+    end
+
+    local state = self.sharedDisplayStateByMap[mapId];
+    return type(state) == "table"
+        and state.phaseTransitionEligible == true
+        and state.pendingPhaseId == phaseId;
+end
+
+function UnifiedDataManager:ClearSharedDisplayPhaseGate(mapId)
+    if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
+        return;
+    end
+
+    local state = self.sharedDisplayStateByMap[mapId];
+    if type(state) ~= "table" then
+        return;
+    end
+
+    state.phaseTransitionEligible = false;
+    state.pendingPhaseId = nil;
+    state.activeRecordKey = nil;
+end
+
+function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outRecord)
+    if not self.isInitialized or type(phaseId) ~= "string" or phaseId == "" or type(outRecord) ~= "table" then
+        return nil;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    if not mapData or type(mapData.expansionID) ~= "string" or type(mapData.mapID) ~= "number" then
+        return nil;
+    end
+
+    if PublicChannelSyncStore and PublicChannelSyncStore.GetRecordInto then
+        return PublicChannelSyncStore:GetRecordInto(
+            mapData.expansionID,
+            mapData.mapID,
+            phaseId,
+            outRecord,
+            Utils:GetCurrentTimestamp()
+        );
+    end
+
+    return nil;
+end
+
+function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecord)
+    if type(mapId) ~= "number" or type(sharedRecord) ~= "table" or type(sharedRecord.recordKey) ~= "string" then
+        return;
+    end
+
+    local state = GetSharedDisplayState(self, mapId);
+    if state.activeRecordKey == sharedRecord.recordKey then
+        return;
+    end
+
+    state.activeRecordKey = sharedRecord.recordKey;
+    if state.lastNotifiedRecordKey == sharedRecord.recordKey then
+        return;
+    end
+
+    state.lastNotifiedRecordKey = sharedRecord.recordKey;
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local messageTemplate = (L and L["SharedPhaseSyncApplied"]) or "已获取[%s]当前位面的最新空投共享信息。";
+    Logger:Info("Notification", "通知", string.format(messageTemplate, mapName));
+end
+
+function UnifiedDataManager:OnSharedDisplayReleased(mapId)
+    if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
+        return;
+    end
+
+    local state = self.sharedDisplayStateByMap[mapId];
+    if type(state) ~= "table" then
+        return;
+    end
+
+    state.activeRecordKey = nil;
 end
 
 function UnifiedDataManager:FormatTime(seconds, showOnlyMinutes)

@@ -289,7 +289,11 @@ function TimerManager:DetectMapIcons(currentMapID)
         end
         
         -- 选择事件时间：若存在未过期的团队消息临时时间且与检测时间接近，则优先采用该时间
-        local eventTimestamp = UnifiedDataManager:SelectEventTimestamp(targetMapData.id, detectionState.firstDetectedTime);
+        local eventTimestamp = UnifiedDataManager:SelectEventTimestamp(
+            targetMapData.id,
+            detectionState.firstDetectedTime,
+            iconResult and iconResult.phaseID or nil
+        );
         local shouldSendNotification = ShouldSendNotification(eventTimestamp, currentTime);
         
         -- 首次检测：根据事件时间决定是否发送团队消息
@@ -321,6 +325,16 @@ function TimerManager:DetectMapIcons(currentMapID)
             if Notification and Notification.SendAirdropSync then
                 Notification:SendAirdropSync({
                     mapID = targetMapData.mapID,
+                    timestamp = eventTimestamp,
+                    objectGUID = objectGUID,
+                });
+            end
+
+            if PublicChannelSyncListener and PublicChannelSyncListener.SendConfirmedSync and type(phaseId) == "string" and phaseId ~= "" then
+                PublicChannelSyncListener:SendConfirmedSync({
+                    expansionID = targetMapData.expansionID,
+                    mapID = targetMapData.mapID,
+                    phaseID = phaseId,
                     timestamp = eventTimestamp,
                     objectGUID = objectGUID,
                 });

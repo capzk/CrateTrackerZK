@@ -55,6 +55,10 @@
     <Script file="Modules/NotificationQueryService.lua"/>
     <Script file="Modules/TeamCommMapCache.lua"/>
     <Script file="Modules/TeamCommMessageService.lua"/>
+    <Script file="Modules/PublicChannelSyncProtocol.lua"/>
+    <Script file="Modules/PublicSyncChannelService.lua"/>
+    <Script file="Modules/PublicChannelSyncStore.lua"/>
+    <Script file="Modules/PublicChannelSyncListener.lua"/>
     <Script file="Modules/Notification.lua"/>
     <Script file="Modules/RuntimeResetManager.lua"/>
     <Script file="Modules/TeamCommListener.lua"/>

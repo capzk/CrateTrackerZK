@@ -27,6 +27,9 @@ local function HandleZoneChanged()
         if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
             TeamCommListener:RegisterAddonPrefix()
         end
+        if PublicChannelSyncListener and PublicChannelSyncListener.EnsureBroadcastChannelAvailable then
+            PublicChannelSyncListener:EnsureBroadcastChannelAvailable()
+        end
         if CoreShared:IsAreaActive() then
             if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
             if Phase then
@@ -85,21 +88,35 @@ local function HandleMonsterChat(event, ...)
     end
 end
 
+local function DispatchAddonListener(listener, event, prefix, payload, chatType, sender, ...)
+    if not listener or type(listener.ADDON_PREFIX) ~= "string" or prefix ~= listener.ADDON_PREFIX then
+        return false
+    end
+    if not listener.HandleAddonEvent then
+        return false
+    end
+    return listener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
+end
+
 local function HandleTeamAddon(event, ...)
     if not CoreShared:CanProcessTeamMessages() then
         return
     end
-    if TeamCommListener and TeamCommListener.HandleAddonEvent then
-        local prefix = select(1, ...)
-        local expectedPrefix = TeamCommListener.ADDON_PREFIX
-        if type(prefix) ~= "string" or type(expectedPrefix) ~= "string" or prefix ~= expectedPrefix then
-            return
-        end
-        local payload = select(2, ...)
-        local chatType = select(3, ...)
-        local sender = select(4, ...)
-        TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
+    local prefix = select(1, ...)
+    if type(prefix) ~= "string" or prefix == "" then
+        return
     end
+    local payload = select(2, ...)
+    local chatType = select(3, ...)
+    local sender = select(4, ...)
+    local target = select(5, ...)
+    local zoneChannelID = select(6, ...)
+    local localChannelID = select(7, ...)
+    local channelName = select(8, ...)
+    local instanceID = select(9, ...)
+
+    DispatchAddonListener(TeamCommListener, event, prefix, payload, chatType, sender, target, zoneChannelID, localChannelID, channelName, instanceID)
+    DispatchAddonListener(PublicChannelSyncListener, event, prefix, payload, chatType, sender, target, zoneChannelID, localChannelID, channelName, instanceID)
 end
 
 function EventRouter:HandleEvent(event, ...)

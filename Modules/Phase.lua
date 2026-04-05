@@ -122,6 +122,14 @@ function Phase:UpdatePhaseInfo(currentMapID)
             -- 保留旧版 currentPhaseID 回写，兼容仍读取 mapData 的链路
             targetMapData.currentPhaseID = currentPhaseID;
             if previousPhaseID ~= currentPhaseID then
+                if UnifiedDataManager and UnifiedDataManager.MarkSharedDisplayPhaseTransition then
+                    UnifiedDataManager:MarkSharedDisplayPhaseTransition(
+                        targetMapData.id,
+                        previousPhaseID,
+                        currentPhaseID,
+                        Utils:GetCurrentTimestamp()
+                    );
+                end
                 uiNeedsRefresh = true;
             end
             

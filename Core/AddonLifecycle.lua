@@ -77,6 +77,8 @@ function AddonLifecycle:OnLogin()
     end
 
     if TeamCommListener then TeamCommListener:Initialize() end
+    if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then PublicChannelSyncStore:Initialize() end
+    if PublicChannelSyncListener then PublicChannelSyncListener:Initialize() end
     if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     if TimerManager then TimerManager:Initialize() end
 

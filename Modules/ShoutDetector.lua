@@ -82,7 +82,8 @@ local function OnShoutDetected(message)
 
     -- 写入临时时间并刷新界面（用于即时显示）
     if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
-        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE);
+        local currentPhaseId = UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
+        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE, currentPhaseId);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
         UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {
