@@ -23,6 +23,7 @@
     <Script file="Locales/zhTW.lua"/>
     <Script file="Locales/ruRU.lua"/>
     <Script file="Locales/koKR.lua"/>
+    <Script file="Locales/esMX.lua"/>
     <Script file="Locales/enUS.lua"/>
     
     <!-- 本地配置目录 -->
