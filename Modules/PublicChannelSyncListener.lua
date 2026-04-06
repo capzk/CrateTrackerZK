@@ -13,7 +13,7 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
 
 PublicChannelSyncListener.isInitialized = false
-PublicChannelSyncListener.FEATURE_ENABLED = false
+PublicChannelSyncListener.FEATURE_ENABLED = true
 PublicChannelSyncListener.syncStateBuffer = PublicChannelSyncListener.syncStateBuffer or {}
 PublicChannelSyncListener.channelContextBuffer = PublicChannelSyncListener.channelContextBuffer or {}
 PublicChannelSyncListener.ADDON_PREFIX = PublicChannelSyncProtocol and PublicChannelSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"

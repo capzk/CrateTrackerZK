@@ -3,7 +3,7 @@
 
 local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 
-PublicChannelSyncStore.FEATURE_ENABLED = false
+PublicChannelSyncStore.FEATURE_ENABLED = true
 PublicChannelSyncStore.RECORD_TTL = 3600
 PublicChannelSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
 
