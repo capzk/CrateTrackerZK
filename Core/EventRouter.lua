@@ -27,7 +27,10 @@ local function HandleZoneChanged()
         if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
             TeamCommListener:RegisterAddonPrefix()
         end
-        if PublicChannelSyncListener and PublicChannelSyncListener.EnsureBroadcastChannelAvailable then
+        if PublicChannelSyncListener
+            and PublicChannelSyncListener.EnsureBroadcastChannelAvailable
+            and PublicChannelSyncListener.IsFeatureEnabled
+            and PublicChannelSyncListener:IsFeatureEnabled() == true then
             PublicChannelSyncListener:EnsureBroadcastChannelAvailable()
         end
         if CoreShared:IsAreaActive() then
@@ -89,6 +92,9 @@ local function HandleMonsterChat(event, ...)
 end
 
 local function DispatchAddonListener(listener, event, prefix, payload, chatType, sender, ...)
+    if listener and listener.IsFeatureEnabled and listener:IsFeatureEnabled() ~= true then
+        return false
+    end
     if not listener or type(listener.ADDON_PREFIX) ~= "string" or prefix ~= listener.ADDON_PREFIX then
         return false
     end

@@ -8,6 +8,13 @@ local Data = BuildEnv("Data");
 local Logger = BuildEnv("Logger");
 local StateBuckets = BuildEnv("StateBuckets");
 local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore");
+local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener");
+
+local function IsPublicChannelSyncFeatureEnabled()
+    return PublicChannelSyncListener
+        and PublicChannelSyncListener.IsFeatureEnabled
+        and PublicChannelSyncListener:IsFeatureEnabled() == true;
+end
 
 local function GetPhaseCacheStore()
     if StateBuckets and StateBuckets.GetPhaseCache then
@@ -97,7 +104,9 @@ end
 function UnifiedDataManager:ClearExpiredTemporaryData()
     self:ClearExpiredTemporaryTimes();
     self:ClearExpiredTemporaryPhases();
-    if PublicChannelSyncStore and PublicChannelSyncStore.ClearExpiredRecords then
+    if IsPublicChannelSyncFeatureEnabled()
+        and PublicChannelSyncStore
+        and PublicChannelSyncStore.ClearExpiredRecords then
         PublicChannelSyncStore:ClearExpiredRecords(Utils:GetCurrentTimestamp());
     end
 end
@@ -109,6 +118,9 @@ local function GetSharedDisplayState(self, mapId)
 end
 
 function UnifiedDataManager:MarkSharedDisplayPhaseTransition(mapId, previousPhaseId, currentPhaseId, changedAt)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return;
+    end
     if type(mapId) ~= "number" then
         return;
     end
@@ -134,6 +146,9 @@ function UnifiedDataManager:MarkSharedDisplayPhaseTransition(mapId, previousPhas
 end
 
 function UnifiedDataManager:CanUseSharedDisplayForPhase(mapId, phaseId)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return false;
+    end
     if type(mapId) ~= "number"
         or type(phaseId) ~= "string"
         or phaseId == ""
@@ -163,6 +178,9 @@ function UnifiedDataManager:ClearSharedDisplayPhaseGate(mapId)
 end
 
 function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outRecord)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return nil;
+    end
     if not self.isInitialized or type(phaseId) ~= "string" or phaseId == "" or type(outRecord) ~= "table" then
         return nil;
     end
@@ -186,6 +204,9 @@ function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outReco
 end
 
 function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecord)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return;
+    end
     if type(mapId) ~= "number" or type(sharedRecord) ~= "table" or type(sharedRecord.recordKey) ~= "string" then
         return;
     end
@@ -209,6 +230,9 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
 end
 
 function UnifiedDataManager:OnSharedDisplayReleased(mapId)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return;
+    end
     if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
         return;
     end

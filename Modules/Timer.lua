@@ -211,8 +211,8 @@ function TimerManager:DetectMapIcons(currentMapID)
     
     -- 检测图标
     local iconResult = IconDetector.DetectIconInto
-        and IconDetector:DetectIconInto(playerMapID, AcquireIconDetectionBuffer(self))
-        or IconDetector:DetectIcon(playerMapID);
+        and IconDetector:DetectIconInto(playerMapID, targetMapData.mapID, AcquireIconDetectionBuffer(self))
+        or IconDetector:DetectIcon(playerMapID, targetMapData.mapID);
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
         self.detectionState[targetMapData.id] = nil;
@@ -330,7 +330,12 @@ function TimerManager:DetectMapIcons(currentMapID)
                 });
             end
 
-            if PublicChannelSyncListener and PublicChannelSyncListener.SendConfirmedSync and type(phaseId) == "string" and phaseId ~= "" then
+            if PublicChannelSyncListener
+                and PublicChannelSyncListener.SendConfirmedSync
+                and PublicChannelSyncListener.IsFeatureEnabled
+                and PublicChannelSyncListener:IsFeatureEnabled() == true
+                and type(phaseId) == "string"
+                and phaseId ~= "" then
                 PublicChannelSyncListener:SendConfirmedSync({
                     expansionID = targetMapData.expansionID,
                     mapID = targetMapData.mapID,

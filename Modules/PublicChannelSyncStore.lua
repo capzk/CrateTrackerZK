@@ -3,8 +3,13 @@
 
 local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 
+PublicChannelSyncStore.FEATURE_ENABLED = false
 PublicChannelSyncStore.RECORD_TTL = 3600
 PublicChannelSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
+
+function PublicChannelSyncStore:IsFeatureEnabled()
+    return self.FEATURE_ENABLED == true
+end
 
 local function EnsureRecords()
     PublicChannelSyncStore.sharedPhaseRecords = PublicChannelSyncStore.sharedPhaseRecords or {}
@@ -65,7 +70,12 @@ local function PruneMapBucket(mapBucket, currentTime, maxRecords)
 end
 
 function PublicChannelSyncStore:Initialize()
+    if self:IsFeatureEnabled() ~= true then
+        self.sharedPhaseRecords = {}
+        return false
+    end
     EnsureRecords()
+    return true
 end
 
 function PublicChannelSyncStore:Reset()
@@ -73,6 +83,9 @@ function PublicChannelSyncStore:Reset()
 end
 
 function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecord, currentTime)
+    if self:IsFeatureEnabled() ~= true then
+        return nil
+    end
     if type(expansionID) ~= "string" or type(mapID) ~= "number" or type(phaseID) ~= "string" or type(outRecord) ~= "table" then
         return nil
     end
@@ -111,6 +124,9 @@ function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRe
 end
 
 function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt)
+    if self:IsFeatureEnabled() ~= true then
+        return false, nil
+    end
     if type(expansionID) ~= "string" or type(mapID) ~= "number" or type(phaseID) ~= "string" then
         return false, nil
     end
@@ -150,6 +166,10 @@ function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timest
 end
 
 function PublicChannelSyncStore:ClearExpiredRecords(currentTime)
+    if self:IsFeatureEnabled() ~= true then
+        self.sharedPhaseRecords = {}
+        return
+    end
     local records = EnsureRecords()
     local now = currentTime or Utils:GetCurrentTimestamp()
 

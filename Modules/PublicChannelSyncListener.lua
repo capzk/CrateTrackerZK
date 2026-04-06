@@ -13,9 +13,14 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
 
 PublicChannelSyncListener.isInitialized = false
+PublicChannelSyncListener.FEATURE_ENABLED = false
 PublicChannelSyncListener.syncStateBuffer = PublicChannelSyncListener.syncStateBuffer or {}
 PublicChannelSyncListener.channelContextBuffer = PublicChannelSyncListener.channelContextBuffer or {}
 PublicChannelSyncListener.ADDON_PREFIX = PublicChannelSyncProtocol and PublicChannelSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"
+
+function PublicChannelSyncListener:IsFeatureEnabled()
+    return self.FEATURE_ENABLED == true
+end
 
 local function NormalizeAddonCallResult(...)
     local secondary = select(2, ...)
@@ -69,6 +74,9 @@ local function RegisterAddonPrefixInternal(prefix)
 end
 
 function PublicChannelSyncListener:RegisterAddonPrefix()
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if self.addonPrefixRegistered == true then
         return true
     end
@@ -78,6 +86,9 @@ function PublicChannelSyncListener:RegisterAddonPrefix()
 end
 
 function PublicChannelSyncListener:CanSendPublicSync()
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if not PublicSyncChannelService or not PublicSyncChannelService.CanUsePublicChannel or PublicSyncChannelService:CanUsePublicChannel() ~= true then
         return false
     end
@@ -88,6 +99,9 @@ function PublicChannelSyncListener:CanSendPublicSync()
 end
 
 function PublicChannelSyncListener:CanReceivePublicSync()
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if not PublicSyncChannelService or not PublicSyncChannelService.CanUsePublicChannel then
         return false
     end
@@ -95,6 +109,10 @@ function PublicChannelSyncListener:CanReceivePublicSync()
 end
 
 function PublicChannelSyncListener:Initialize()
+    if self:IsFeatureEnabled() ~= true then
+        self.isInitialized = false
+        return false
+    end
     if TeamCommMapCache and TeamCommMapCache.EnsurePlayerIdentity then
         TeamCommMapCache:EnsurePlayerIdentity(self)
     end
@@ -109,9 +127,13 @@ function PublicChannelSyncListener:Initialize()
         PublicSyncChannelService:EnsureChannelJoined()
     end
     self.isInitialized = true
+    return true
 end
 
 function PublicChannelSyncListener:EnsureBroadcastChannelAvailable(force)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if not self.isInitialized then
         self:Initialize()
     end
@@ -123,6 +145,9 @@ function PublicChannelSyncListener:EnsureBroadcastChannelAvailable(force)
 end
 
 function PublicChannelSyncListener:SendConfirmedSync(syncState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if self:CanSendPublicSync() ~= true then
         return false
     end
@@ -153,6 +178,9 @@ local function ResolveCurrentChannelContext(outContext, ...)
 end
 
 function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     if self:CanReceivePublicSync() ~= true then
         return false
     end

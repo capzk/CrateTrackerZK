@@ -280,7 +280,7 @@ function MainPanel:NotifyMapRefresh(mapData, clickButton)
         local target = MapTracker:GetTargetMapData(currentMapID)
         if target and target.id == mapData.id then
             if IconDetector and IconDetector.DetectIcon then
-                local res = IconDetector:DetectIcon(currentMapID)
+                local res = IconDetector:DetectIcon(currentMapID, mapData.mapID)
                 if res and res.detected then
                     isAirdropActive = true
                 end
