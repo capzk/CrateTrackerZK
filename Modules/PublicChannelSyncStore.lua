@@ -4,6 +4,7 @@
 local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 
 PublicChannelSyncStore.RECORD_TTL = 3600
+PublicChannelSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
 
 local function EnsureRecords()
     PublicChannelSyncStore.sharedPhaseRecords = PublicChannelSyncStore.sharedPhaseRecords or {}
@@ -18,12 +19,10 @@ local function EnsureMapBucket(expansionID, mapID)
 end
 
 local function BuildRecordKey(expansionID, mapID, phaseID, objectGUID)
-    return table.concat({
-        tostring(expansionID or "default"),
-        tostring(mapID or "0"),
-        tostring(phaseID or "unknown"),
-        tostring(objectGUID or "unknown"),
-    }, ":")
+    return tostring(expansionID or "default")
+        .. ":" .. tostring(mapID or "0")
+        .. ":" .. tostring(phaseID or "unknown")
+        .. ":" .. tostring(objectGUID or "unknown")
 end
 
 local function IsExpired(record, currentTime)
@@ -33,20 +32,44 @@ local function IsExpired(record, currentTime)
         or record.expiresAt <= now
 end
 
+local function SelectOldestPhaseRecord(mapBucket, currentTime)
+    local oldestPhaseID, oldestReceivedAt = nil, nil
+    local activeCount = 0
+
+    for phaseID, record in pairs(mapBucket) do
+        if IsExpired(record, currentTime) then
+            mapBucket[phaseID] = nil
+        else
+            activeCount = activeCount + 1
+            local receivedAt = tonumber(record.receivedAt) or 0
+            if oldestReceivedAt == nil or receivedAt < oldestReceivedAt then
+                oldestReceivedAt = receivedAt
+                oldestPhaseID = phaseID
+            end
+        end
+    end
+
+    return oldestPhaseID, activeCount
+end
+
+local function PruneMapBucket(mapBucket, currentTime, maxRecords)
+    if type(mapBucket) ~= "table" then
+        return
+    end
+
+    local oldestPhaseID, activeCount = SelectOldestPhaseRecord(mapBucket, currentTime)
+    while activeCount > (maxRecords or 8) and oldestPhaseID do
+        mapBucket[oldestPhaseID] = nil
+        oldestPhaseID, activeCount = SelectOldestPhaseRecord(mapBucket, currentTime)
+    end
+end
+
 function PublicChannelSyncStore:Initialize()
     EnsureRecords()
 end
 
 function PublicChannelSyncStore:Reset()
     self.sharedPhaseRecords = {}
-end
-
-function PublicChannelSyncStore:GetRecord(expansionID, mapID, phaseID, currentTime)
-    local outRecord = {}
-    if not self:GetRecordInto(expansionID, mapID, phaseID, outRecord, currentTime) then
-        return nil
-    end
-    return outRecord
 end
 
 function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecord, currentTime)
@@ -65,6 +88,12 @@ function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRe
 
     if IsExpired(record, currentTime) then
         mapBucket[phaseID] = nil
+        if next(mapBucket) == nil then
+            expansionBucket[mapID] = nil
+            if next(expansionBucket) == nil then
+                records[expansionID] = nil
+            end
+        end
         return nil
     end
 
@@ -116,6 +145,7 @@ function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timest
         recordKey = BuildRecordKey(expansionID, mapID, phaseID, objectGUID),
     }
     mapBucket[phaseID] = record
+    PruneMapBucket(mapBucket, now, self.MAX_PHASE_RECORDS_PER_MAP)
     return true, record
 end
 

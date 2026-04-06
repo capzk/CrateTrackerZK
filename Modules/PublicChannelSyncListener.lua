@@ -11,10 +11,10 @@ local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
-local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 
 PublicChannelSyncListener.isInitialized = false
 PublicChannelSyncListener.syncStateBuffer = PublicChannelSyncListener.syncStateBuffer or {}
+PublicChannelSyncListener.channelContextBuffer = PublicChannelSyncListener.channelContextBuffer or {}
 PublicChannelSyncListener.ADDON_PREFIX = PublicChannelSyncProtocol and PublicChannelSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"
 
 local function NormalizeAddonCallResult(...)
@@ -143,13 +143,13 @@ function PublicChannelSyncListener:SendConfirmedSync(syncState)
         or false
 end
 
-local function ResolveCurrentChannelContext(...)
-    return {
-        target = select(1, ...),
-        zoneChannelID = select(2, ...),
-        localChannelID = select(3, ...),
-        channelName = select(4, ...),
-    }
+local function ResolveCurrentChannelContext(outContext, ...)
+    outContext = type(outContext) == "table" and outContext or {}
+    outContext.target = select(1, ...)
+    outContext.zoneChannelID = select(2, ...)
+    outContext.localChannelID = select(3, ...)
+    outContext.channelName = select(4, ...)
+    return outContext
 end
 
 function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
@@ -160,7 +160,8 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
         self:Initialize()
     end
 
-    local channelContext = ResolveCurrentChannelContext(...)
+    self.channelContextBuffer = self.channelContextBuffer or {}
+    local channelContext = ResolveCurrentChannelContext(self.channelContextBuffer, ...)
     if not PublicSyncChannelService
         or not PublicSyncChannelService.MatchesChannelContext
         or PublicSyncChannelService:MatchesChannelContext(
@@ -173,16 +174,16 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
         return false
     end
 
+    if TeamCommMapCache and TeamCommMapCache.IsSelfSender and TeamCommMapCache:IsSelfSender(self, sender) then
+        return false
+    end
+
     self.syncStateBuffer = self.syncStateBuffer or {}
     local syncState = PublicChannelSyncProtocol
         and PublicChannelSyncProtocol.ParsePayloadInto
         and PublicChannelSyncProtocol:ParsePayloadInto(prefix, payload, self.syncStateBuffer)
         or nil
     if not syncState then
-        return false
-    end
-
-    if TeamCommMapCache and TeamCommMapCache.IsSelfSender and TeamCommMapCache:IsSelfSender(self, sender) then
         return false
     end
 

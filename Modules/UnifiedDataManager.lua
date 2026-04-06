@@ -147,6 +147,33 @@ local function PopulatePhaseColor(outColor, r, g, b)
     return outColor;
 end
 
+local function AssignDisplayTime(outDisplayTime, record, isPersistent)
+    if type(outDisplayTime) ~= "table" or type(record) ~= "table" then
+        return nil;
+    end
+
+    outDisplayTime.time = record.timestamp;
+    outDisplayTime.source = record.source;
+    outDisplayTime.isPersistent = isPersistent == true;
+    return outDisplayTime;
+end
+
+local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
+    if tempRecord and persistentRecord then
+        if tempRecord.timestamp > persistentRecord.timestamp then
+            return tempRecord, false;
+        end
+        return persistentRecord, true;
+    end
+    if persistentRecord then
+        return persistentRecord, true;
+    end
+    if tempRecord then
+        return tempRecord, false;
+    end
+    return nil, nil;
+end
+
 -- 初始化
 function UnifiedDataManager:Initialize()
     self.isInitialized = true;
@@ -524,17 +551,13 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
         local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible;
 
         if persistentMatchesCurrentPhase then
-            outDisplayTime.time = persistentRecord.timestamp;
-            outDisplayTime.source = persistentRecord.source;
-            outDisplayTime.isPersistent = true;
+            AssignDisplayTime(outDisplayTime, persistentRecord, true);
             if self.OnSharedDisplayReleased then
                 self:OnSharedDisplayReleased(mapId);
             end
             return outDisplayTime;
         elseif tempRecord and tempRecordMatchesCurrentPhase then
-            outDisplayTime.time = tempRecord.timestamp;
-            outDisplayTime.source = tempRecord.source;
-            outDisplayTime.isPersistent = false;
+            AssignDisplayTime(outDisplayTime, tempRecord, false);
             if self.OnSharedDisplayReleased then
                 self:OnSharedDisplayReleased(mapId);
             end
@@ -547,6 +570,16 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
             outDisplayTime.isPersistent = false;
             if self.OnSharedDisplayActivated then
                 self:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord);
+            end
+            return outDisplayTime;
+        end
+
+        -- 当前位面缺少可用显示源时，仍保留本地历史时间显示，避免 UI 直接空白。
+        local localFallbackRecord, isLocalFallbackPersistent = SelectLatestLocalDisplayRecord(tempRecord, persistentRecord);
+        if localFallbackRecord then
+            AssignDisplayTime(outDisplayTime, localFallbackRecord, isLocalFallbackPersistent == true);
+            if self.OnSharedDisplayReleased then
+                self:OnSharedDisplayReleased(mapId);
             end
             return outDisplayTime;
         end

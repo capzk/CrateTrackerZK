@@ -201,7 +201,7 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         if onRefresh then
             onRefresh()
         end
-    end, lt("SettingsLeaderModeTooltip", "开启后，手动空投通知会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。"))
+    end, lt("SettingsLeaderModeTooltip", "开启后，团队中的可见空投通知与自动播报会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。"))
 
     controls.teamNotification = SettingsPanelFactory:CreateCheckbox(page, controls.leaderMode, lt("SettingsTeamNotify", "团队通知"), function(enabled)
         if SettingsPanelActions and SettingsPanelActions.SetTeamNotificationEnabled then

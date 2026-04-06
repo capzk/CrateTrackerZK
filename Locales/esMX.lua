@@ -54,7 +54,7 @@ localeData["SettingsMapSelection"] = "Seleccion de mapa";
 localeData["SettingsThemeSwitch"] = "Tema";
 localeData["SettingsAddonToggle"] = "Alternar Addon";
 localeData["SettingsLeaderMode"] = "Modo de lider";
-localeData["SettingsLeaderModeTooltip"] = "Cuando esta activado, las notificaciones manuales de suministros preferiran aviso de banda; si no tienes permiso, volveran automaticamente al chat de banda normal.";
+localeData["SettingsLeaderModeTooltip"] = "Cuando esta activado, las notificaciones visibles de suministros y los reportes automaticos en banda preferiran aviso de banda; si no tienes permiso, volveran automaticamente al chat de banda normal.";
 localeData["SettingsTeamNotify"] = "Notificaciones de equipo";
 localeData["SettingsSoundAlert"] = "Alerta de sonido";
 localeData["SettingsAutoReport"] = "Notificar automaticamente";
@@ -89,6 +89,7 @@ Clic derecho: envia "Actual [Mapa] Suministros de guerra en: Tiempo"
 
 Opciones de la pagina de Ajustes de Mensajes:
 Ajustes de Mensajes: controla el comportamiento del envio de mensajes manual y automatico
+Modo de lider: cuando esta activado, las notificaciones visibles de suministros y los reportes automaticos en banda preferiran aviso de banda; sin permiso volveran al chat de banda normal
 Notificaciones de equipo: cuando esta activado, los mensajes se envian al chat de grupo o banda
 Alerta de sonido: cuando esta activado, se reproduce un sonido al detectar un suministro
 Notificar automaticamente: cuando esta activado, envia automaticamente la cuenta regresiva del suministro mas cercano en el intervalo configurado

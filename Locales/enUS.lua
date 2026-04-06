@@ -53,7 +53,7 @@ localeData["SettingsMapSelection"] = "Map Selection";
 localeData["SettingsThemeSwitch"] = "Theme";
 localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsLeaderMode"] = "Leader Mode";
-localeData["SettingsLeaderModeTooltip"] = "When enabled, manual airdrop notifications prefer raid warning; if you do not have permission, they fall back to normal raid chat.";
+localeData["SettingsLeaderModeTooltip"] = "When enabled, visible airdrop notifications and auto reports in raids prefer raid warning; if you do not have permission, they fall back to normal raid chat.";
 localeData["SettingsTeamNotify"] = "Team Notifications";
 localeData["SettingsSoundAlert"] = "Sound Reminder";
 localeData["SettingsAutoReport"] = "Auto Notify";
@@ -88,6 +88,7 @@ Usage Guide
 
 2. Message Settings page options:
    Message Settings: controls manual and automatic message sending behavior
+   Leader Mode: when enabled, visible airdrop notifications and auto reports in raids prefer raid warning; without permission they fall back to normal raid chat
    Team Notifications: when enabled, messages are sent to party or raid chat
    Sound Alert: when enabled, a sound plays when an airdrop is detected
    Auto Notify: when enabled, automatically sends the nearest airdrop countdown at the configured interval

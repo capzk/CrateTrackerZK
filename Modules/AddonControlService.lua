@@ -16,6 +16,9 @@ local MapTracker = BuildEnv("MapTracker")
 local Phase = BuildEnv("Phase")
 local TeamCommListener = BuildEnv("TeamCommListener")
 local TimerManager = BuildEnv("TimerManager")
+local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
+local ShoutDetector = BuildEnv("ShoutDetector")
+local Area = BuildEnv("Area")
 
 local function EnsureUIConfig()
     if AppSettingsStore and AppSettingsStore.GetUIState then
@@ -34,6 +37,41 @@ local function RefreshSettingsState()
     if SettingsPanel and SettingsPanel.RefreshState then
         SettingsPanel:RefreshState()
     end
+end
+
+local function ResetModuleInitializationState(module)
+    if module then
+        module.isInitialized = false
+    end
+end
+
+local function InitializeModule(module)
+    if module and module.Initialize then
+        module:Initialize()
+        return true
+    end
+    return false
+end
+
+local function ResetSyncListeners()
+    ResetModuleInitializationState(TeamCommListener)
+    ResetModuleInitializationState(PublicChannelSyncListener)
+end
+
+local function InitializeSyncListeners(enablePublicSync)
+    InitializeModule(TeamCommListener)
+    if enablePublicSync == true then
+        InitializeModule(PublicChannelSyncListener)
+    end
+end
+
+local function ResetShoutDetector()
+    ResetModuleInitializationState(ShoutDetector)
+end
+
+local function InitializeShoutDetector()
+    ResetShoutDetector()
+    InitializeModule(ShoutDetector)
 end
 
 local function RefreshTrackedMapRuntime()
@@ -61,12 +99,7 @@ local function RefreshTrackedMapRuntime()
         Phase:Reset()
     end
 
-    if TeamCommListener and TeamCommListener.Initialize then
-        TeamCommListener.isInitialized = false
-    end
-    if PublicChannelSyncListener and PublicChannelSyncListener.Initialize then
-        PublicChannelSyncListener.isInitialized = false
-    end
+    ResetSyncListeners()
 
     if Area then
         Area.lastAreaValidState = nil
@@ -78,17 +111,7 @@ local function RefreshTrackedMapRuntime()
         end
     end
 
-    if TeamCommListener and TeamCommListener.Initialize then
-        TeamCommListener:Initialize()
-    end
-    if AddonControlService:IsAddonEnabled() then
-        if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then
-            PublicChannelSyncStore:Initialize()
-        end
-        if PublicChannelSyncListener and PublicChannelSyncListener.Initialize then
-            PublicChannelSyncListener:Initialize()
-        end
-    end
+    InitializeSyncListeners(AddonControlService:IsAddonEnabled() == true)
 
     if MainPanel and MainPanel.RefreshTrackedMapConfiguration then
         MainPanel:RefreshTrackedMapConfiguration()
@@ -154,12 +177,8 @@ function AddonControlService:ClearDataAndReinitialize()
             TimerManager.isInitialized = false
             TimerManager.detectionState = {}
         end
-        if TeamCommListener then
-            TeamCommListener.isInitialized = false
-        end
-        if ShoutDetector then
-            ShoutDetector.isInitialized = false
-        end
+        ResetSyncListeners()
+        ResetShoutDetector()
         if CRATETRACKERZK_DB then
             CRATETRACKERZK_DB.expansionData = {}
             CRATETRACKERZK_DB.mapData = nil
@@ -205,23 +224,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
             Area.lastAccessMode = nil
             Area:CheckAndUpdateAreaValid()
         end
-        if TeamCommListener then
-            TeamCommListener.isInitialized = false
-            TeamCommListener:Initialize()
-        end
-        if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then
-            PublicChannelSyncStore:Initialize()
-        end
-        if PublicChannelSyncListener then
-            PublicChannelSyncListener.isInitialized = false
-            if PublicChannelSyncListener.Initialize then
-                PublicChannelSyncListener:Initialize()
-            end
-        end
-        if ShoutDetector and ShoutDetector.Initialize then
-            ShoutDetector.isInitialized = false
-            ShoutDetector:Initialize()
-        end
+        ResetSyncListeners()
+        InitializeSyncListeners(true)
+        InitializeShoutDetector()
         if CrateTrackerZKFloatingButton then
             CrateTrackerZKFloatingButton:Show()
         elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
@@ -237,15 +242,8 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         if CrateTrackerZK and CrateTrackerZK.PauseAllDetections then
             CrateTrackerZK:PauseAllDetections()
         end
-        if TeamCommListener then
-            TeamCommListener.isInitialized = false
-        end
-        if PublicChannelSyncListener then
-            PublicChannelSyncListener.isInitialized = false
-        end
-        if ShoutDetector then
-            ShoutDetector.isInitialized = false
-        end
+        ResetSyncListeners()
+        ResetShoutDetector()
         if MainPanel and MainPanel.StopUpdateTimer then
             MainPanel:StopUpdateTimer()
         end

@@ -5,11 +5,13 @@ local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
 
 PublicSyncChannelService.GENERAL_CHANNEL_BASE_NAMES = {
     enUS = { "general" },
+    esMX = { "general" },
     zhCN = { "综合" },
     zhTW = { "綜合" },
     koKR = { "일반" },
     ruRU = { "Общий", "общий" },
 }
+PublicSyncChannelService.CHANNEL_RESOLVE_CACHE_TTL = 2
 
 local function IsASCIIOnly(text)
     return type(text) == "string" and not text:find("[\128-\255]")
@@ -47,20 +49,25 @@ local function GetExpectedGeneralChannelBaseNames()
     if exact then
         return exact
     end
-    return PublicSyncChannelService.GENERAL_CHANNEL_BASE_NAMES.zhCN
+    return PublicSyncChannelService.GENERAL_CHANNEL_BASE_NAMES.enUS
 end
 
-local function ExtractChannelBaseName(name)
+local function ParseChannelName(name)
     local normalized = NormalizeChannelName(Trim(name))
     if not normalized then
-        return nil
+        return nil, false
     end
 
-    normalized = normalized:gsub("^%d+%s*[%./、%-]*%s*", "")
-    normalized = normalized:gsub("%s*%-%s*.*$", "")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = Trim(normalized)
-    return normalized
+    local withoutIndex = normalized:gsub("^%d+%s*[%./、%-]*%s*", "")
+    local baseName = withoutIndex:gsub("%s*%-%s*.*$", "")
+    baseName = baseName:gsub("%s+", " ")
+    baseName = Trim(baseName)
+
+    if not baseName then
+        return nil, false
+    end
+
+    return baseName, withoutIndex:match("%s*%-%s*.+$") ~= nil
 end
 
 local function MatchesChannelAlias(baseName, aliases)
@@ -87,34 +94,66 @@ local function MatchesChannelAlias(baseName, aliases)
     return false
 end
 
-local function IsGeneralChannelName(name)
-    local baseName = ExtractChannelBaseName(name)
-    if not baseName then
+local function IsExpectedGeneralChannelName(name)
+    local baseName = ParseChannelName(name)
+    if type(baseName) ~= "string" or baseName == "" then
         return false
     end
 
     local expected = GetExpectedGeneralChannelBaseNames()
-    if MatchesChannelAlias(baseName, expected) then
-        return true
+    return MatchesChannelAlias(baseName, expected)
+end
+
+local function GetChannelResolveTime()
+    if type(GetTime) == "function" then
+        return GetTime()
+    end
+    return 0
+end
+
+local function IsChannelCacheFresh(service, currentLocale, currentTime)
+    local checkedAt = tonumber(service.channelResolveCheckedAt)
+    if type(checkedAt) ~= "number" then
+        return false
+    end
+    if service.channelResolveLocale ~= currentLocale then
+        return false
+    end
+    return (currentTime - checkedAt) < (service.CHANNEL_RESOLVE_CACHE_TTL or 2)
+end
+
+local function FillResolvedInfoBuffer(service, channelID, channelName)
+    if not channelID then
+        return nil
     end
 
-    for _, candidate in pairs(PublicSyncChannelService.GENERAL_CHANNEL_BASE_NAMES) do
-        if MatchesChannelAlias(baseName, candidate) then
-            return true
-        end
-    end
+    local buffer = service.resolvedChannelInfoBuffer or {}
+    service.resolvedChannelInfoBuffer = buffer
+    buffer.channelID = channelID
+    buffer.channelName = channelName
+    return buffer
+end
 
-    return false
+local function StoreResolvedChannelState(service, channelID, channelName, currentLocale, checkedAt)
+    service.cachedChannelID = channelID
+    service.cachedChannelName = channelName
+    service.channelResolveLocale = currentLocale
+    service.channelResolveCheckedAt = checkedAt
 end
 
 function PublicSyncChannelService:Initialize()
     self.cachedChannelID = self.cachedChannelID or nil
     self.cachedChannelName = self.cachedChannelName or nil
+    self.channelResolveLocale = self.channelResolveLocale or nil
+    self.channelResolveCheckedAt = self.channelResolveCheckedAt or nil
+    self.resolvedChannelInfoBuffer = self.resolvedChannelInfoBuffer or {}
 end
 
 function PublicSyncChannelService:Reset()
     self.cachedChannelID = nil
     self.cachedChannelName = nil
+    self.channelResolveLocale = nil
+    self.channelResolveCheckedAt = nil
 end
 
 function PublicSyncChannelService:CanUsePublicChannel()
@@ -124,31 +163,48 @@ function PublicSyncChannelService:CanUsePublicChannel()
     return true
 end
 
-function PublicSyncChannelService:GetResolvedChannelInfo()
+function PublicSyncChannelService:GetResolvedChannelInfo(force)
     if type(GetChannelList) ~= "function" then
         return nil
     end
 
+    self:Initialize()
+
+    local currentLocale = GetLocale and GetLocale() or nil
+    local checkedAt = GetChannelResolveTime()
+    if force ~= true and IsChannelCacheFresh(self, currentLocale, checkedAt) then
+        return FillResolvedInfoBuffer(self, self.cachedChannelID, self.cachedChannelName)
+    end
+
     local channelList = { GetChannelList() }
+    local expectedAliases = GetExpectedGeneralChannelBaseNames()
+    local bestChannelID, bestChannelName = nil, nil
     for index = 1, #channelList, 3 do
         local channelID = tonumber(channelList[index])
         local channelName = channelList[index + 1]
         local disabled = channelList[index + 2]
 
         local isDisabled = disabled == true or disabled == 1 or disabled == "disabled"
-        if channelID and channelID > 0 and not isDisabled and IsGeneralChannelName(channelName) then
-            self.cachedChannelID = channelID
-            self.cachedChannelName = channelName
-            return {
-                channelID = channelID,
-                channelName = channelName,
-            }
+        local baseName, hasContextSuffix = ParseChannelName(channelName)
+        if channelID
+            and channelID > 0
+            and not isDisabled
+            and type(baseName) == "string"
+            and MatchesChannelAlias(baseName, expectedAliases) then
+            if hasContextSuffix == true then
+                bestChannelID = channelID
+                bestChannelName = channelName
+                break
+            end
+            if not bestChannelID then
+                bestChannelID = channelID
+                bestChannelName = channelName
+            end
         end
     end
 
-    self.cachedChannelID = nil
-    self.cachedChannelName = nil
-    return nil
+    StoreResolvedChannelState(self, bestChannelID, bestChannelName, currentLocale, checkedAt)
+    return FillResolvedInfoBuffer(self, bestChannelID, bestChannelName)
 end
 
 function PublicSyncChannelService:EnsureChannelJoined(force)
@@ -158,7 +214,7 @@ function PublicSyncChannelService:EnsureChannelJoined(force)
         return false
     end
 
-    return self:GetResolvedChannelInfo() ~= nil
+    return self:GetResolvedChannelInfo(force == true) ~= nil
 end
 
 function PublicSyncChannelService:MatchesChannelContext(chatType, target, zoneChannelID, localChannelID, channelName)
@@ -169,29 +225,29 @@ function PublicSyncChannelService:MatchesChannelContext(chatType, target, zoneCh
     local resolved = self:GetResolvedChannelInfo()
     local expectedChannelID = resolved and tonumber(resolved.channelID) or nil
 
-    local candidateIDs = {
-        tonumber(target),
-        tonumber(zoneChannelID),
-        tonumber(localChannelID),
-    }
-
     if expectedChannelID then
-        for _, candidate in ipairs(candidateIDs) do
-            if candidate and candidate == expectedChannelID then
-                return true
-            end
-        end
-    end
-
-    local candidateNames = {
-        channelName,
-        target,
-    }
-
-    for _, candidateName in ipairs(candidateNames) do
-        if IsGeneralChannelName(candidateName) then
+        local targetID = tonumber(target)
+        if targetID and targetID == expectedChannelID then
             return true
         end
+
+        local zoneID = tonumber(zoneChannelID)
+        if zoneID and zoneID == expectedChannelID then
+            return true
+        end
+
+        local localID = tonumber(localChannelID)
+        if localID and localID == expectedChannelID then
+            return true
+        end
+        return false
+    end
+
+    if IsExpectedGeneralChannelName(channelName) then
+        return true
+    end
+    if IsExpectedGeneralChannelName(target) then
+        return true
     end
 
     return false

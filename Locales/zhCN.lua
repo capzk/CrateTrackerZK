@@ -53,7 +53,7 @@ localeData["SettingsMapSelection"] = "地图选择";
 localeData["SettingsThemeSwitch"] = "界面主题";
 localeData["SettingsAddonToggle"] = "插件开关";
 localeData["SettingsLeaderMode"] = "团长模式";
-localeData["SettingsLeaderModeTooltip"] = "开启后，手动空投通知会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。";
+localeData["SettingsLeaderModeTooltip"] = "开启后，团队中的可见空投通知与自动播报会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。";
 localeData["SettingsTeamNotify"] = "团队通知";
 localeData["SettingsSoundAlert"] = "声音提醒";
 localeData["SettingsAutoReport"] = "自动通知";
@@ -88,6 +88,7 @@ localeData["SettingsHelpText"] = [[
 
 2. 消息设置页各选项作用：
    消息设置：控制手动发送和自动发送相关行为
+   团长模式：开启后，团队中的可见空投通知与自动通知会优先发送到团队警告频道；如果没有权限，则回落到普通团队频道
    团队通知：开启后，会把消息发送到小队或团队频道
    声音提示：开启后，检测到空投时会播放提示音
    自动通知：开启后，会按设定频率自动发送最近的空投倒计时

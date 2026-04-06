@@ -54,7 +54,7 @@ localeData["SettingsMapSelection"] = "지도 선택";
 localeData["SettingsThemeSwitch"] = "테마";
 localeData["SettingsAddonToggle"] = "애드온 전환";
 localeData["SettingsLeaderMode"] = "공대장 모드";
-localeData["SettingsLeaderModeTooltip"] = "활성화하면 수동 공중 보급 알림이 우선 공격대 경보로 전송되며, 권한이 없으면 일반 공격대 채팅으로 자동 전환됩니다.";
+localeData["SettingsLeaderModeTooltip"] = "활성화하면 공격대의 표시형 공중 보급 알림과 자동 방송이 우선 공격대 경보로 전송되며, 권한이 없으면 일반 공격대 채팅으로 자동 전환됩니다.";
 localeData["SettingsTeamNotify"] = "그룹 알림";
 localeData["SettingsSoundAlert"] = "사운드 리마인더";
 localeData["SettingsAutoReport"] = "자동 알림";
@@ -83,6 +83,7 @@ localeData["SettingsHelpText"] = [[
 
 2. 메시지 설정 페이지 옵션 설명:
    메시지 설정: 수동 및 자동 메시지 전송 동작을 제어합니다
+   공대장 모드: 활성화하면 공격대의 표시형 공중 보급 알림과 자동 방송이 우선 공격대 경보로 전송되며, 권한이 없으면 일반 공격대 채팅으로 전환됩니다
    그룹 알림: 활성화하면 메시지가 파티 또는 공격대 채팅으로 전송됩니다
    사운드 알림: 활성화하면 공중 보급이 감지될 때 소리가 재생됩니다
    자동 알림: 활성화하면 설정한 간격으로 가장 가까운 공중 보급 카운트다운을 자동 전송합니다

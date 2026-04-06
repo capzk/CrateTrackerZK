@@ -53,7 +53,7 @@ localeData["SettingsMapSelection"] = "地圖選擇";
 localeData["SettingsThemeSwitch"] = "介面主題";
 localeData["SettingsAddonToggle"] = "插件開關";
 localeData["SettingsLeaderMode"] = "團長模式";
-localeData["SettingsLeaderModeTooltip"] = "開啟後，手動空投通知會優先發送到團隊警告頻道；如果目前沒有團隊警告權限，則自動回退到普通團隊頻道。";
+localeData["SettingsLeaderModeTooltip"] = "開啟後，團隊中的可見空投通知與自動播報會優先發送到團隊警告頻道；如果目前沒有團隊警告權限，則自動回退到普通團隊頻道。";
 localeData["SettingsTeamNotify"] = "團隊通知";
 localeData["SettingsSoundAlert"] = "聲音提醒";
 localeData["SettingsAutoReport"] = "自動通知";
@@ -82,6 +82,7 @@ localeData["SettingsHelpText"] = [[
 
 2. 訊息設定頁各選項作用：
    訊息設定：控制手動發送和自動發送相關行為
+   團長模式：開啟後，團隊中的可見空投通知與自動通知會優先發送到團隊警告頻道；如果沒有權限，則回退到普通團隊頻道
    團隊通知：開啟後，會把訊息發送到小隊、團隊或副本頻道
    聲音提示：開啟後，檢測到空投時會播放提示音
    自動通知：開啟後，會依設定頻率自動發送最近的空投倒數計時

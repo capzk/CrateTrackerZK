@@ -180,11 +180,6 @@ function TeamCommListener:BuildAirdropPayload(syncState)
     }, "|")
 end
 
-function TeamCommListener:ParseAddonPayload(prefix, payload)
-    local outState = {};
-    return self:ParseAddonPayloadInto(prefix, payload, outState);
-end
-
 function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
     if prefix ~= self.ADDON_PREFIX or type(payload) ~= "string" then
         return nil
