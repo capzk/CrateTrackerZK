@@ -1,9 +1,10 @@
--- PublicChannelSyncListener.lua - 公共频道相位共享同步监听与发送
+-- PublicChannelSyncListener.lua - 备用相位缓存共享同步监听与发送
 -- 注意：团队隐藏同步仍是唯一可靠同步来源。
--- 本模块只负责 best-effort 的公共广播补充信息，用于当前位面的临时显示回退。
+-- 本模块只负责 best-effort 的运行时缓存补充信息，用于当前位面的临时显示回退。
 
 local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
 
+local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local PublicChannelSyncProtocol = BuildEnv("PublicChannelSyncProtocol")
 local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
@@ -22,57 +23,6 @@ function PublicChannelSyncListener:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
-local function NormalizeAddonCallResult(...)
-    local secondary = select(2, ...)
-    if secondary ~= nil then
-        return secondary
-    end
-    return select(1, ...)
-end
-
-local function RegisterAddonPrefixInternal(prefix)
-    if type(prefix) ~= "string" or prefix == "" then
-        return false
-    end
-
-    if C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered then
-        local ok, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix)
-        if ok and isRegistered == true then
-            return true
-        end
-    end
-
-    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-        local ok, result = pcall(function()
-            return NormalizeAddonCallResult(C_ChatInfo.RegisterAddonMessagePrefix(prefix))
-        end)
-        if ok and (result == true or result == 0) then
-            return true
-        end
-        if C_ChatInfo.IsAddonMessagePrefixRegistered then
-            local verifyOk, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix)
-            if verifyOk and isRegistered == true then
-                return true
-            end
-        end
-    elseif RegisterAddonMessagePrefix then
-        local ok, result = pcall(function()
-            return NormalizeAddonCallResult(RegisterAddonMessagePrefix(prefix))
-        end)
-        if ok and (result == true or result == 0) then
-            return true
-        end
-        if C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered then
-            local verifyOk, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix)
-            if verifyOk and isRegistered == true then
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
 function PublicChannelSyncListener:RegisterAddonPrefix()
     if self:IsFeatureEnabled() ~= true then
         return false
@@ -81,24 +31,41 @@ function PublicChannelSyncListener:RegisterAddonPrefix()
         return true
     end
 
-    self.addonPrefixRegistered = RegisterAddonPrefixInternal(self.ADDON_PREFIX) == true
-    return self.addonPrefixRegistered == true
+    return HiddenSyncTransport
+        and HiddenSyncTransport.EnsureAddonPrefix
+        and HiddenSyncTransport:EnsureAddonPrefix(self, self.ADDON_PREFIX)
+        or false
 end
 
-function PublicChannelSyncListener:CanSendPublicSync()
+local function SendSyncPayload(listener, syncState)
+    if type(syncState) ~= "table" or type(syncState.phaseID) ~= "string" or syncState.phaseID == "" then
+        return false
+    end
+    if listener:EnsureBroadcastChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = PublicChannelSyncProtocol and PublicChannelSyncProtocol.BuildPayload and PublicChannelSyncProtocol:BuildPayload(syncState) or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return PublicSyncChannelService and PublicSyncChannelService.SendPayload
+        and PublicSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
+        or false
+end
+
+function PublicChannelSyncListener:CanSendSharedSync()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if not PublicSyncChannelService or not PublicSyncChannelService.CanUsePublicChannel or PublicSyncChannelService:CanUsePublicChannel() ~= true then
-        return false
-    end
-    if Area and Area.IsActive then
-        return Area:IsActive() == true
-    end
-    return false
+    return PublicSyncChannelService
+        and PublicSyncChannelService.CanUsePublicChannel
+        and PublicSyncChannelService:CanUsePublicChannel() == true
+        or false
 end
 
-function PublicChannelSyncListener:CanReceivePublicSync()
+function PublicChannelSyncListener:CanReceiveSharedSync()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -144,28 +111,14 @@ function PublicChannelSyncListener:EnsureBroadcastChannelAvailable(force)
     return false
 end
 
-function PublicChannelSyncListener:SendConfirmedSync(syncState)
+function PublicChannelSyncListener:SendSharedSync(syncState)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if self:CanSendPublicSync() ~= true then
+    if self:CanSendSharedSync() ~= true then
         return false
     end
-    if type(syncState) ~= "table" or type(syncState.phaseID) ~= "string" or syncState.phaseID == "" then
-        return false
-    end
-    if self:EnsureBroadcastChannelAvailable() ~= true then
-        return false
-    end
-
-    local payload = PublicChannelSyncProtocol and PublicChannelSyncProtocol.BuildPayload and PublicChannelSyncProtocol:BuildPayload(syncState) or nil
-    if type(payload) ~= "string" or payload == "" then
-        return false
-    end
-
-    return PublicSyncChannelService and PublicSyncChannelService.SendPayload
-        and PublicSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
-        or false
+    return SendSyncPayload(self, syncState)
 end
 
 local function ResolveCurrentChannelContext(outContext, ...)
@@ -181,7 +134,7 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if self:CanReceivePublicSync() ~= true then
+    if self:CanReceiveSharedSync() ~= true then
         return false
     end
     if not self.isInitialized then

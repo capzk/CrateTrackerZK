@@ -1,4 +1,4 @@
--- PublicChannelSyncStore.lua - 公共频道相位共享记录运行时存储
+-- PublicChannelSyncStore.lua - 备用相位缓存共享记录运行时存储
 -- 注意：这里只保存共享补充信息，不作为本地可靠事实源，也不写长期持久化。
 
 local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
@@ -121,6 +121,50 @@ function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRe
     outRecord.expiresAt = record.expiresAt
     outRecord.recordKey = record.recordKey
     return outRecord
+end
+
+function PublicChannelSyncStore:AppendActiveRecords(outRecords, currentTime)
+    if self:IsFeatureEnabled() ~= true or type(outRecords) ~= "table" then
+        return outRecords
+    end
+
+    local records = EnsureRecords()
+    local now = currentTime or Utils:GetCurrentTimestamp()
+
+    for expansionID, expansionBucket in pairs(records) do
+        if type(expansionBucket) == "table" then
+            for mapID, mapBucket in pairs(expansionBucket) do
+                if type(mapBucket) == "table" then
+                    for phaseID, record in pairs(mapBucket) do
+                        if IsExpired(record, now) then
+                            mapBucket[phaseID] = nil
+                        else
+                            outRecords[#outRecords + 1] = {
+                                expansionID = expansionID,
+                                mapID = mapID,
+                                phaseID = phaseID,
+                                timestamp = record.timestamp,
+                                objectGUID = record.objectGUID,
+                                source = record.source,
+                                sender = record.sender,
+                                receivedAt = record.receivedAt,
+                                expiresAt = record.expiresAt,
+                                recordKey = record.recordKey,
+                            }
+                        end
+                    end
+                    if next(mapBucket) == nil then
+                        expansionBucket[mapID] = nil
+                    end
+                end
+            end
+            if next(expansionBucket) == nil then
+                records[expansionID] = nil
+            end
+        end
+    end
+
+    return outRecords
 end
 
 function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt)

@@ -329,21 +329,6 @@ function TimerManager:DetectMapIcons(currentMapID)
                     objectGUID = objectGUID,
                 });
             end
-
-            if PublicChannelSyncListener
-                and PublicChannelSyncListener.SendConfirmedSync
-                and PublicChannelSyncListener.IsFeatureEnabled
-                and PublicChannelSyncListener:IsFeatureEnabled() == true
-                and type(phaseId) == "string"
-                and phaseId ~= "" then
-                PublicChannelSyncListener:SendConfirmedSync({
-                    expansionID = targetMapData.expansionID,
-                    mapID = targetMapData.mapID,
-                    phaseID = phaseId,
-                    timestamp = eventTimestamp,
-                    objectGUID = objectGUID,
-                });
-            end
             
             -- 清除临时时间，避免影响后续事件
             UnifiedDataManager:ClearTemporaryTime(targetMapData.id);

@@ -222,11 +222,6 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
     end
 
     state.lastNotifiedRecordKey = sharedRecord.recordKey;
-
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
-    local messageTemplate = (L and L["SharedPhaseSyncApplied"]) or "已获取[%s]当前位面的最新空投共享信息。";
-    Logger:Info("Notification", "通知", string.format(messageTemplate, mapName));
 end
 
 function UnifiedDataManager:OnSharedDisplayReleased(mapId)

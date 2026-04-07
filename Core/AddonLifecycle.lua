@@ -52,6 +52,9 @@ function AddonLifecycle:OnLogin()
             Area.detectionPaused = true
         end
         TickerController:PauseAllDetections(CrateTrackerZK)
+        if TickerController and TickerController.StopPublicChannelWarmupTicker then
+            TickerController:StopPublicChannelWarmupTicker(CrateTrackerZK)
+        end
         if CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
             CrateTrackerZK:CreateFloatingButton()
         end
@@ -83,8 +86,14 @@ function AddonLifecycle:OnLogin()
         and PublicChannelSyncListener:IsFeatureEnabled() == true then
         PublicChannelSyncListener:Initialize()
     end
+    if PublicChannelWarmupService and PublicChannelWarmupService.Initialize then
+        PublicChannelWarmupService:Initialize()
+    end
     if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     if TimerManager then TimerManager:Initialize() end
+    if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
+        TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+    end
 
     if addonEnabled and CoreShared:IsAreaActive() then
         TickerController:StartMapIconDetection(CrateTrackerZK, 1)

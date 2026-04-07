@@ -52,6 +52,9 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     if PublicChannelSyncStore and PublicChannelSyncStore.Reset then
         PublicChannelSyncStore:Reset();
     end
+    if PublicChannelWarmupService and PublicChannelWarmupService.Reset then
+        PublicChannelWarmupService:Reset();
+    end
     if PublicSyncChannelService and PublicSyncChannelService.Reset then
         PublicSyncChannelService:Reset();
     end
@@ -62,6 +65,10 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
         CrateTrackerZK.phaseTimerTicker:Cancel();
         CrateTrackerZK.phaseTimerTicker = nil;
+    end
+    if CrateTrackerZK and CrateTrackerZK.publicChannelWarmupTicker then
+        CrateTrackerZK.publicChannelWarmupTicker:Cancel();
+        CrateTrackerZK.publicChannelWarmupTicker = nil;
     end
     if CrateTrackerZK then
         CrateTrackerZK.phaseTimerPaused = false;

@@ -16,7 +16,11 @@ local MapTracker = BuildEnv("MapTracker")
 local Phase = BuildEnv("Phase")
 local TeamCommListener = BuildEnv("TeamCommListener")
 local TimerManager = BuildEnv("TimerManager")
+local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
+local PublicChannelWarmupService = BuildEnv("PublicChannelWarmupService")
+local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
+local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local ShoutDetector = BuildEnv("ShoutDetector")
 local Area = BuildEnv("Area")
 
@@ -56,6 +60,21 @@ end
 local function ResetSyncListeners()
     ResetModuleInitializationState(TeamCommListener)
     ResetModuleInitializationState(PublicChannelSyncListener)
+end
+
+local function ResetSharedSyncRuntimeState()
+    if PublicChannelSyncStore and PublicChannelSyncStore.Reset then
+        PublicChannelSyncStore:Reset()
+    end
+    if PublicChannelWarmupService and PublicChannelWarmupService.Reset then
+        PublicChannelWarmupService:Reset()
+    end
+    if PublicSyncChannelService and PublicSyncChannelService.Reset then
+        PublicSyncChannelService:Reset()
+    end
+    if UnifiedDataManager then
+        UnifiedDataManager.sharedDisplayStateByMap = {}
+    end
 end
 
 local function InitializeSyncListeners(enablePublicSync)
@@ -225,8 +244,12 @@ function AddonControlService:ApplyAddonEnabled(enabled)
             Area:CheckAndUpdateAreaValid()
         end
         ResetSyncListeners()
+        ResetSharedSyncRuntimeState()
         InitializeSyncListeners(true)
         InitializeShoutDetector()
+        if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
+            TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+        end
         if CrateTrackerZKFloatingButton then
             CrateTrackerZKFloatingButton:Show()
         elseif CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
@@ -242,7 +265,11 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         if CrateTrackerZK and CrateTrackerZK.PauseAllDetections then
             CrateTrackerZK:PauseAllDetections()
         end
+        if TickerController and TickerController.StopPublicChannelWarmupTicker then
+            TickerController:StopPublicChannelWarmupTicker(CrateTrackerZK)
+        end
         ResetSyncListeners()
+        ResetSharedSyncRuntimeState()
         ResetShoutDetector()
         if MainPanel and MainPanel.StopUpdateTimer then
             MainPanel:StopUpdateTimer()

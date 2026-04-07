@@ -30,7 +30,22 @@ local LocaleLoadStatus = {
     failedLocales = {},      -- 加载失败的语言
     activeLocale = nil,      -- 当前激活的语言
     fallbackUsed = false,
+    revision = 0,
+    cacheToken = "pending|direct|0",
 };
+
+local function RefreshLocaleCacheToken()
+    local activeLocale = LocaleLoadStatus.activeLocale or "pending";
+    local fallbackMarker = LocaleLoadStatus.fallbackUsed == true and "fallback" or "direct";
+    LocaleLoadStatus.cacheToken = table.concat({
+        tostring(activeLocale),
+        "|",
+        fallbackMarker,
+        "|",
+        tostring(LocaleLoadStatus.revision or 0),
+    });
+    return LocaleLoadStatus.cacheToken;
+end
 
 local function LoadLocaleData(localeData)
     if not localeData then return end;
@@ -38,6 +53,8 @@ local function LoadLocaleData(localeData)
     for k, v in pairs(localeData) do
         L[k] = v;
     end
+    LocaleLoadStatus.revision = (LocaleLoadStatus.revision or 0) + 1;
+    RefreshLocaleCacheToken();
 end
 
 local function RegisterLocale(locale, data)
@@ -53,8 +70,9 @@ local function RegisterLocale(locale, data)
     table.insert(LocaleLoadStatus.loadedLocales, locale);
     
     if locale == currentLocale then
-        LoadLocaleData(data);
         LocaleLoadStatus.activeLocale = locale;
+        LocaleLoadStatus.fallbackUsed = false;
+        LoadLocaleData(data);
     end
 end
 
@@ -66,6 +84,9 @@ LocaleManager.GetEnglishLocale = function()
 end;
 LocaleManager.GetLoadStatus = function()
     return LocaleLoadStatus;
+end;
+LocaleManager.GetCacheToken = function()
+    return LocaleLoadStatus.cacheToken or RefreshLocaleCacheToken();
 end;
 LocaleManager.GetLocaleRegistry = function()
     return LocaleRegistry;
@@ -82,9 +103,9 @@ local function SelectLocale()
     end
 
     if LocaleRegistry[selectedLocale] then
-        LoadLocaleData(LocaleRegistry[selectedLocale]);
         LocaleLoadStatus.activeLocale = selectedLocale;
         LocaleLoadStatus.fallbackUsed = selectedLocale ~= currentLocale;
+        LoadLocaleData(LocaleRegistry[selectedLocale]);
     else
         table.insert(LocaleLoadStatus.failedLocales, {
             locale = "enUS",
@@ -92,6 +113,8 @@ local function SelectLocale()
         });
     end
 end
+
+RefreshLocaleCacheToken();
 
 C_Timer.After(0, SelectLocale);
 

@@ -1,4 +1,4 @@
--- PublicChannelSyncProtocol.lua - 公共频道相位空投同步协议
+-- PublicChannelSyncProtocol.lua - 备用相位缓存共享协议
 
 local PublicChannelSyncProtocol = BuildEnv("PublicChannelSyncProtocol")
 

@@ -182,9 +182,6 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
         })
 
     if not success then
-        if Logger and Logger.Error then
-            Logger:Error("TeamCommListener", "错误", string.format("更新隐藏确认时间失败：地图=%s", context.mapName))
-        end
         return false
     end
 

@@ -235,7 +235,7 @@ function MainPanel:RefreshRowData(rowId)
         return false
     end
 
-    if existingRow == nil and SortingSystem and SortingSystem.ReplaceRow then
+    if SortingSystem and SortingSystem.ReplaceRow then
         SortingSystem:ReplaceRow(rowId, rowInfo)
     end
 

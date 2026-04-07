@@ -5,6 +5,7 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 
 local PHASE_TICK_INTERVAL = 10
+local DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL = 540
 
 local function CanRunPhasePolling()
     if not CoreShared:IsAreaActive() or not Phase then
@@ -23,6 +24,16 @@ local function UpdatePhaseNowIfActive()
         return true
     end
     return false
+end
+
+local function CanRunPublicChannelWarmup()
+    if not CoreShared:IsAddonEnabled() then
+        return false
+    end
+    if not PublicChannelWarmupService or not PublicChannelWarmupService.CanBroadcast then
+        return false
+    end
+    return PublicChannelWarmupService:CanBroadcast() == true
 end
 
 function TickerController:StartPhaseTicker(owner)
@@ -143,6 +154,57 @@ function TickerController:StartCleanupTicker(owner)
             Logger:PruneMessageCache(cleanupTime)
         end
     end)
+end
+
+function TickerController:StartPublicChannelWarmupTicker(owner)
+    owner = owner or CrateTrackerZK
+    if not CanRunPublicChannelWarmup() then
+        self:StopPublicChannelWarmupTicker(owner)
+        return false
+    end
+    if owner.publicChannelWarmupTicker then
+        return true
+    end
+
+    local interval = PublicChannelWarmupService and PublicChannelWarmupService.BROADCAST_INTERVAL or DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL
+    if type(interval) ~= "number" or interval <= 0 then
+        interval = DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL
+    end
+
+    owner.publicChannelWarmupTicker = C_Timer.NewTicker(interval, function()
+        if not CanRunPublicChannelWarmup() then
+            self:StopPublicChannelWarmupTicker(owner)
+            return
+        end
+        if PublicChannelWarmupService and PublicChannelWarmupService.StartBroadcastRound then
+            PublicChannelWarmupService:StartBroadcastRound()
+        end
+    end)
+    if PublicChannelWarmupService and PublicChannelWarmupService.StartBroadcastRound then
+        PublicChannelWarmupService:StartBroadcastRound()
+    end
+    return true
+end
+
+function TickerController:StopPublicChannelWarmupTicker(owner)
+    owner = owner or CrateTrackerZK
+    if owner.publicChannelWarmupTicker then
+        owner.publicChannelWarmupTicker:Cancel()
+        owner.publicChannelWarmupTicker = nil
+    end
+    if PublicChannelWarmupService and PublicChannelWarmupService.CancelPendingBroadcast then
+        PublicChannelWarmupService:CancelPendingBroadcast()
+    end
+    return true
+end
+
+function TickerController:RefreshPublicChannelWarmupTicker(owner)
+    owner = owner or CrateTrackerZK
+    if CanRunPublicChannelWarmup() then
+        return self:StartPublicChannelWarmupTicker(owner)
+    end
+    self:StopPublicChannelWarmupTicker(owner)
+    return false
 end
 
 function TickerController:StopCleanupTicker(owner)

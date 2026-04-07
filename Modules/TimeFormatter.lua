@@ -22,6 +22,23 @@ local function GetLocaleTable(localeTable)
     return CrateTrackerZK and CrateTrackerZK.L or {}
 end
 
+local function GetLocaleCacheToken(localeTable)
+    local currentLocaleTable = CrateTrackerZK and CrateTrackerZK.L or nil
+    if localeTable and localeTable ~= currentLocaleTable then
+        return "custom|" .. tostring(localeTable)
+    end
+
+    local LocaleManager = BuildEnv("LocaleManager")
+    if LocaleManager and LocaleManager.GetCacheToken then
+        local cacheToken = LocaleManager.GetCacheToken()
+        if type(cacheToken) == "string" and cacheToken ~= "" then
+            return cacheToken
+        end
+    end
+
+    return "table|" .. tostring(GetLocaleTable(localeTable))
+end
+
 local function ResetCacheBucket(cache, fieldName, countFieldName)
     cache[fieldName] = {}
     cache[countFieldName] = 0
@@ -40,7 +57,7 @@ local function AcquireCacheBucket(fieldName, countFieldName, maxSize)
 end
 
 local function GetLocaleMarker(localeTable)
-    return tostring(GetLocaleTable(localeTable))
+    return GetLocaleCacheToken(localeTable)
 end
 
 local function GetCachedValue(fieldName, cacheKey)

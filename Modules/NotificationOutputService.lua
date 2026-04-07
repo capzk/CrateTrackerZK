@@ -193,38 +193,10 @@ function NotificationOutputService:SendManualMessage(message, chatType)
 end
 
 function NotificationOutputService:SendAirdropSync(syncState, chatType)
-    local distribution = ResolveAddonDistribution(chatType)
-    if type(syncState) ~= "table" or not distribution then
-        return false
+    if TeamCommListener and TeamCommListener.SendConfirmedSync then
+        return TeamCommListener:SendConfirmedSync(syncState, chatType)
     end
-
-    if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
-        if TeamCommListener:RegisterAddonPrefix() ~= true then
-            return false
-        end
-    end
-
-    local prefix = TeamCommListener and TeamCommListener.ADDON_PREFIX or nil
-    local payload = TeamCommListener and TeamCommListener.BuildAirdropPayload and TeamCommListener:BuildAirdropPayload(syncState) or nil
-    if type(prefix) ~= "string" or prefix == "" then
-        return false
-    end
-    if type(payload) ~= "string" or payload == "" then
-        return false
-    end
-    local sendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
-    if type(sendAddonMessage) ~= "function" then
-        return false
-    end
-
-    local ok, result = pcall(function()
-        return NormalizeAddonCallResult(sendAddonMessage(prefix, payload, distribution))
-    end)
-    local success = ok and (result == true or result == 0)
-    if not success and Logger and Logger.Warn then
-        Logger:Warn("Notification", "通知", string.format("发送隐藏团队同步失败：prefix=%s，频道=%s", prefix, distribution))
-    end
-    return success
+    return false
 end
 
 return NotificationOutputService

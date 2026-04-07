@@ -9,6 +9,7 @@ end
 
 local TeamCommListener = BuildEnv('TeamCommListener');
 
+local HiddenSyncTransport = BuildEnv("HiddenSyncTransport");
 local TeamCommMapCache = BuildEnv("TeamCommMapCache");
 local TeamCommMessageService = BuildEnv("TeamCommMessageService");
 
@@ -22,53 +23,25 @@ TeamCommListener.playerName = nil;
 TeamCommListener.fullPlayerName = nil;
 TeamCommListener.syncStateBuffer = TeamCommListener.syncStateBuffer or {};
 
-local TEAM_CHAT_TYPES = {
-    RAID = true,
-    RAID_WARNING = true,
-    PARTY = true,
-    INSTANCE_CHAT = true
-};
-
-local function NormalizeAddonCallResult(...)
-    local secondary = select(2, ...)
-    if secondary ~= nil then
-        return secondary
-    end
-    return select(1, ...)
-end
-
-local function HasTeamChatContext()
-    if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        return true
-    end
-    if IsInRaid and IsInRaid() then
-        return true
-    end
-    if IsInGroup and IsInGroup() then
-        return true
-    end
-    return false
-end
-
 function TeamCommListener:CanEnableHiddenSync()
-    if not HasTeamChatContext() then
+    if not HiddenSyncTransport or HiddenSyncTransport.IsNonInstanceTeamContext == nil then
         return false
     end
-    if Area and Area.IsActive then
-        return Area:IsActive() == true
+    if HiddenSyncTransport:IsNonInstanceTeamContext() ~= true then
+        return false
     end
-    return false
+    return Area and Area.IsActive and Area:IsActive() == true or false
 end
 
 function TeamCommListener:CanReceiveHiddenSync()
-    if not HasTeamChatContext() then
+    if not HiddenSyncTransport or HiddenSyncTransport.IsNonInstanceTeamContext == nil then
+        return false
+    end
+    if HiddenSyncTransport:IsNonInstanceTeamContext() ~= true then
         return false
     end
     if Area and Area.CanProcessTeamMessages then
         return Area:CanProcessTeamMessages() == true
-    end
-    if IsInInstance and IsInInstance() then
-        return false
     end
     return true
 end
@@ -92,48 +65,6 @@ local function DecodePayloadField(value)
     return value
 end
 
-local function RegisterAddonPrefixInternal(prefix)
-    if type(prefix) ~= "string" or prefix == "" then
-        return false, nil;
-    end
-
-    if C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered then
-        local ok, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix);
-        if ok and isRegistered == true then
-            return true, 0;
-        end
-    end
-
-    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-        local ok, result = pcall(function()
-            return NormalizeAddonCallResult(C_ChatInfo.RegisterAddonMessagePrefix(prefix));
-        end);
-        if not ok then
-            return false, nil;
-        end
-        if result == true or result == 0 then
-            return true, result;
-        end
-        if C_ChatInfo.IsAddonMessagePrefixRegistered then
-            local verifyOk, isRegistered = pcall(C_ChatInfo.IsAddonMessagePrefixRegistered, prefix);
-            if verifyOk and isRegistered == true then
-                return true, result;
-            end
-        end
-        return false, result;
-    end
-    if RegisterAddonMessagePrefix then
-        local ok, result = pcall(function()
-            return NormalizeAddonCallResult(RegisterAddonMessagePrefix(prefix));
-        end);
-        if not ok then
-            return false, nil;
-        end
-        return result == true or result == 0, result;
-    end
-    return false, nil;
-end
-
 function TeamCommListener:RegisterAddonPrefix()
     if self.addonPrefixRegistered == true then
         return true;
@@ -145,14 +76,10 @@ function TeamCommListener:RegisterAddonPrefix()
         return false;
     end
 
-    self.addonPrefixRegistrationAttempted = true;
-    local registered = RegisterAddonPrefixInternal(self.ADDON_PREFIX);
-    self.addonPrefixRegistered = registered == true;
-    self.addonPrefixRegistrationAttempted = self.addonPrefixRegistered == true;
-    if not self.addonPrefixRegistered and Logger and Logger.Warn then
-        Logger:Warn("TeamCommListener", tostring(self.ADDON_PREFIX), "注册失败");
+    if HiddenSyncTransport and HiddenSyncTransport.EnsureAddonPrefix then
+        return HiddenSyncTransport:EnsureAddonPrefix(self, self.ADDON_PREFIX) == true;
     end
-    return self.addonPrefixRegistered == true;
+    return false;
 end
 
 function TeamCommListener:BuildAirdropPayload(syncState)
@@ -221,6 +148,26 @@ function TeamCommListener:Initialize()
     self.isInitialized = true;
 end
 
+function TeamCommListener:SendConfirmedSync(syncState, chatType)
+    if self:CanEnableHiddenSync() ~= true then
+        return false
+    end
+    if self:RegisterAddonPrefix() ~= true then
+        return false
+    end
+
+    local distribution = HiddenSyncTransport and HiddenSyncTransport.ResolveDistribution and HiddenSyncTransport:ResolveDistribution(chatType) or nil
+    local payload = self:BuildAirdropPayload(syncState)
+    if not distribution or type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return HiddenSyncTransport
+        and HiddenSyncTransport.SendAddonPayload
+        and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
+        or false
+end
+
 function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
     if self.CanReceiveHiddenSync and self:CanReceiveHiddenSync() ~= true then
         return false;
@@ -228,7 +175,9 @@ function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sen
     if not self.isInitialized then
         self:Initialize();
     end
-    if type(chatType) ~= "string" or not TEAM_CHAT_TYPES[chatType] then
+    if not HiddenSyncTransport
+        or not HiddenSyncTransport.IsSupportedTeamChatType
+        or HiddenSyncTransport:IsSupportedTeamChatType(chatType) ~= true then
         return false;
     end
 

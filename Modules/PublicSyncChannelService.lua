@@ -1,50 +1,10 @@
--- PublicSyncChannelService.lua - 公共同步团队频道传输管理
--- 注意：该链路仍然只承载隐藏式 AddonMessage 共享，不发送任何可见聊天消息。
+-- PublicSyncChannelService.lua - 备用缓存共享传输管理
+-- 注意：该链路只承载隐藏式 AddonMessage 共享，不发送任何可见聊天消息。
 
 local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
+local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
 
 PublicSyncChannelService.FEATURE_ENABLED = true
-
-local TEAM_CHAT_TYPES = {
-    RAID = true,
-    RAID_WARNING = true,
-    PARTY = true,
-    INSTANCE_CHAT = true,
-}
-
-local function NormalizeAddonCallResult(...)
-    local secondary = select(2, ...)
-    if secondary ~= nil then
-        return secondary
-    end
-    return select(1, ...)
-end
-
-local function HasTeamChatContext()
-    if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        return true
-    end
-    if IsInRaid and IsInRaid() then
-        return true
-    end
-    if IsInGroup and IsInGroup() then
-        return true
-    end
-    return false
-end
-
-local function ResolveAddonDistribution()
-    if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        return "INSTANCE_CHAT"
-    end
-    if IsInRaid and IsInRaid() then
-        return "RAID"
-    end
-    if IsInGroup and IsInGroup() then
-        return "PARTY"
-    end
-    return nil
-end
 
 function PublicSyncChannelService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
@@ -63,14 +23,14 @@ function PublicSyncChannelService:CanUsePublicChannel()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if IsInInstance and IsInInstance() then
-        return false
-    end
-    return HasTeamChatContext()
+    return HiddenSyncTransport
+        and HiddenSyncTransport.IsNonInstanceTeamContext
+        and HiddenSyncTransport:IsNonInstanceTeamContext() == true
+        or false
 end
 
 function PublicSyncChannelService:GetResolvedChannelInfo()
-    local distribution = ResolveAddonDistribution()
+    local distribution = HiddenSyncTransport and HiddenSyncTransport.ResolveDistribution and HiddenSyncTransport:ResolveDistribution() or nil
     if not distribution then
         return nil
     end
@@ -96,7 +56,9 @@ function PublicSyncChannelService:MatchesChannelContext(chatType, target, zoneCh
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if type(chatType) ~= "string" or not TEAM_CHAT_TYPES[chatType] then
+    if not HiddenSyncTransport
+        or not HiddenSyncTransport.IsSupportedTeamChatType
+        or HiddenSyncTransport:IsSupportedTeamChatType(chatType) ~= true then
         return false
     end
 
@@ -131,16 +93,10 @@ function PublicSyncChannelService:SendPayload(prefix, payload)
         return false
     end
 
-    local sendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
-    if type(sendAddonMessage) ~= "function" then
-        return false
-    end
-
-    local ok, result = pcall(function()
-        return NormalizeAddonCallResult(sendAddonMessage(prefix, payload, distribution))
-    end)
-
-    return ok and (result == true or result == 0)
+    return HiddenSyncTransport
+        and HiddenSyncTransport.SendAddonPayload
+        and HiddenSyncTransport:SendAddonPayload(prefix, payload, distribution)
+        or false
 end
 
 return PublicSyncChannelService

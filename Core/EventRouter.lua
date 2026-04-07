@@ -4,6 +4,7 @@ local EventRouter = BuildEnv("CrateTrackerZKEventRouter")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local AddonLifecycle = BuildEnv("CrateTrackerZKAddonLifecycle")
+local HiddenSyncDispatcher = BuildEnv("HiddenSyncDispatcher")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 
 local MONSTER_CHAT_EVENTS = {
@@ -42,12 +43,18 @@ local function HandleZoneChanged()
         if TickerController and TickerController.RefreshPhaseTicker then
             TickerController:RefreshPhaseTicker(CrateTrackerZK)
         end
+        if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
+            TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+        end
     end)
 end
 
 local function HandleGroupRosterUpdate()
     if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
         TeamCommListener:RegisterAddonPrefix()
+    end
+    if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
+        TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
     end
 end
 
@@ -91,19 +98,6 @@ local function HandleMonsterChat(event, ...)
     end
 end
 
-local function DispatchAddonListener(listener, event, prefix, payload, chatType, sender, ...)
-    if listener and listener.IsFeatureEnabled and listener:IsFeatureEnabled() ~= true then
-        return false
-    end
-    if not listener or type(listener.ADDON_PREFIX) ~= "string" or prefix ~= listener.ADDON_PREFIX then
-        return false
-    end
-    if not listener.HandleAddonEvent then
-        return false
-    end
-    return listener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
-end
-
 local function HandleTeamAddon(event, ...)
     if not CoreShared:CanProcessTeamMessages() then
         return
@@ -121,8 +115,20 @@ local function HandleTeamAddon(event, ...)
     local channelName = select(8, ...)
     local instanceID = select(9, ...)
 
-    DispatchAddonListener(TeamCommListener, event, prefix, payload, chatType, sender, target, zoneChannelID, localChannelID, channelName, instanceID)
-    DispatchAddonListener(PublicChannelSyncListener, event, prefix, payload, chatType, sender, target, zoneChannelID, localChannelID, channelName, instanceID)
+    if HiddenSyncDispatcher and HiddenSyncDispatcher.DispatchAddonEvent then
+        HiddenSyncDispatcher:DispatchAddonEvent(
+            event,
+            prefix,
+            payload,
+            chatType,
+            sender,
+            target,
+            zoneChannelID,
+            localChannelID,
+            channelName,
+            instanceID
+        )
+    end
 end
 
 function EventRouter:HandleEvent(event, ...)
