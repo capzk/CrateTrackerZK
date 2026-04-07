@@ -138,37 +138,12 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 uiNeedsRefresh = true;
                 local mapPhaseKey = cacheKey .. "-" .. currentPhaseID;
                 local lastReportedKey = self.lastReportedMapPhaseKey;
-                
-                local lastReportedMapID = nil;
-                if lastReportedKey then
-                    local mapPart = strsplit("-", lastReportedKey);
-                    lastReportedMapID = tonumber(mapPart and mapPart:match(":(%d+)$")) or tonumber(mapPart);
-                end
-                
-                if lastReportedKey == mapPhaseKey then
-                    -- 同地图同位面重复检测，不重复记录
-                elseif not lastReportedKey then
+
+                if lastReportedKey ~= mapPhaseKey then
                     local mapName = Data:GetMapDisplayName(targetMapData);
-                    Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
+                    local messageKey = isPhaseChanged and "InstanceChangedTo" or "PhaseDetectedFirstTime";
+                    Logger:Info("Phase", "位面", string.format(L[messageKey], mapName, currentPhaseID));
                     self.lastReportedMapPhaseKey = mapPhaseKey;
-                elseif lastReportedMapID == targetMapData.mapID then
-                    if isPhaseChanged then
-                        local mapName = Data:GetMapDisplayName(targetMapData);
-                        Logger:Info("Phase", "位面", string.format(L["InstanceChangedTo"], mapName, currentPhaseID));
-                        self.lastReportedMapPhaseKey = mapPhaseKey;
-                    else
-                        local mapName = Data:GetMapDisplayName(targetMapData);
-                        Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
-                        self.lastReportedMapPhaseKey = mapPhaseKey;
-                    end
-                else
-                    if isPhaseChanged then
-                        self.lastReportedMapPhaseKey = mapPhaseKey;
-                    else
-                        local mapName = Data:GetMapDisplayName(targetMapData);
-                        Logger:Info("Phase", "位面", string.format(L["PhaseDetectedFirstTime"], mapName, currentPhaseID));
-                        self.lastReportedMapPhaseKey = mapPhaseKey;
-                    end
                 end
             end
             
