@@ -17,7 +17,7 @@
     <Script file="Shared/Foundation/Localization.lua"/>
     
     <!-- 本地化文件（在本地化管理模块之后） -->
-    <!-- 注意：enUS.lua 放在最后作为默认回退，只有在其他语言文件都不匹配时才加载 -->
+    <!-- 注意：所有语言文件都会先注册，随后由 Locales.lua 统一选择当前语言；enUS 作为默认回退语言数据保留在最后 -->
     <Script file="Locales/Locales.lua"/>
     <Script file="Locales/zhCN.lua"/>
     <Script file="Locales/zhTW.lua"/>

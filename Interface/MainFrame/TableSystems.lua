@@ -16,6 +16,11 @@ local rebuildCallback = nil
 local compactAutoSortEnabled = false
 local compactAutoSortPreviousState = nil
 local sortValidationRemainingCache = {}
+local rowsVersion = 0
+
+local function BumpRowsVersion()
+    rowsVersion = rowsVersion + 1
+end
 
 local function GetSortingConfig()
     return UIConfig
@@ -119,10 +124,15 @@ end
 function SortingSystem:SetOriginalRows(rows)
     originalRows = rows or {}
     CopyRows(originalRows, currentRows)
+    BumpRowsVersion()
 end
 
 function SortingSystem:GetCurrentRows()
     return currentRows
+end
+
+function SortingSystem:GetRowsVersion()
+    return rowsVersion
 end
 
 local function FindRowById(buffer, rowId)
@@ -168,6 +178,9 @@ function SortingSystem:ReplaceRow(rowId, rowInfo)
         replaced = true
     end
 
+    if replaced then
+        BumpRowsVersion()
+    end
     return replaced
 end
 
@@ -191,6 +204,7 @@ function SortingSystem:SortRows()
                 currentRows[insertIndex] = rowInfo
             end
         end
+        BumpRowsVersion()
         return
     end
 
@@ -204,7 +218,9 @@ function SortingSystem:SortRows()
     if not success then
         sortState = "default"
         SortingSystem:SortRows()
+        return
     end
+    BumpRowsVersion()
 end
 
 function SortingSystem:UpdateHeaderVisual()
@@ -247,6 +263,7 @@ function SortingSystem:ReleaseRuntimeCache()
     ClearMap(sortValidationRemainingCache)
     headerButton = nil
     lastSortTime = nil
+    rowsVersion = 0
 end
 
 function SortingSystem:SetCompactAutoSortEnabled(enabled)
@@ -310,6 +327,13 @@ local function FormatRemaining(seconds)
         return L["NoRecord"] or "--:--"
     end
     return UnifiedDataManager:FormatTime(seconds)
+end
+
+local function ResolveRemainingText(cache, remaining, remainingKey)
+    if cache and cache.remaining == remainingKey and type(cache.text) == "string" then
+        return cache.text
+    end
+    return FormatRemaining(remaining)
 end
 
 local function BuildTickContext(now)
@@ -516,7 +540,7 @@ function CountdownSystem:SetSortRefreshCallback(callback)
     sortRefreshCallback = callback
 end
 
-local function UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
+local function UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a, isRealtime)
     local cache = AcquireRowDisplayCache(rowId)
     cache.remaining = remainingKey
     cache.text = text
@@ -524,7 +548,25 @@ local function UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
     cache.g = g
     cache.b = b
     cache.a = a
+    cache.isRealtime = isRealtime == true
     return cache
+end
+
+local function ApplyTextState(rowId, textObject, cache, remainingKey, text, r, g, b, a, isRealtime)
+    local nextRealtime = isRealtime == true
+    if not cache
+        or cache.remaining ~= remainingKey
+        or cache.text ~= text
+        or cache.r ~= r
+        or cache.g ~= g
+        or cache.b ~= b
+        or cache.a ~= a
+        or cache.isRealtime ~= nextRealtime then
+        textObject:SetText(text)
+        textObject:SetTextColor(r, g, b, a)
+    end
+
+    return UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a, nextRealtime)
 end
 
 local function SetRealtimeRowState(rowId, isRealtime)
@@ -591,13 +633,12 @@ function CountdownSystem:RegisterText(rowId, textObject)
     local remaining, isHidden, hasRealtimeUpdate = GetRemaining(rowId, context, cache)
     RefreshPhaseStateCache(rowId, cache)
     local remainingKey = remaining ~= nil and remaining or false
-    local text = FormatRemaining(remaining)
+    local text = ResolveRemainingText(cache, remaining, remainingKey)
     local isHovered = hoveredRowIds[rowId] == true
     local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
-    textObject:SetText(text)
-    textObject:SetTextColor(r, g, b, a)
-    UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
-    SetRealtimeRowState(rowId, hasRealtimeUpdate == true)
+    local isRealtime = hasRealtimeUpdate == true
+    ApplyTextState(rowId, textObject, cache, remainingKey, text, r, g, b, a, isRealtime)
+    SetRealtimeRowState(rowId, isRealtime)
     EnsureRefreshTicker()
 end
 
@@ -617,19 +658,19 @@ function RefreshCountdownUI(now)
     for rowId, textObject in pairs(textByRowId) do
         local cache = AcquireRowDisplayCache(rowId)
         local remaining, isHidden, hasRealtimeUpdate = GetRemaining(rowId, context, cache)
-        if hasRealtimeUpdate then
-            if cache.phaseStateDirty or not cache.phaseStateRefreshAt or (currentStateTime - cache.phaseStateRefreshAt) >= PHASE_STATE_REFRESH_INTERVAL then
+        local isRealtime = hasRealtimeUpdate == true
+        local wasRealtime = cache.isRealtime == true
+        SetRealtimeRowState(rowId, isRealtime)
+
+        if isRealtime or wasRealtime or cache.phaseStateDirty then
+            if cache.phaseStateDirty or (isRealtime and (not cache.phaseStateRefreshAt or (currentStateTime - cache.phaseStateRefreshAt) >= PHASE_STATE_REFRESH_INTERVAL)) then
                 RefreshPhaseStateCache(rowId, cache)
             end
             local remainingKey = remaining ~= nil and remaining or false
-            local text = cache and cache.remaining == remainingKey and cache.text or FormatRemaining(remaining)
+            local text = ResolveRemainingText(cache, remaining, remainingKey)
             local isHovered = hoveredRowIds[rowId] == true
             local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
-            if not cache or cache.remaining ~= remainingKey or cache.text ~= text or cache.r ~= r or cache.g ~= g or cache.b ~= b or cache.a ~= a then
-                textObject:SetText(text)
-                textObject:SetTextColor(r, g, b, a)
-                UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
-            end
+            ApplyTextState(rowId, textObject, cache, remainingKey, text, r, g, b, a, isRealtime)
         end
     end
 
@@ -677,13 +718,11 @@ function CountdownSystem:SetRowHover(rowId, hovered)
         RefreshPhaseStateCache(rowId, cache)
     end
     local remainingKey = remaining ~= nil and remaining or false
-    local text = FormatRemaining(remaining)
+    local text = ResolveRemainingText(cache, remaining, remainingKey)
     local isHovered = hoveredRowIds[rowId] == true
     local r, g, b, a = GetCountdownColor(rowId, remaining, isHidden, isHovered, cache)
-
-    textObject:SetText(text)
-    textObject:SetTextColor(r, g, b, a)
-    UpdateRowDisplayCache(rowId, remainingKey, text, r, g, b, a)
+    local isRealtime = cache.isRealtime == true
+    ApplyTextState(rowId, textObject, cache, remainingKey, text, r, g, b, a, isRealtime)
 end
 
 function CountdownSystem:Start()

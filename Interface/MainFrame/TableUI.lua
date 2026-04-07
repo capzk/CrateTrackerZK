@@ -373,6 +373,9 @@ function TableUI:ReleaseHiddenState(frame)
     ClearMap(frame.__ctkDefaultProfileBuffer)
     ClearMap(frame.__ctkColumnMetricsBuffer)
     ClearMap(frame.__ctkResizeStatePayload)
+    frame.__ctkVisibleRowsCount = nil
+    frame.__ctkVisibleRowsSourceVersion = nil
+    frame.__ctkVisibleRowsShowDeleted = nil
 end
 
 function TableUI:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, scale, layout)

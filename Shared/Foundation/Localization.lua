@@ -22,11 +22,6 @@ function Localization:Initialize()
     self.mapNameCache = {};
     self.missingLogEnabled = false;
     self.isInitialized = true;
-    
-    C_Timer.After(0.1, function()
-        self:ValidateCompleteness();
-        self:ReportInitializationStatus();
-    end);
 end
 
 function Localization:ValidateCompleteness()
@@ -101,32 +96,12 @@ function Localization:ClearMissingLog()
 end
 
 function Localization:ReportInitializationStatus()
-    if self.suppressWarnings then
-        return;
-    end
     local LocaleManager = BuildEnv("LocaleManager");
     if not LocaleManager or not LocaleManager.GetLoadStatus then
-        return;
+        return nil;
     end
-    
-    local status = LocaleManager.GetLoadStatus();
-    
-    if status.activeLocale then
-        if status.fallbackUsed and status.activeLocale ~= GetLocale() then
-            Logger:Warn("Localization", "本地化", string.format(
-                "Locale %s not found, fallback to %s.",
-                GetLocale(),
-                status.activeLocale
-            ));
-        end
-    else
-        Logger:Error("Localization", "本地化", "No available locale data loaded.");
-    end
-    
-    local missing = self:ValidateCompleteness();
-    local missingKeyCount = #(missing.keys or {});
-    local missingCount = missingKeyCount;
-    
+
+    return LocaleManager.GetLoadStatus();
 end
 
 function Localization:GetMapName(mapID)

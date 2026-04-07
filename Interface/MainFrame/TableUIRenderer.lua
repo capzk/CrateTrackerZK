@@ -75,6 +75,7 @@ local function ApplyFontScale(fontString, scale)
     if not fontString or not fontString.GetFont then
         return
     end
+    scale = scale or 1
     if not fontString.__ctkBaseFont then
         local font, size, flags = fontString:GetFont()
         if not font then
@@ -87,8 +88,12 @@ local function ApplyFontScale(fontString, scale)
             flags = flags,
         }
     end
+    if fontString.__ctkAppliedFontScale == scale then
+        return
+    end
     local base = fontString.__ctkBaseFont
-    fontString:SetFont(base.font, GetScaledFontSize(base.size, scale or 1), base.flags)
+    fontString:SetFont(base.font, GetScaledFontSize(base.size, scale), base.flags)
+    fontString.__ctkAppliedFontScale = scale
 end
 
 local function SetColorBuffer(buffer, r, g, b, a)
@@ -112,11 +117,156 @@ local function PrepareColumn(columns, index, colIndex, text, color, isCountdown)
     colData.isCountdown = isCountdown == true
 end
 
+local function ApplyRegionSize(region, width, height)
+    if not region then
+        return
+    end
+    if region.__ctkWidth == width and region.__ctkHeight == height then
+        return
+    end
+    region:SetSize(width, height)
+    region.__ctkWidth = width
+    region.__ctkHeight = height
+end
+
+local function ApplyPoint(region, point, relativeTo, relativePoint, xOffset, yOffset)
+    if not region then
+        return
+    end
+    if region.__ctkPoint == point
+        and region.__ctkRelativeTo == relativeTo
+        and region.__ctkRelativePoint == relativePoint
+        and region.__ctkXOffset == xOffset
+        and region.__ctkYOffset == yOffset then
+        return
+    end
+
+    region:ClearAllPoints()
+    region:SetPoint(point, relativeTo, relativePoint, xOffset, yOffset)
+    region.__ctkPoint = point
+    region.__ctkRelativeTo = relativeTo
+    region.__ctkRelativePoint = relativePoint
+    region.__ctkXOffset = xOffset
+    region.__ctkYOffset = yOffset
+end
+
+local function ApplyAlpha(region, alpha)
+    if not region then
+        return
+    end
+    if region.__ctkAlpha == alpha then
+        return
+    end
+    region:SetAlpha(alpha)
+    region.__ctkAlpha = alpha
+end
+
+local function ApplyShown(region, shown)
+    if not region then
+        return
+    end
+    local shouldShow = shown == true
+    if region.__ctkShown == shouldShow then
+        return
+    end
+    if shouldShow then
+        region:Show()
+    else
+        region:Hide()
+    end
+    region.__ctkShown = shouldShow
+end
+
+local function ApplyColorTexture(texture, r, g, b, a)
+    if not texture then
+        return
+    end
+    if texture.__ctkColorR == r
+        and texture.__ctkColorG == g
+        and texture.__ctkColorB == b
+        and texture.__ctkColorA == a then
+        return
+    end
+    texture:SetColorTexture(r, g, b, a)
+    texture.__ctkColorR = r
+    texture.__ctkColorG = g
+    texture.__ctkColorB = b
+    texture.__ctkColorA = a
+end
+
+local function ApplyText(fontString, text)
+    if not fontString then
+        return
+    end
+    local resolvedText = text or ""
+    if fontString.__ctkText == resolvedText then
+        return
+    end
+    fontString:SetText(resolvedText)
+    fontString.__ctkText = resolvedText
+end
+
+local function ApplyTextColor(fontString, r, g, b, a)
+    if not fontString then
+        return
+    end
+    if fontString.__ctkTextColorR == r
+        and fontString.__ctkTextColorG == g
+        and fontString.__ctkTextColorB == b
+        and fontString.__ctkTextColorA == a then
+        return
+    end
+    fontString:SetTextColor(r, g, b, a)
+    fontString.__ctkTextColorR = r
+    fontString.__ctkTextColorG = g
+    fontString.__ctkTextColorB = b
+    fontString.__ctkTextColorA = a
+end
+
+local function ApplyFontStringWidth(fontString, width)
+    if not fontString then
+        return
+    end
+    if fontString.__ctkWidth == width then
+        return
+    end
+    fontString:SetWidth(width)
+    fontString.__ctkWidth = width
+end
+
+local function ApplyFontStringHeight(fontString, height)
+    if not fontString then
+        return
+    end
+    if fontString.__ctkHeight == height then
+        return
+    end
+    fontString:SetHeight(height)
+    fontString.__ctkHeight = height
+end
+
+local function ApplyTruncatedText(fontString, text, maxWidth, minChars)
+    if not fontString then
+        return
+    end
+    local resolvedText = text or ""
+    if fontString.__ctkTruncateText == resolvedText
+        and fontString.__ctkTruncateWidth == maxWidth
+        and fontString.__ctkTruncateMinChars == minChars then
+        return
+    end
+    ApplyTruncateNoEllipsis(fontString, resolvedText, maxWidth, minChars)
+    fontString.__ctkTruncateText = resolvedText
+    fontString.__ctkTruncateWidth = maxWidth
+    fontString.__ctkTruncateMinChars = minChars
+    fontString.__ctkText = resolvedText
+end
+
 function TableUIRenderer:HideVisibleFrames()
     for index = 1, #tableRows do
         local frameRef = tableRows[index]
-        if frameRef and frameRef.Hide then
-            frameRef:Hide()
+        if frameRef then
+            ApplyShown(frameRef, false)
         end
     end
     ClearArray(tableRows)
@@ -159,7 +309,7 @@ function TableUIRenderer:ReleaseHiddenState()
     self:HideVisibleFrames()
 
     if headerRowFrame and headerRowFrame.sortHeaderButton then
-        headerRowFrame.sortHeaderButton:Hide()
+        ApplyShown(headerRowFrame.sortHeaderButton, false)
     end
 
     for index = 1, #rowFramePool do
@@ -195,7 +345,7 @@ function TableUIRenderer:ReleaseHiddenState()
             if rowFrame.countdownHitArea then
                 rowFrame.countdownHitArea.__ctkRowId = nil
                 rowFrame.countdownHitArea.__ctkIsHidden = nil
-                rowFrame.countdownHitArea:Hide()
+                ApplyShown(rowFrame.countdownHitArea, false)
             end
         end
     end
@@ -213,24 +363,24 @@ function TableUIRenderer:CreateHeaderRow(parent, headerLabels, colWidths, layout
     end
 
     local headerHeight = layout.headerHeight or layout.rowHeight
-    headerRowFrame:SetSize(layout.tableWidth, headerHeight)
-    headerRowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -layout.startY)
+    ApplyRegionSize(headerRowFrame, layout.tableWidth, headerHeight)
+    ApplyPoint(headerRowFrame, "TOPLEFT", parent, "TOPLEFT", layout.startX, -layout.startY)
     headerRowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
-    headerRowFrame:SetAlpha(layout.headerAlpha or 1.0)
-    headerRowFrame:Show()
+    ApplyAlpha(headerRowFrame, layout.headerAlpha or 1.0)
+    ApplyShown(headerRowFrame, true)
 
     local headerBg = headerRowFrame.headerBg
     headerBg:SetAllPoints(headerRowFrame)
     local headerColor = cfg.GetColor("tableHeader")
-    headerBg:SetColorTexture(headerColor[1], headerColor[2], headerColor[3], headerColor[4])
+    ApplyColorTexture(headerBg, headerColor[1], headerColor[2], headerColor[3], headerColor[4])
 
     for _, cell in pairs(headerRowFrame.headerCells) do
         if cell then
-            cell:Hide()
+            ApplyShown(cell, false)
         end
     end
     if headerRowFrame.sortHeaderButton then
-        headerRowFrame.sortHeaderButton:Hide()
+        ApplyShown(headerRowFrame.sortHeaderButton, false)
     end
 
     local currentX = 0
@@ -246,7 +396,7 @@ function TableUIRenderer:CreateHeaderRow(parent, headerLabels, colWidths, layout
                     headerRowFrame.sortHeaderButton
                 )
                 headerRowFrame.sortHeaderButton = sortHeaderButton
-                sortHeaderButton:Show()
+                ApplyShown(sortHeaderButton, true)
                 if SortingSystem then
                     SortingSystem:SetHeaderButton(sortHeaderButton)
                 end
@@ -262,7 +412,7 @@ function TableUIRenderer:CreateHeaderRow(parent, headerLabels, colWidths, layout
                     headerRowFrame.headerCells[colIndex]
                 )
                 headerRowFrame.headerCells[colIndex] = cellText
-                cellText:Show()
+                ApplyShown(cellText, true)
             end
         end
         currentX = currentX + (colWidths[colIndex] or 0)
@@ -311,14 +461,13 @@ function TableUIRenderer:CreateSortHeaderButton(parent, label, colWidth, layout,
     end
 
     local headerHeight = layout.headerHeight or layout.rowHeight
-    sortHeaderButton:SetSize(colWidth, headerHeight)
-    sortHeaderButton:ClearAllPoints()
-    sortHeaderButton:SetPoint("CENTER", parent, "LEFT", currentX + colWidth / 2, 0)
+    ApplyRegionSize(sortHeaderButton, colWidth, headerHeight)
+    ApplyPoint(sortHeaderButton, "CENTER", parent, "LEFT", currentX + colWidth / 2, 0)
 
     local buttonText = sortHeaderButton.label
-    buttonText:SetText(label)
+    ApplyText(buttonText, label)
     local textColor = cfg.GetTextColor("tableHeader")
-    buttonText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
+    ApplyTextColor(buttonText, textColor[1], textColor[2], textColor[3], textColor[4])
     ApplyFontScale(buttonText, layout.fontScale or 1)
 
     return sortHeaderButton
@@ -333,29 +482,31 @@ function TableUIRenderer:CreateHeaderText(parent, label, colIndex, colWidth, lay
     if cellText.GetParent and cellText:GetParent() ~= parent then
         cellText:SetParent(parent)
     end
-    cellText:ClearAllPoints()
     local leftPadding = math.floor(15 * (layout.scale or 1) + 0.5)
 
     if colIndex == 1 then
-        cellText:SetPoint("LEFT", headerBg, "LEFT", currentX + leftPadding, 0)
+        ApplyPoint(cellText, "LEFT", headerBg, "LEFT", currentX + leftPadding, 0)
         cellText:SetJustifyH("LEFT")
     else
-        cellText:SetPoint("CENTER", headerBg, "LEFT", currentX + colWidth / 2, 0)
+        ApplyPoint(cellText, "CENTER", headerBg, "LEFT", currentX + colWidth / 2, 0)
         cellText:SetJustifyH("CENTER")
     end
 
-    cellText:SetText(label)
+    ApplyText(cellText, label)
     cellText:SetJustifyV("MIDDLE")
     cellText:SetShadowOffset(0, 0)
     local textColor = cfg.GetTextColor("tableHeader")
-    cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
+    ApplyTextColor(cellText, textColor[1], textColor[2], textColor[3], textColor[4])
     ApplyFontScale(cellText, layout.fontScale or 1)
     return cellText
 end
 
 function TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths, layout)
     local rowInfo = rowState and rowState.rowInfo or rowState
-    local rowId = rowInfo.rowId
+    local rowId = rowInfo and rowInfo.rowId or nil
+    if rowId == nil then
+        return
+    end
     local headerOffsetY = 0
     if layout.showHeader then
         headerOffsetY = (layout.headerHeight or layout.rowHeight) + (layout.headerGap or layout.rowGap)
@@ -364,12 +515,11 @@ function TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths
     local renderHeight = math.max(1, rowState and rowState.height or layout.rowHeight)
     local renderAlpha = Clamp(rowState and rowState.alpha or 1, 0, 1)
     local rowFrame = self:AcquireRowFrame(parent, displayIndex)
-    rowFrame:SetSize(layout.tableWidth, renderHeight)
-    rowFrame:ClearAllPoints()
-    rowFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
+    ApplyRegionSize(rowFrame, layout.tableWidth, renderHeight)
+    ApplyPoint(rowFrame, "TOPLEFT", parent, "TOPLEFT", layout.startX, -(layout.startY + slotY))
     rowFrame:SetFrameLevel(parent:GetFrameLevel() + 10)
-    rowFrame:SetAlpha(renderAlpha)
-    rowFrame:Show()
+    ApplyAlpha(rowFrame, renderAlpha)
+    ApplyShown(rowFrame, true)
     rowFrame.__ctkBaseAlpha = renderAlpha
     rowFrame.uiScale = layout.scale
     rowFrame.uiFontScale = layout.fontScale or 1
@@ -390,10 +540,10 @@ function TableUIRenderer:CreateDataRow(parent, rowState, displayIndex, colWidths
 
     local rowColor = UIConfig.GetDataRowColor(displayIndex)
     if rowInfo.isHidden then
-        rowBg:SetColorTexture(0.5, 0.5, 0.5, 0.3)
-        rowFrame:SetAlpha(renderAlpha * 0.6)
+        ApplyColorTexture(rowBg, 0.5, 0.5, 0.5, 0.3)
+        ApplyAlpha(rowFrame, renderAlpha * 0.6)
     else
-        rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
+        ApplyColorTexture(rowBg, rowColor[1], rowColor[2], rowColor[3], rowColor[4])
     end
 
     self:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, rowFrame.uiFontScale, layout)
@@ -404,6 +554,9 @@ end
 
 function TableUIRenderer:RefreshVisibleRow(rowInfo)
     local rowId = rowInfo and rowInfo.rowId
+    if rowId == nil then
+        return false
+    end
     local rowFrame = rowId and visibleRowFrameByRowId[rowId] or nil
     if not rowFrame or not rowFrame.IsShown or not rowFrame:IsShown() then
         return false
@@ -418,11 +571,11 @@ function TableUIRenderer:RefreshVisibleRow(rowInfo)
     local rowColor = UIConfig.GetDataRowColor(displayIndex)
     local baseAlpha = rowFrame.__ctkBaseAlpha or rowFrame:GetAlpha() or 1
     if rowInfo.isHidden then
-        rowBg:SetColorTexture(0.5, 0.5, 0.5, 0.3)
-        rowFrame:SetAlpha(baseAlpha * 0.6)
+        ApplyColorTexture(rowBg, 0.5, 0.5, 0.5, 0.3)
+        ApplyAlpha(rowFrame, baseAlpha * 0.6)
     else
-        rowBg:SetColorTexture(rowColor[1], rowColor[2], rowColor[3], rowColor[4])
-        rowFrame:SetAlpha(baseAlpha)
+        ApplyColorTexture(rowBg, rowColor[1], rowColor[2], rowColor[3], rowColor[4])
+        ApplyAlpha(rowFrame, baseAlpha)
     end
 
     self:CreateRowCells(
@@ -444,12 +597,8 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
     local planeIdTextColor = cfg.GetTextColor("planeId")
     local deletedTextColor = rowInfo.isHidden and cfg.GetTextColor("deleted") or nil
     rowFrame.cellTexts = rowFrame.cellTexts or {}
-
-    for _, cellText in pairs(rowFrame.cellTexts) do
-        if cellText then
-            cellText:Hide()
-        end
-    end
+    rowFrame.__ctkActiveColumns = rowFrame.__ctkActiveColumns or {}
+    local activeColumns = ClearMap(rowFrame.__ctkActiveColumns)
 
     local hasCurrentPhase = rowInfo.currentPhaseID ~= nil and rowInfo.currentPhaseID ~= ""
     local phaseText = L["NotAcquired"] or "---:---"
@@ -490,7 +639,10 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
             )
         end
     end
-    local nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
+    local nextRefreshText = nil
+    if not CountdownSystem then
+        nextRefreshText = rowInfo.remainingTime and UnifiedDataManager:FormatTime(rowInfo.remainingTime) or (L["NoRecord"] or "--:--")
+    end
 
     rowFrame.columnBuffer = rowFrame.columnBuffer or {}
     local columns = rowFrame.columnBuffer
@@ -515,13 +667,13 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
             cellText = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             rowFrame.cellTexts[colIndex] = cellText
         end
-        cellText:ClearAllPoints()
+        activeColumns[colIndex] = true
 
         if colIndex == 1 then
-            cellText:SetPoint("LEFT", rowBg, "LEFT", currentX + leftPadding, 0)
+            ApplyPoint(cellText, "LEFT", rowBg, "LEFT", currentX + leftPadding, 0)
             cellText:SetJustifyH("LEFT")
         else
-            cellText:SetPoint("CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
+            ApplyPoint(cellText, "CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
             cellText:SetJustifyH("CENTER")
         end
 
@@ -529,11 +681,12 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
         ApplyFontScale(cellText, resolvedFontScale)
 
         local textValue = colData.text or ""
+        local useCountdownSystem = colData.isCountdown and CountdownSystem ~= nil
         if colIndex == 1 then
             local padding = math.floor(24 * (scale or 1) + 0.5) + 2
             local maxWidth = math.max(0, colWidths[1] - padding)
-            cellText:SetWidth(maxWidth)
-            cellText:SetHeight(math.max(1, math.floor((rowFrame.uiRowHeight or FIXED_ROW_HEIGHT) * MAP_ROW_TEXT_HEIGHT_RATIO + 0.5)))
+            ApplyFontStringWidth(cellText, maxWidth)
+            ApplyFontStringHeight(cellText, math.max(1, math.floor((rowFrame.uiRowHeight or FIXED_ROW_HEIGHT) * MAP_ROW_TEXT_HEIGHT_RATIO + 0.5)))
             if cellText.SetWordWrap then
                 cellText:SetWordWrap(false)
             end
@@ -543,24 +696,29 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
             if cellText.SetMaxLines then
                 cellText:SetMaxLines(1)
             end
-            ApplyTruncateNoEllipsis(cellText, textValue, maxWidth, MAP_COL_COMPACT_MIN_CHARS)
+            ApplyTruncatedText(cellText, textValue, maxWidth, MAP_COL_COMPACT_MIN_CHARS)
         else
-            cellText:SetHeight(rowFrame.uiRowHeight or FIXED_ROW_HEIGHT)
-            cellText:SetText(textValue)
+            ApplyFontStringHeight(cellText, rowFrame.uiRowHeight or FIXED_ROW_HEIGHT)
+            if not useCountdownSystem then
+                ApplyText(cellText, textValue)
+            end
         end
         cellText:SetJustifyV("MIDDLE")
         cellText:SetShadowOffset(0, 0)
-        cellText:Show()
+        ApplyShown(cellText, true)
 
         local textColor = colData.color or normalTextColor
-        if rowInfo.isHidden then
-            cellText:SetTextColor(deletedTextColor[1], deletedTextColor[2], deletedTextColor[3], deletedTextColor[4])
-        else
-            cellText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
+        if not useCountdownSystem then
+            if rowInfo.isHidden then
+                ApplyTextColor(cellText, deletedTextColor[1], deletedTextColor[2], deletedTextColor[3], deletedTextColor[4])
+            else
+                ApplyTextColor(cellText, textColor[1], textColor[2], textColor[3], textColor[4])
+            end
         end
 
-        if colData.isCountdown and CountdownSystem then
-            CountdownSystem:RegisterText(rowInfo.rowId, cellText)
+        if useCountdownSystem then
+            local countdownRowId = rowFrame.rowId
+            CountdownSystem:RegisterText(countdownRowId, cellText)
 
             local hitArea = rowFrame.countdownHitArea
             if not hitArea then
@@ -596,20 +754,26 @@ function TableUIRenderer:CreateRowCells(rowFrame, rowInfo, colWidths, rowBg, sca
                 rowFrame.countdownHitArea = hitArea
             end
 
-            hitArea.__ctkRowId = rowInfo.rowId
+            hitArea.__ctkRowId = countdownRowId
             hitArea.__ctkIsHidden = rowInfo.isHidden == true
             hitArea:SetFrameLevel(rowFrame:GetFrameLevel() + 2)
-            hitArea:SetSize(colWidths[colIndex], rowFrame.uiRowHeight or FIXED_ROW_HEIGHT)
-            hitArea:ClearAllPoints()
-            hitArea:SetPoint("CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
-            hitArea:Show()
+            ApplyRegionSize(hitArea, colWidths[colIndex], rowFrame.uiRowHeight or FIXED_ROW_HEIGHT)
+            ApplyPoint(hitArea, "CENTER", rowBg, "LEFT", currentX + colWidths[colIndex] / 2, 0)
+            ApplyShown(hitArea, true)
         elseif colData.isCountdown then
             if rowFrame.countdownHitArea then
-                rowFrame.countdownHitArea:Hide()
+                ApplyShown(rowFrame.countdownHitArea, false)
             end
         end
 
         currentX = currentX + colWidths[colIndex]
+    end
+
+    for colIndex = 1, #rowFrame.cellTexts do
+        local cellText = rowFrame.cellTexts[colIndex]
+        if cellText and activeColumns[colIndex] ~= true then
+            ApplyShown(cellText, false)
+        end
     end
 end
 

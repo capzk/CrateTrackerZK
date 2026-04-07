@@ -21,6 +21,9 @@ Namespace.L = L;
 -- ============================================================================
 local LocaleRegistry = {};
 local currentLocale = GetLocale();
+local LocaleAliasMap = {
+    enGB = "enUS",
+};
 
 local LocaleLoadStatus = {
     loadedLocales = {},      -- 已成功加载的语言
@@ -73,21 +76,20 @@ LocaleManager.failedLocales = LocaleManager.failedLocales or {};
 -- 语言选择逻辑（统一管理）- 在所有文件加载后执行
 -- ============================================================================
 local function SelectLocale()
-    if LocaleRegistry[currentLocale] then
-        LoadLocaleData(LocaleRegistry[currentLocale]);
-        LocaleLoadStatus.activeLocale = currentLocale;
-        LocaleLoadStatus.fallbackUsed = false;
+    local selectedLocale = currentLocale;
+    if not LocaleRegistry[selectedLocale] then
+        selectedLocale = LocaleAliasMap[currentLocale] or "enUS";
+    end
+
+    if LocaleRegistry[selectedLocale] then
+        LoadLocaleData(LocaleRegistry[selectedLocale]);
+        LocaleLoadStatus.activeLocale = selectedLocale;
+        LocaleLoadStatus.fallbackUsed = selectedLocale ~= currentLocale;
     else
-        if LocaleRegistry["enUS"] then
-            LoadLocaleData(LocaleRegistry["enUS"]);
-            LocaleLoadStatus.activeLocale = "enUS";
-            LocaleLoadStatus.fallbackUsed = true;
-        else
-            table.insert(LocaleLoadStatus.failedLocales, {
-                locale = "enUS",
-                reason = "English locale file not found"
-            });
-        end
+        table.insert(LocaleLoadStatus.failedLocales, {
+            locale = "enUS",
+            reason = "English locale file not found"
+        });
     end
 end
 
@@ -99,12 +101,5 @@ C_Timer.After(0.2, function()
         for _, failed in ipairs(LocaleManager.failedLocales) do
             table.insert(LocaleLoadStatus.failedLocales, failed);
         end
-    end
-    
-    if #LocaleLoadStatus.failedLocales > 0 and Logger then
-        Logger:Warn("Localization", "本地化", string.format(
-            "Failed to load %d locale file(s).",
-            #LocaleLoadStatus.failedLocales
-        ));
     end
 end);

@@ -129,17 +129,6 @@ local function CanUseTemporaryRecordForPhase(manager, mapId, phaseId, tempRecord
     return setTime >= phaseChangedAt;
 end
 
-local function SanitizePersistentTimestamp(timestamp)
-    if type(timestamp) ~= "number" then
-        return nil;
-    end
-    local maxFuture = Utils:GetCurrentTimestamp() + 86400 * 365;
-    if timestamp < 0 or timestamp > maxFuture then
-        return nil;
-    end
-    return timestamp;
-end
-
 local function PopulatePhaseColor(outColor, r, g, b)
     outColor.r = r;
     outColor.g = g;
@@ -158,6 +147,36 @@ local function AssignDisplayTime(outDisplayTime, record, isPersistent)
     return outDisplayTime;
 end
 
+local function ResetDisplayTime(outDisplayTime)
+    if type(outDisplayTime) ~= "table" then
+        return nil;
+    end
+    outDisplayTime.time = nil;
+    outDisplayTime.source = nil;
+    outDisplayTime.isPersistent = nil;
+    return outDisplayTime;
+end
+
+local function ReleaseSharedDisplay(manager, mapId)
+    if manager and manager.OnSharedDisplayReleased then
+        manager:OnSharedDisplayReleased(mapId);
+    end
+end
+
+local function ActivateSharedDisplay(manager, mapId, currentPhaseID, sharedRecord, outDisplayTime)
+    if type(outDisplayTime) ~= "table" or type(sharedRecord) ~= "table" then
+        return nil;
+    end
+
+    outDisplayTime.time = sharedRecord.timestamp;
+    outDisplayTime.source = sharedRecord.source or manager.TimeSource.PUBLIC_CHANNEL_SYNC;
+    outDisplayTime.isPersistent = false;
+    if manager and manager.OnSharedDisplayActivated then
+        manager:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord);
+    end
+    return outDisplayTime;
+end
+
 local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
     if tempRecord and persistentRecord then
         if tempRecord.timestamp > persistentRecord.timestamp then
@@ -172,6 +191,62 @@ local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
         return tempRecord, false;
     end
     return nil, nil;
+end
+
+local function GetActiveTemporaryTimeRecord(manager, timeData, now)
+    if not manager or type(timeData) ~= "table" or type(timeData.temporaryTime) ~= "table" then
+        return nil;
+    end
+
+    local temporaryTime = timeData.temporaryTime;
+    if now - temporaryTime.setTime <= manager.TEMPORARY_TIME_EXPIRE then
+        return temporaryTime;
+    end
+
+    timeData.temporaryTime = nil;
+    return nil;
+end
+
+local function ResolveLocalDisplay(manager, mapId, tempRecord, persistentRecord, outDisplayTime)
+    local localRecord, isPersistent = SelectLatestLocalDisplayRecord(tempRecord, persistentRecord);
+    if not localRecord then
+        ReleaseSharedDisplay(manager, mapId);
+        return nil;
+    end
+
+    AssignDisplayTime(outDisplayTime, localRecord, isPersistent == true);
+    ReleaseSharedDisplay(manager, mapId);
+    return outDisplayTime;
+end
+
+local function ResolvePhaseScopedDisplay(manager, mapId, currentPhaseID, tempRecord, persistentRecord, sharedRecord, outDisplayTime)
+    local phaseTransitionEligible = manager.CanUseSharedDisplayForPhase
+        and manager:CanUseSharedDisplayForPhase(mapId, currentPhaseID) == true;
+    local tempRecordMatchesCurrentPhase = CanUseTemporaryRecordForPhase(manager, mapId, currentPhaseID, tempRecord);
+    local persistentMatchesCurrentPhase = persistentRecord
+        and type(persistentRecord.phaseId) == "string"
+        and persistentRecord.phaseId == currentPhaseID;
+    local hasLocalCurrentPhaseSource = persistentMatchesCurrentPhase
+        or (tempRecord and tempRecordMatchesCurrentPhase) == true;
+    local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible;
+
+    if persistentMatchesCurrentPhase then
+        AssignDisplayTime(outDisplayTime, persistentRecord, true);
+        ReleaseSharedDisplay(manager, mapId);
+        return outDisplayTime;
+    end
+
+    if tempRecord and tempRecordMatchesCurrentPhase then
+        AssignDisplayTime(outDisplayTime, tempRecord, false);
+        ReleaseSharedDisplay(manager, mapId);
+        return outDisplayTime;
+    end
+
+    if sharedRecord and shouldTrySharedDisplay then
+        return ActivateSharedDisplay(manager, mapId, currentPhaseID, sharedRecord, outDisplayTime);
+    end
+
+    return ResolveLocalDisplay(manager, mapId, tempRecord, persistentRecord, outDisplayTime);
 end
 
 -- 初始化
@@ -301,30 +376,18 @@ function UnifiedDataManager:GetPersistentTimeRecordInto(mapId, outRecord)
         return nil;
     end
 
-    outRecord.timestamp = nil;
-    outRecord.source = nil;
-    outRecord.phaseId = nil;
-    outRecord.objectGUID = nil;
-    outRecord.eventTimestamp = nil;
-
-    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
-    if type(rawRecord) ~= "table" then
+    local record = Data and Data.GetPersistentTimeRecordInto and Data:GetPersistentTimeRecordInto(mapId, outRecord) or nil;
+    if not record then
         return nil;
     end
 
-    local lastRefresh = SanitizePersistentTimestamp(rawRecord.lastRefresh);
-    if not lastRefresh then
-        return nil;
+    if type(record.source) ~= "string" then
+        record.source = self.TimeSource.ICON_DETECTION;
     end
-
-    outRecord.timestamp = lastRefresh;
-    outRecord.source = type(rawRecord.lastRefreshSource) == "string"
-        and rawRecord.lastRefreshSource
-        or self.TimeSource.ICON_DETECTION;
-    outRecord.phaseId = type(rawRecord.lastRefreshPhase) == "string" and rawRecord.lastRefreshPhase or nil;
-    outRecord.objectGUID = type(rawRecord.currentAirdropObjectGUID) == "string" and rawRecord.currentAirdropObjectGUID or nil;
-    outRecord.eventTimestamp = SanitizePersistentTimestamp(rawRecord.currentAirdropTimestamp) or lastRefresh;
-    return outRecord;
+    if type(record.eventTimestamp) ~= "number" then
+        record.eventTimestamp = record.timestamp;
+    end
+    return record;
 end
 
 function UnifiedDataManager:GetPersistentAirdropState(mapId)
@@ -340,33 +403,18 @@ function UnifiedDataManager:GetPersistentAirdropStateInto(mapId, outState)
         return nil;
     end
 
-    outState.lastRefresh = nil;
-    outState.currentAirdropObjectGUID = nil;
-    outState.currentAirdropTimestamp = nil;
-    outState.lastRefreshPhase = nil;
-    outState.source = nil;
-
-    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
-    if type(rawRecord) ~= "table" then
+    local state = Data and Data.GetPersistentAirdropStateInto and Data:GetPersistentAirdropStateInto(mapId, outState) or nil;
+    if not state then
         return nil;
     end
 
-    local lastRefresh = SanitizePersistentTimestamp(rawRecord.lastRefresh);
-    if not lastRefresh then
-        return nil;
+    if type(state.source) ~= "string" then
+        state.source = self.TimeSource.ICON_DETECTION;
     end
-
-    outState.lastRefresh = lastRefresh;
-    outState.currentAirdropObjectGUID = type(rawRecord.currentAirdropObjectGUID) == "string"
-        and rawRecord.currentAirdropObjectGUID
-        or nil;
-    outState.currentAirdropTimestamp = SanitizePersistentTimestamp(rawRecord.currentAirdropTimestamp) or lastRefresh;
-    outState.lastRefreshPhase = type(rawRecord.lastRefreshPhase) == "string" and rawRecord.lastRefreshPhase or nil;
-    outState.source = type(rawRecord.lastRefreshSource) == "string"
-        and rawRecord.lastRefreshSource
-        or self.TimeSource.ICON_DETECTION;
-
-    return outState;
+    if type(state.currentAirdropTimestamp) ~= "number" then
+        state.currentAirdropTimestamp = state.lastRefresh;
+    end
+    return state;
 end
 
 function UnifiedDataManager:ClearPersistentPhase(mapId)
@@ -518,21 +566,9 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
         sharedRecord = self:GetSharedPhaseTimeRecordInto(mapId, currentPhaseID, sharedRecordBuffer);
     end
     outDisplayTime.__ctkSharedRecordBuffer = sharedRecordBuffer;
-    outDisplayTime.time = nil;
-    outDisplayTime.source = nil;
-    outDisplayTime.isPersistent = nil;
+    ResetDisplayTime(outDisplayTime);
 
-    if timeData then
-        -- 临时记录（先检查是否过期）
-        if timeData.temporaryTime then
-            if now - timeData.temporaryTime.setTime <= self.TEMPORARY_TIME_EXPIRE then
-                tempRecord = timeData.temporaryTime;
-            else
-                -- 临时时间已过期，清除
-                timeData.temporaryTime = nil;
-            end
-        end
-    end
+    tempRecord = GetActiveTemporaryTimeRecord(self, timeData, now);
 
     local isPlayerOnCurrentMap = IsPlayerCurrentlyOnTrackedMap(mapId);
     if not isPlayerOnCurrentMap and self.ClearSharedDisplayPhaseGate then
@@ -540,89 +576,10 @@ function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTim
     end
 
     if isPlayerOnCurrentMap and type(currentPhaseID) == "string" and currentPhaseID ~= "" then
-        local phaseTransitionEligible = self.CanUseSharedDisplayForPhase
-            and self:CanUseSharedDisplayForPhase(mapId, currentPhaseID) == true;
-        local tempRecordMatchesCurrentPhase = CanUseTemporaryRecordForPhase(self, mapId, currentPhaseID, tempRecord);
-        local persistentMatchesCurrentPhase = persistentRecord
-            and type(persistentRecord.phaseId) == "string"
-            and persistentRecord.phaseId == currentPhaseID;
-        local hasLocalCurrentPhaseSource = persistentMatchesCurrentPhase
-            or (tempRecord and tempRecordMatchesCurrentPhase) == true;
-        local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible;
-
-        if persistentMatchesCurrentPhase then
-            AssignDisplayTime(outDisplayTime, persistentRecord, true);
-            if self.OnSharedDisplayReleased then
-                self:OnSharedDisplayReleased(mapId);
-            end
-            return outDisplayTime;
-        elseif tempRecord and tempRecordMatchesCurrentPhase then
-            AssignDisplayTime(outDisplayTime, tempRecord, false);
-            if self.OnSharedDisplayReleased then
-                self:OnSharedDisplayReleased(mapId);
-            end
-            return outDisplayTime;
-        elseif sharedRecord and shouldTrySharedDisplay then
-            -- 公共广播共享记录只作为当前位面缺少可用本地显示源时的备选显示数据；
-            -- 位面切换后也允许按当前地图+位面严格匹配尝试共享回退，但不会覆盖已有效的本地数据。
-            outDisplayTime.time = sharedRecord.timestamp;
-            outDisplayTime.source = sharedRecord.source or self.TimeSource.PUBLIC_CHANNEL_SYNC;
-            outDisplayTime.isPersistent = false;
-            if self.OnSharedDisplayActivated then
-                self:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord);
-            end
-            return outDisplayTime;
-        end
-
-        -- 当前位面缺少可用显示源时，仍保留本地历史时间显示，避免 UI 直接空白。
-        local localFallbackRecord, isLocalFallbackPersistent = SelectLatestLocalDisplayRecord(tempRecord, persistentRecord);
-        if localFallbackRecord then
-            AssignDisplayTime(outDisplayTime, localFallbackRecord, isLocalFallbackPersistent == true);
-            if self.OnSharedDisplayReleased then
-                self:OnSharedDisplayReleased(mapId);
-            end
-            return outDisplayTime;
-        end
-
-        if self.OnSharedDisplayReleased then
-            self:OnSharedDisplayReleased(mapId);
-        end
-        return nil;
+        return ResolvePhaseScopedDisplay(self, mapId, currentPhaseID, tempRecord, persistentRecord, sharedRecord, outDisplayTime);
     end
 
-    -- 同时存在时，取时间更“新”的一条；否则按可用记录返回
-    if tempRecord and persistentRecord then
-        local useTemp = tempRecord.timestamp > persistentRecord.timestamp;
-        local record = useTemp and tempRecord or persistentRecord;
-        outDisplayTime.time = record.timestamp;
-        outDisplayTime.source = record.source;
-        outDisplayTime.isPersistent = not useTemp;
-        if self.OnSharedDisplayReleased then
-            self:OnSharedDisplayReleased(mapId);
-        end
-        return outDisplayTime;
-    elseif persistentRecord then
-        outDisplayTime.time = persistentRecord.timestamp;
-        outDisplayTime.source = persistentRecord.source;
-        outDisplayTime.isPersistent = true;
-        if self.OnSharedDisplayReleased then
-            self:OnSharedDisplayReleased(mapId);
-        end
-        return outDisplayTime;
-    elseif tempRecord then
-        outDisplayTime.time = tempRecord.timestamp;
-        outDisplayTime.source = tempRecord.source;
-        outDisplayTime.isPersistent = false;
-        if self.OnSharedDisplayReleased then
-            self:OnSharedDisplayReleased(mapId);
-        end
-        return outDisplayTime;
-    end
-
-    if self.OnSharedDisplayReleased then
-        self:OnSharedDisplayReleased(mapId);
-    end
-    return nil;
+    return ResolveLocalDisplay(self, mapId, tempRecord, persistentRecord, outDisplayTime);
 end
 
 -- 统一位面设置接口
@@ -733,10 +690,8 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
     if not self.isInitialized then
         return nil;
     end
-
-    local rawRecord = Data and Data.GetPersistentRecord and Data:GetPersistentRecord(mapId) or nil;
-    if rawRecord and type(rawRecord.lastRefreshPhase) == "string" then
-        return rawRecord.lastRefreshPhase;
+    if Data and Data.GetPersistentPhase then
+        return Data:GetPersistentPhase(mapId);
     end
     return nil;
 end

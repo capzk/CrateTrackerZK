@@ -54,6 +54,7 @@ Data.MAP_CONFIG = {
     activeExpansion = nil,
     current_maps = {},
     airdrop_plane_vignette_ids = {},
+    airdrop_plane_vignette_lookup = {},
     airdrop_crates = {},
     defaults = {
         interval = DEFAULT_INTERVAL,
@@ -66,11 +67,19 @@ function Data:ReloadMapConfigForExpansion()
     local crates = BuildTrackedCrates()
     local vignetteIDs = BuildTrackedVignetteIDs()
     local defaultInterval = ResolveDefaultInterval(crates, maps)
+    local vignetteLookup = {}
+
+    for _, vignetteID in ipairs(vignetteIDs or {}) do
+        if type(vignetteID) == "number" then
+            vignetteLookup[vignetteID] = true
+        end
+    end
 
     self.MAP_CONFIG.current_maps = maps or {}
     self.MAP_CONFIG.activeExpansion = nil
     self.MAP_CONFIG.airdrop_crates = crates or {}
     self.MAP_CONFIG.airdrop_plane_vignette_ids = vignetteIDs or {}
+    self.MAP_CONFIG.airdrop_plane_vignette_lookup = vignetteLookup
     self.MAP_CONFIG.defaults.interval = defaultInterval
     self.DEFAULT_REFRESH_INTERVAL = defaultInterval
 end
@@ -87,11 +96,12 @@ function Data:IsAirdropPlaneVignetteID(vignetteID)
     if type(vignetteID) ~= "number" then
         return false
     end
-    for _, id in ipairs(self:GetAirdropPlaneVignetteIDs()) do
-        if id == vignetteID then
-            return true
-        end
+
+    local lookup = self.MAP_CONFIG and self.MAP_CONFIG.airdrop_plane_vignette_lookup
+    if type(lookup) == "table" then
+        return lookup[vignetteID] == true
     end
+
     if ExpansionConfig and ExpansionConfig.IsAirdropPlaneVignetteID then
         return ExpansionConfig:IsAirdropPlaneVignetteID(vignetteID)
     end

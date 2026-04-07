@@ -121,6 +121,44 @@ local function ResetPhaseDisplayInfo(phaseDisplayInfo)
     return phaseDisplayInfo
 end
 
+local function ResolveDisplayTime(builder, rowId, now)
+    builder.displayTimeBuffer = builder.displayTimeBuffer or {}
+    return UnifiedDataManager
+        and UnifiedDataManager.GetDisplayTimeInto
+        and UnifiedDataManager:GetDisplayTimeInto(rowId, now, builder.displayTimeBuffer)
+        or (UnifiedDataManager and UnifiedDataManager.GetDisplayTime and UnifiedDataManager:GetDisplayTime(rowId, now) or nil)
+end
+
+local function ResolveTimeMetrics(rowId, now, displayTime)
+    local nextRefreshTime = UnifiedDataManager
+        and UnifiedDataManager.GetNextRefreshTime
+        and UnifiedDataManager:GetNextRefreshTime(rowId, now, displayTime)
+        or nil
+    local remainingTime = nil
+
+    if type(nextRefreshTime) == "number" then
+        remainingTime = nextRefreshTime - now
+        if remainingTime < 0 then
+            remainingTime = 0
+        end
+    end
+
+    return nextRefreshTime, remainingTime
+end
+
+local function ResolvePhaseDisplayInfo(builder, rowId, rowInfo)
+    rowInfo.phaseDisplayInfo = ResetPhaseDisplayInfo(rowInfo.phaseDisplayInfo)
+    builder.phaseComparisonBuffer = builder.phaseComparisonBuffer or {}
+    local phaseDisplayInfo = UnifiedDataManager
+        and UnifiedDataManager.GetPhaseDisplayInfoInto
+        and UnifiedDataManager:GetPhaseDisplayInfoInto(rowId, rowInfo.phaseDisplayInfo, builder.phaseComparisonBuffer)
+        or (UnifiedDataManager and UnifiedDataManager.GetPhaseDisplayInfo and UnifiedDataManager:GetPhaseDisplayInfo(rowId) or nil)
+    if phaseDisplayInfo ~= rowInfo.phaseDisplayInfo and phaseDisplayInfo ~= nil then
+        rowInfo.phaseDisplayInfo = phaseDisplayInfo
+    end
+    return rowInfo.phaseDisplayInfo
+end
+
 local function BuildRowInfo(builder, mapData, outRow, now, hiddenMapsByExpansion, hiddenRemainingByExpansion)
     if not mapData then
         return nil
@@ -160,14 +198,8 @@ local function BuildRowInfo(builder, mapData, outRow, now, hiddenMapsByExpansion
     local isHidden = GetHiddenState(mapData, hiddenMaps)
     local frozenRemaining = GetFrozenRemaining(mapData, hiddenRemaining)
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or ""
-
-    builder.displayTimeBuffer = builder.displayTimeBuffer or {}
-    local displayTime = UnifiedDataManager
-        and UnifiedDataManager.GetDisplayTimeInto
-        and UnifiedDataManager:GetDisplayTimeInto(rowId, now, builder.displayTimeBuffer)
-        or (UnifiedDataManager and UnifiedDataManager.GetDisplayTime and UnifiedDataManager:GetDisplayTime(rowId, now) or nil)
-    local remainingTime = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(rowId, now, displayTime) or nil
-    local nextRefreshTime = UnifiedDataManager and UnifiedDataManager.GetNextRefreshTime and UnifiedDataManager:GetNextRefreshTime(rowId, now, displayTime) or nil
+    local displayTime = ResolveDisplayTime(builder, rowId, now)
+    local nextRefreshTime, remainingTime = ResolveTimeMetrics(rowId, now, displayTime)
     if frozenRemaining ~= nil then
         remainingTime = frozenRemaining
     end
@@ -175,23 +207,12 @@ local function BuildRowInfo(builder, mapData, outRow, now, hiddenMapsByExpansion
         remainingTime = 0
     end
 
-    rowInfo.phaseDisplayInfo = ResetPhaseDisplayInfo(rowInfo.phaseDisplayInfo)
-    builder.phaseComparisonBuffer = builder.phaseComparisonBuffer or {}
-    local phaseDisplayInfo = UnifiedDataManager
-        and UnifiedDataManager.GetPhaseDisplayInfoInto
-        and UnifiedDataManager:GetPhaseDisplayInfoInto(rowId, rowInfo.phaseDisplayInfo, builder.phaseComparisonBuffer)
-        or (UnifiedDataManager and UnifiedDataManager.GetPhaseDisplayInfo and UnifiedDataManager:GetPhaseDisplayInfo(rowId) or nil)
-    if phaseDisplayInfo ~= rowInfo.phaseDisplayInfo and phaseDisplayInfo ~= nil then
-        rowInfo.phaseDisplayInfo = phaseDisplayInfo
-    end
+    local phaseDisplayInfo = ResolvePhaseDisplayInfo(builder, rowId, rowInfo)
 
-    local currentPhaseID = rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.currentPhaseID or nil
-    if currentPhaseID == nil and UnifiedDataManager and UnifiedDataManager.GetCurrentPhase then
+    local currentPhaseID = phaseDisplayInfo and phaseDisplayInfo.currentPhaseID or nil
+    local persistentPhaseID = phaseDisplayInfo and phaseDisplayInfo.persistentPhaseID or nil
+    if phaseDisplayInfo == nil and UnifiedDataManager and UnifiedDataManager.GetCurrentPhase then
         currentPhaseID = UnifiedDataManager:GetCurrentPhase(rowId)
-    end
-
-    local persistentPhaseID = rowInfo.phaseDisplayInfo and rowInfo.phaseDisplayInfo.persistentPhaseID or nil
-    if persistentPhaseID == nil and UnifiedDataManager and UnifiedDataManager.GetPersistentPhase then
         persistentPhaseID = UnifiedDataManager:GetPersistentPhase(rowId)
     end
 

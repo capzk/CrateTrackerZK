@@ -70,6 +70,22 @@ local function EnsureUIState()
     return CRATETRACKERZK_UI_DB
 end
 
+local function EnsureRuntimeCache()
+    local cache = ExpansionConfig.__runtimeCache
+    if type(cache) ~= "table" then
+        cache = {}
+        ExpansionConfig.__runtimeCache = cache
+    end
+    cache.static = cache.static or {}
+    cache.tracked = cache.tracked or {}
+    return cache
+end
+
+local function ResetTrackedRuntimeCache()
+    local cache = EnsureRuntimeCache()
+    cache.tracked = {}
+end
+
 local function IsValidExpansionID(expansionID)
     return expansionID and ExpansionConfig.expansions and ExpansionConfig.expansions[expansionID] ~= nil
 end
@@ -109,39 +125,54 @@ local function IterateExpansionIDs(reverseOrder)
     return result
 end
 
+local function GetCachedExpansionOrder(reverseOrder)
+    local cache = EnsureRuntimeCache().static
+    local cacheKey = reverseOrder == true and "reverseExpansionOrder" or "forwardExpansionOrder"
+    if not cache[cacheKey] then
+        cache[cacheKey] = IterateExpansionIDs(reverseOrder == true)
+    end
+    return cache[cacheKey]
+end
+
 local function GetExpansionMapDefinitions(expansionID)
+    local cache = EnsureRuntimeCache().static
+    cache.expansionMaps = cache.expansionMaps or {}
+    local cachedMaps = cache.expansionMaps[expansionID]
+    if cachedMaps then
+        return cachedMaps
+    end
+
     local expansion = expansionID and ExpansionConfig.expansions and ExpansionConfig.expansions[expansionID]
     local result = {}
-    if not expansion or type(expansion.maps) ~= "table" then
-        return result
-    end
+    if expansion and type(expansion.maps) == "table" then
+        for index, mapInfo in ipairs(expansion.maps) do
+            if type(mapInfo) == "table" and type(mapInfo.mapID) == "number" and type(mapInfo.id) == "number" then
+                local interval = tonumber(mapInfo.interval) or tonumber(expansion.interval) or 1100
+                if not interval or interval <= 0 then
+                    interval = 1100
+                end
 
-    for index, mapInfo in ipairs(expansion.maps) do
-        if type(mapInfo) == "table" and type(mapInfo.mapID) == "number" and type(mapInfo.id) == "number" then
-            local interval = tonumber(mapInfo.interval) or tonumber(expansion.interval) or 1100
-            if not interval or interval <= 0 then
-                interval = 1100
+                result[#result + 1] = {
+                    id = mapInfo.id,
+                    mapID = mapInfo.mapID,
+                    expansionID = expansionID,
+                    interval = math.floor(interval),
+                    enabled = mapInfo.enabled ~= false,
+                    order = tonumber(mapInfo.order) or index,
+                    priority = tonumber(mapInfo.order) or index,
+                }
             end
-
-            result[#result + 1] = {
-                id = mapInfo.id,
-                mapID = mapInfo.mapID,
-                expansionID = expansionID,
-                interval = math.floor(interval),
-                enabled = mapInfo.enabled ~= false,
-                order = tonumber(mapInfo.order) or index,
-                priority = tonumber(mapInfo.order) or index,
-            }
         end
+
+        table.sort(result, function(a, b)
+            if (a.order or 0) == (b.order or 0) then
+                return (a.id or 0) < (b.id or 0)
+            end
+            return (a.order or 0) < (b.order or 0)
+        end)
     end
 
-    table.sort(result, function(a, b)
-        if (a.order or 0) == (b.order or 0) then
-            return (a.id or 0) < (b.id or 0)
-        end
-        return (a.order or 0) < (b.order or 0)
-    end)
-
+    cache.expansionMaps[expansionID] = result
     return result
 end
 
@@ -190,6 +221,33 @@ local function NormalizeTrackedSelection(trackedMaps)
     return normalized
 end
 
+local function BuildTrackedSelectionSignature(trackedMaps)
+    if type(trackedMaps) ~= "table" then
+        return ""
+    end
+
+    local parts = {}
+    for _, expansionID in ipairs(GetCachedExpansionOrder(false)) do
+        local expansionSelection = trackedMaps[expansionID]
+        if type(expansionSelection) == "table" and next(expansionSelection) ~= nil then
+            parts[#parts + 1] = expansionID
+            parts[#parts + 1] = ":"
+            local wroteMap = false
+            for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
+                if expansionSelection[mapInfo.mapID] == true then
+                    if wroteMap then
+                        parts[#parts + 1] = ","
+                    end
+                    parts[#parts + 1] = tostring(mapInfo.mapID)
+                    wroteMap = true
+                end
+            end
+            parts[#parts + 1] = "|"
+        end
+    end
+    return table.concat(parts)
+end
+
 local function EnsureTrackedMapsSelection()
     local uiDB = EnsureUIState()
     local trackedMaps = uiDB.trackedMaps
@@ -208,23 +266,84 @@ local function EnsureTrackedMapsSelection()
     return uiDB.trackedMaps
 end
 
-local function CollectTrackedExpansionIDs()
+local function GetTrackedSelectionCache()
     local trackedMaps = EnsureTrackedMapsSelection()
-    local result = {}
-    for _, expansionID in ipairs(IterateExpansionIDs(true)) do
-        local expansionSelection = trackedMaps[expansionID]
-        if type(expansionSelection) == "table" and next(expansionSelection) ~= nil then
-            result[#result + 1] = expansionID
+    local cache = EnsureRuntimeCache().tracked
+    local signature = BuildTrackedSelectionSignature(trackedMaps)
+    if cache.signature ~= signature then
+        cache.signature = signature
+        cache.expansionIDs = nil
+        cache.mapConfigs = nil
+        cache.vignetteIDs = nil
+        cache.vignetteLookup = nil
+        cache.crates = nil
+        cache.defaultInterval = nil
+    end
+    return trackedMaps, cache
+end
+
+local function GetMainCityLookup()
+    local cache = EnsureRuntimeCache().static
+    if cache.mainCityLookup then
+        return cache.mainCityLookup
+    end
+
+    local lookup = {}
+    for _, expansionID in ipairs(GetCachedExpansionOrder(false)) do
+        local expansion = ExpansionConfig.expansions and ExpansionConfig.expansions[expansionID]
+        for _, cityMapID in ipairs(expansion and expansion.mainCityMapIDs or {}) do
+            if type(cityMapID) == "number" then
+                lookup[cityMapID] = true
+            end
         end
     end
-    return result
+    cache.mainCityLookup = lookup
+    return lookup
+end
+
+local function GetAllMapDefinitionCaches()
+    local cache = EnsureRuntimeCache().static
+    if cache.allMapDefinitions and cache.mapDefinitionByConfigID and cache.mapDefinitionsByMapID then
+        return cache
+    end
+
+    local allMapDefinitions = {}
+    local mapDefinitionByConfigID = {}
+    local mapDefinitionsByMapID = {}
+
+    for _, expansionID in ipairs(GetCachedExpansionOrder(true)) do
+        for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
+            allMapDefinitions[#allMapDefinitions + 1] = mapInfo
+            mapDefinitionByConfigID[mapInfo.id] = mapInfo
+
+            local mapEntry = mapDefinitionsByMapID[mapInfo.mapID]
+            if type(mapEntry) ~= "table" then
+                mapEntry = {
+                    first = mapInfo,
+                    byExpansion = {},
+                }
+                mapDefinitionsByMapID[mapInfo.mapID] = mapEntry
+            end
+            mapEntry.byExpansion[expansionID] = mapInfo
+        end
+    end
+
+    cache.allMapDefinitions = allMapDefinitions
+    cache.mapDefinitionByConfigID = mapDefinitionByConfigID
+    cache.mapDefinitionsByMapID = mapDefinitionsByMapID
+    return cache
 end
 
 function ExpansionConfig:GetDisplayExpansionOrder()
-    return IterateExpansionIDs(true)
+    return GetCachedExpansionOrder(true)
 end
 
 function ExpansionConfig:GetAvailableExpansions()
+    local cache = EnsureRuntimeCache().static
+    if cache.availableExpansions then
+        return cache.availableExpansions
+    end
+
     local result = {}
     for _, expansionID in ipairs(self:GetDisplayExpansionOrder()) do
         local config = self.expansions and self.expansions[expansionID]
@@ -235,6 +354,7 @@ function ExpansionConfig:GetAvailableExpansions()
             }
         end
     end
+    cache.availableExpansions = result
     return result
 end
 
@@ -247,7 +367,7 @@ function ExpansionConfig:GetCurrentExpansionID()
     if IsValidExpansionID(self.defaultExpansionID) then
         return self.defaultExpansionID
     end
-    local list = IterateExpansionIDs(false)
+    local list = GetCachedExpansionOrder(false)
     return list[1]
 end
 
@@ -256,45 +376,32 @@ function ExpansionConfig:GetExpansionMaps(expansionID)
 end
 
 function ExpansionConfig:GetAllMapDefinitions()
-    local result = {}
-    for _, expansionID in ipairs(self:GetDisplayExpansionOrder()) do
-        for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
-            result[#result + 1] = CopyMapDefinition(mapInfo)
-        end
-    end
-    return result
+    return GetAllMapDefinitionCaches().allMapDefinitions
 end
 
 function ExpansionConfig:GetMapDefinitionByConfigID(configID)
     if type(configID) ~= "number" then
         return nil
     end
-    for _, mapInfo in ipairs(self:GetAllMapDefinitions()) do
-        if mapInfo.id == configID then
-            return mapInfo
-        end
-    end
-    return nil
+    return GetAllMapDefinitionCaches().mapDefinitionByConfigID[configID]
 end
 
 function ExpansionConfig:GetMapDefinitionByMapID(mapID, expansionID)
     if type(mapID) ~= "number" then
         return nil
     end
-    if expansionID and IsValidExpansionID(expansionID) then
-        for _, mapInfo in ipairs(GetExpansionMapDefinitions(expansionID)) do
-            if mapInfo.mapID == mapID then
-                return mapInfo
-            end
-        end
+
+    local mapDefinitionsByMapID = GetAllMapDefinitionCaches().mapDefinitionsByMapID
+    local mapEntry = mapDefinitionsByMapID[mapID]
+    if not mapEntry then
         return nil
     end
-    for _, mapInfo in ipairs(self:GetAllMapDefinitions()) do
-        if mapInfo.mapID == mapID then
-            return mapInfo
-        end
+
+    if expansionID and IsValidExpansionID(expansionID) then
+        return mapEntry.byExpansion and mapEntry.byExpansion[expansionID] or nil
     end
-    return nil
+
+    return mapEntry.first
 end
 
 function ExpansionConfig:GetMapExpansionID(mapID, expansionID)
@@ -307,7 +414,20 @@ function ExpansionConfig:GetTrackedMaps()
 end
 
 function ExpansionConfig:GetTrackedExpansionIDs()
-    return CollectTrackedExpansionIDs()
+    local trackedMaps, cache = GetTrackedSelectionCache()
+    if cache.expansionIDs then
+        return cache.expansionIDs
+    end
+
+    local result = {}
+    for _, expansionID in ipairs(self:GetDisplayExpansionOrder()) do
+        local expansionSelection = trackedMaps[expansionID]
+        if type(expansionSelection) == "table" and next(expansionSelection) ~= nil then
+            result[#result + 1] = expansionID
+        end
+    end
+    cache.expansionIDs = result
+    return result
 end
 
 function ExpansionConfig:IsMapTracked(expansionID, mapID)
@@ -330,6 +450,7 @@ function ExpansionConfig:SetMapTracked(expansionID, mapID, tracked)
             return false
         end
         trackedMaps[expansionID][mapID] = true
+        ResetTrackedRuntimeCache()
         return true
     end
 
@@ -340,12 +461,17 @@ function ExpansionConfig:SetMapTracked(expansionID, mapID, tracked)
     if next(expansionSelection) == nil then
         trackedMaps[expansionID] = nil
     end
+    ResetTrackedRuntimeCache()
     return true
 end
 
 function ExpansionConfig:GetTrackedMapConfigs()
+    local trackedMaps, cache = GetTrackedSelectionCache()
+    if cache.mapConfigs then
+        return cache.mapConfigs
+    end
+
     local result = {}
-    local trackedMaps = EnsureTrackedMapsSelection()
 
     for _, expansionID in ipairs(self:GetDisplayExpansionOrder()) do
         local expansionSelection = trackedMaps[expansionID]
@@ -358,6 +484,7 @@ function ExpansionConfig:GetTrackedMapConfigs()
         end
     end
 
+    cache.mapConfigs = result
     return result
 end
 
@@ -367,6 +494,11 @@ function ExpansionConfig:GetActiveMapConfigs()
 end
 
 function ExpansionConfig:GetTrackedAirdropPlaneVignetteIDs()
+    local _, trackedCache = GetTrackedSelectionCache()
+    if trackedCache and trackedCache.vignetteIDs then
+        return trackedCache.vignetteIDs
+    end
+
     local trackedExpansionIDs = self:GetTrackedExpansionIDs()
     local result = {}
     local seen = {}
@@ -383,6 +515,10 @@ function ExpansionConfig:GetTrackedAirdropPlaneVignetteIDs()
         end
     end
 
+    if trackedCache then
+        trackedCache.vignetteIDs = result
+        trackedCache.vignetteLookup = seen
+    end
     return result
 end
 
@@ -394,15 +530,22 @@ function ExpansionConfig:IsAirdropPlaneVignetteID(vignetteID)
     if type(vignetteID) ~= "number" then
         return false
     end
-    for _, id in ipairs(self:GetTrackedAirdropPlaneVignetteIDs()) do
-        if id == vignetteID then
-            return true
-        end
+
+    local _, cache = GetTrackedSelectionCache()
+    local lookup = cache and cache.vignetteLookup or nil
+    if not lookup then
+        self:GetTrackedAirdropPlaneVignetteIDs()
+        lookup = cache and cache.vignetteLookup or nil
     end
-    return false
+    return type(lookup) == "table" and lookup[vignetteID] == true or false
 end
 
 function ExpansionConfig:GetTrackedAirdropCrates()
+    local _, cache = GetTrackedSelectionCache()
+    if cache.crates then
+        return cache.crates
+    end
+
     local trackedExpansionIDs = self:GetTrackedExpansionIDs()
     local result = {}
     local seen = {}
@@ -430,6 +573,7 @@ function ExpansionConfig:GetTrackedAirdropCrates()
         end
     end
 
+    cache.crates = result
     return result
 end
 
@@ -438,34 +582,40 @@ function ExpansionConfig:GetCurrentAirdropCrates()
 end
 
 function ExpansionConfig:GetCurrentDefaultInterval()
+    local _, cache = GetTrackedSelectionCache()
+    if cache.defaultInterval then
+        return cache.defaultInterval
+    end
+
+    local resolvedInterval = nil
     local crates = self:GetTrackedAirdropCrates()
     for _, crate in ipairs(crates) do
         if crate.enabled and crate.interval and crate.interval > 0 then
-            return crate.interval
+            resolvedInterval = crate.interval
+            break
         end
     end
 
-    local defaultExpansion = self.expansions and self.expansions[self.defaultExpansionID]
-    if defaultExpansion and defaultExpansion.interval and defaultExpansion.interval > 0 then
-        return defaultExpansion.interval
+    if not resolvedInterval then
+        local defaultExpansion = self.expansions and self.expansions[self.defaultExpansionID]
+        if defaultExpansion and defaultExpansion.interval and defaultExpansion.interval > 0 then
+            resolvedInterval = defaultExpansion.interval
+        end
     end
-    return 1100
+
+    if not resolvedInterval then
+        resolvedInterval = 1100
+    end
+
+    cache.defaultInterval = resolvedInterval
+    return resolvedInterval
 end
 
 function ExpansionConfig:IsMainCityMap(mapID)
     if type(mapID) ~= "number" then
         return false
     end
-
-    for _, expansionID in ipairs(IterateExpansionIDs(false)) do
-        local expansion = self.expansions and self.expansions[expansionID]
-        for _, cityMapID in ipairs(expansion and expansion.mainCityMapIDs or {}) do
-            if cityMapID == mapID then
-                return true
-            end
-        end
-    end
-    return false
+    return GetMainCityLookup()[mapID] == true
 end
 
 return ExpansionConfig

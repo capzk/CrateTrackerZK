@@ -101,22 +101,39 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     local tableParent = deps.GetTableParent(frame)
 
     local function BuildVisibleRows()
-        local visibleRows = GetReusableArray(frame, "__ctkVisibleRowsBuffer")
+        local visibleRows = frame.__ctkVisibleRowsBuffer
+        if not visibleRows then
+            visibleRows = {}
+            frame.__ctkVisibleRowsBuffer = visibleRows
+        end
         local sourceRows = deps.SortingSystem:GetCurrentRows() or {}
+        local showDeletedRows = visibilityProfile.showDeletedRows == true
+        local rowsVersion = deps.SortingSystem.GetRowsVersion and deps.SortingSystem:GetRowsVersion() or nil
+
+        if rowsVersion ~= nil
+            and frame.__ctkVisibleRowsSourceVersion == rowsVersion
+            and frame.__ctkVisibleRowsShowDeleted == showDeletedRows then
+            return visibleRows, frame.__ctkVisibleRowsCount or 0
+        end
+
+        ClearArray(visibleRows)
         local visibleCount = 0
 
         for index = 1, #sourceRows do
             local rowInfo = sourceRows[index]
-            if visibilityProfile.showDeletedRows or not rowInfo.isHidden then
+            if showDeletedRows or not rowInfo.isHidden then
                 visibleCount = visibleCount + 1
                 visibleRows[visibleCount] = rowInfo
             end
         end
-        return visibleRows
+        frame.__ctkVisibleRowsSourceVersion = rowsVersion
+        frame.__ctkVisibleRowsShowDeleted = showDeletedRows
+        frame.__ctkVisibleRowsCount = visibleCount
+        return visibleRows, visibleCount
     end
 
-    local rows = BuildVisibleRows()
-    local layoutScale = deps.GetScaleFactor(frame, #rows, visibilityProfile.showHeader == true)
+    local rows, rowCount = BuildVisibleRows()
+    local layoutScale = deps.GetScaleFactor(frame, rowCount, visibilityProfile.showHeader == true)
     local chromeMetrics = deps.GetScaledChromeMetrics(1)
     local rowHeight, rowGap = deps.GetScaledRowMetrics(1)
     local headerWidthRatio = visibilityProfile.showHeader == true and deps.GetHeaderWidthRatio(frame) or 0
@@ -124,11 +141,11 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     frame.__ctkLayoutScale = layoutScale
     frame.__ctkChromeHorizontalPadding = chromeMetrics.horizontalPadding
     frame.__ctkChromeVerticalPadding = chromeMetrics.verticalPadding
-    frame.__ctkBaselineFrameHeight = deps.GetDefaultFrameHeightForRowCount(#rows, visibilityProfile.showHeader == true)
+    frame.__ctkBaselineFrameHeight = deps.GetDefaultFrameHeightForRowCount(rowCount, visibilityProfile.showHeader == true)
 
     local verticalMetrics = deps.BuildVerticalMetrics(
         frame,
-        #rows,
+        rowCount,
         rowHeight,
         rowGap,
         tableParent,
@@ -153,10 +170,10 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
     if deps.SortingSystem and deps.SortingSystem.SetCompactAutoSortEnabled then
         local sortChanged = deps.SortingSystem:SetCompactAutoSortEnabled(shouldAutoCompactSort)
         if sortChanged then
-            rows = BuildVisibleRows()
+            rows, rowCount = BuildVisibleRows()
             verticalMetrics = deps.BuildVerticalMetrics(
                 frame,
-                #rows,
+                rowCount,
                 rowHeight,
                 rowGap,
                 tableParent,
@@ -369,7 +386,7 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
 
     deps.EmitResizeStateHook(frame, "stable", resizeStatePayload)
 
-    local fullVisibleRowCount = math.max(0, math.min(verticalMetrics.fullVisibleRowCount or 0, #rows))
+    local fullVisibleRowCount = math.max(0, math.min(verticalMetrics.fullVisibleRowCount or 0, rowCount))
     local partialRowRatio = deps.Clamp(verticalMetrics.partialRowRatio or 0, 0, 1)
     local currentSlotY = 0
     local reusableRowState = GetReusableMap(frame, "__ctkReusableRowState")
@@ -386,24 +403,30 @@ function TableUIRebuildEngine:Rebuild(tableUI, frame, headerLabels, deps)
             currentSlotY = currentSlotY + layout.rowGap
         end
 
-        reusableRowState.rowInfo = rows[displayIndex]
-        reusableRowState.slotY = currentSlotY
-        reusableRowState.height = layout.rowHeight
-        reusableRowState.alpha = 1
-        tableUI:CreateDataRow(layout.parent, reusableRowState, displayIndex, colWidths, layout)
-        currentSlotY = currentSlotY + layout.rowHeight
+        local rowInfo = rows[displayIndex]
+        if rowInfo then
+            reusableRowState.rowInfo = rowInfo
+            reusableRowState.slotY = currentSlotY
+            reusableRowState.height = layout.rowHeight
+            reusableRowState.alpha = 1
+            tableUI:CreateDataRow(layout.parent, reusableRowState, displayIndex, colWidths, layout)
+            currentSlotY = currentSlotY + layout.rowHeight
+        end
     end
 
-    if partialRowRatio > 0 and (fullVisibleRowCount + 1) <= #rows then
+    if partialRowRatio > 0 and (fullVisibleRowCount + 1) <= rowCount then
         if fullVisibleRowCount > 0 then
             currentSlotY = currentSlotY + (layout.rowGap * partialRowRatio)
         end
 
-        reusableRowState.rowInfo = rows[fullVisibleRowCount + 1]
-        reusableRowState.slotY = currentSlotY
-        reusableRowState.height = math.max(1, layout.rowHeight * partialRowRatio)
-        reusableRowState.alpha = verticalMetrics.partialRowAlpha or partialRowRatio
-        tableUI:CreateDataRow(layout.parent, reusableRowState, fullVisibleRowCount + 1, colWidths, layout)
+        local rowInfo = rows[fullVisibleRowCount + 1]
+        if rowInfo then
+            reusableRowState.rowInfo = rowInfo
+            reusableRowState.slotY = currentSlotY
+            reusableRowState.height = math.max(1, layout.rowHeight * partialRowRatio)
+            reusableRowState.alpha = verticalMetrics.partialRowAlpha or partialRowRatio
+            tableUI:CreateDataRow(layout.parent, reusableRowState, fullVisibleRowCount + 1, colWidths, layout)
+        end
     end
 
     reusableRowState.rowInfo = nil

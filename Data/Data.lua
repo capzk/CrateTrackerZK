@@ -74,6 +74,66 @@ local function PopulatePersistentSnapshot(outSnapshot, mapData, savedData)
     return outSnapshot;
 end
 
+local function PopulatePersistentTimeRecord(outRecord, savedData)
+    if type(outRecord) ~= "table" then
+        return nil;
+    end
+
+    outRecord.timestamp = nil;
+    outRecord.source = nil;
+    outRecord.phaseId = nil;
+    outRecord.objectGUID = nil;
+    outRecord.eventTimestamp = nil;
+
+    if type(savedData) ~= "table" then
+        return nil;
+    end
+
+    local lastRefresh = sanitizeTimestamp(savedData.lastRefresh);
+    if not lastRefresh then
+        return nil;
+    end
+
+    outRecord.timestamp = lastRefresh;
+    outRecord.source = type(savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil;
+    outRecord.phaseId = type(savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil;
+    outRecord.objectGUID = type(savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil;
+    outRecord.eventTimestamp = sanitizeTimestamp(savedData.currentAirdropTimestamp) or lastRefresh;
+    return outRecord;
+end
+
+local function PopulatePersistentAirdropState(outState, mapData, savedData)
+    if type(outState) ~= "table" then
+        return nil;
+    end
+
+    outState.expansionID = type(mapData) == "table" and mapData.expansionID or nil;
+    outState.mapID = type(mapData) == "table" and mapData.mapID or nil;
+    outState.lastRefresh = nil;
+    outState.currentAirdropObjectGUID = nil;
+    outState.currentAirdropTimestamp = nil;
+    outState.lastRefreshPhase = nil;
+    outState.source = nil;
+
+    if type(savedData) ~= "table" then
+        return nil;
+    end
+
+    local lastRefresh = sanitizeTimestamp(savedData.lastRefresh);
+    if not lastRefresh then
+        return nil;
+    end
+
+    outState.lastRefresh = lastRefresh;
+    outState.currentAirdropObjectGUID = type(savedData.currentAirdropObjectGUID) == "string"
+        and savedData.currentAirdropObjectGUID
+        or nil;
+    outState.currentAirdropTimestamp = sanitizeTimestamp(savedData.currentAirdropTimestamp) or lastRefresh;
+    outState.lastRefreshPhase = type(savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil;
+    outState.source = type(savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil;
+    return outState;
+end
+
 local function getTrackedMapConfigs()
     if ExpansionConfig and ExpansionConfig.GetTrackedMapConfigs then
         return ExpansionConfig:GetTrackedMapConfigs() or {};
@@ -498,6 +558,33 @@ function Data:GetPersistentRecord(mapId)
     return PersistentMapStateStore and PersistentMapStateStore.GetSavedRecord
         and PersistentMapStateStore:GetSavedRecord(mapData.expansionID, mapData.mapID)
         or nil;
+end
+
+function Data:GetPersistentTimeRecordInto(mapId, outRecord)
+    if type(outRecord) ~= "table" then
+        return nil;
+    end
+
+    local savedData = self:GetPersistentRecord(mapId);
+    return PopulatePersistentTimeRecord(outRecord, savedData);
+end
+
+function Data:GetPersistentAirdropStateInto(mapId, outState)
+    local mapData = self:GetMap(mapId);
+    if not mapData or type(outState) ~= "table" then
+        return nil;
+    end
+
+    local savedData = self:GetPersistentRecord(mapId);
+    return PopulatePersistentAirdropState(outState, mapData, savedData);
+end
+
+function Data:GetPersistentPhase(mapId)
+    local state = {};
+    if not self:GetPersistentAirdropStateInto(mapId, state) then
+        return nil;
+    end
+    return state.lastRefreshPhase;
 end
 
 function Data:GetPersistentSnapshot(mapId)
