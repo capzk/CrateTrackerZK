@@ -5,6 +5,7 @@
 local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
 
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
+local IconDetector = BuildEnv("IconDetector")
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local PublicChannelSyncProtocol = BuildEnv("PublicChannelSyncProtocol")
 local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
@@ -130,6 +131,39 @@ local function ResolveCurrentChannelContext(outContext, ...)
     return outContext
 end
 
+local function ExtractPhaseIDFromObjectGUID(objectGUID)
+    if IconDetector and IconDetector.ExtractPhaseID then
+        return IconDetector:ExtractPhaseID(objectGUID)
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return nil
+    end
+
+    local _, _, serverID, _, zoneUID = strsplit("-", objectGUID)
+    if serverID and zoneUID then
+        return serverID .. "-" .. zoneUID
+    end
+
+    return nil
+end
+
+local function IsSharedSyncPayloadConsistent(syncState)
+    if type(syncState) ~= "table" then
+        return false
+    end
+    if type(syncState.phaseID) ~= "string" or syncState.phaseID == "" then
+        return false
+    end
+    if type(syncState.objectGUID) ~= "string" or syncState.objectGUID == "" then
+        return false
+    end
+
+    local resolvedPhaseID = ExtractPhaseIDFromObjectGUID(syncState.objectGUID)
+    return type(resolvedPhaseID) == "string"
+        and resolvedPhaseID ~= ""
+        and resolvedPhaseID == syncState.phaseID
+end
+
 function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
     if self:IsFeatureEnabled() ~= true then
         return false
@@ -165,6 +199,9 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
         and PublicChannelSyncProtocol:ParsePayloadInto(prefix, payload, self.syncStateBuffer)
         or nil
     if not syncState then
+        return false
+    end
+    if IsSharedSyncPayloadConsistent(syncState) ~= true then
         return false
     end
 

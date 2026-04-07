@@ -6,6 +6,7 @@ local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
 PublicChannelSyncStore.FEATURE_ENABLED = true
 PublicChannelSyncStore.RECORD_TTL = 3600
 PublicChannelSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
+PublicChannelSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET = 120
 
 function PublicChannelSyncStore:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
@@ -35,6 +36,16 @@ local function IsExpired(record, currentTime)
     return type(record) ~= "table"
         or type(record.expiresAt) ~= "number"
         or record.expiresAt <= now
+end
+
+local function IsTimestampWithinAcceptableWindow(timestamp, currentTime)
+    local now = currentTime or Utils:GetCurrentTimestamp()
+    local oldestAllowed = now - PublicChannelSyncStore.RECORD_TTL
+    local newestAllowed = now + PublicChannelSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET
+
+    return type(timestamp) == "number"
+        and timestamp > oldestAllowed
+        and timestamp <= newestAllowed
 end
 
 local function SelectOldestPhaseRecord(mapBucket, currentTime)
@@ -176,7 +187,10 @@ function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timest
     end
 
     timestamp = tonumber(timestamp)
-    if not timestamp or timestamp <= 0 or type(objectGUID) ~= "string" or objectGUID == "" then
+    if not timestamp
+        or IsTimestampWithinAcceptableWindow(timestamp, receivedAt) ~= true
+        or type(objectGUID) ~= "string"
+        or objectGUID == "" then
         return false, nil
     end
 
