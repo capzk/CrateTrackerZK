@@ -61,7 +61,7 @@ local function ResolvePersistentPhaseID(state)
     end
 
     if IconDetector and IconDetector.ExtractPhaseID then
-        return IconDetector:ExtractPhaseID(state.currentAirdropObjectGUID)
+        return IconDetector.ExtractPhaseID(state.currentAirdropObjectGUID)
     end
 
     return nil

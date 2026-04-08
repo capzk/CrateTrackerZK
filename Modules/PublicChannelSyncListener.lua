@@ -133,7 +133,7 @@ end
 
 local function ExtractPhaseIDFromObjectGUID(objectGUID)
     if IconDetector and IconDetector.ExtractPhaseID then
-        return IconDetector:ExtractPhaseID(objectGUID)
+        return IconDetector.ExtractPhaseID(objectGUID)
     end
     if type(objectGUID) ~= "string" or objectGUID == "" then
         return nil

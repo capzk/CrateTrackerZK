@@ -41,6 +41,11 @@ https://github.com/capzk/CrateTrackerZK
 
 Addon Release Page:
 https://www.curseforge.com/wow/addons/cratetrackerzk
+
+Localization Contributors:
+esMX: DarkChiken
+koKR: 007bb
+ruRU: ZamestoTV
 ]]
 
 local function LT(key, fallback)

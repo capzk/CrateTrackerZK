@@ -24,7 +24,7 @@ localeData["AirdropDetectedManual"] = "【%s】战争物资正在空投！！！
 localeData["NoTimeRecord"] = "【%s】暂无时间记录！！！";
 localeData["TimeRemaining"] = "【%s】距离战争物资空投还有：%s！！！";
 localeData["AutoTeamReportMessage"] = "当前【%s】距离战争物资空投还有：%s！！";
-localeData["SharedPhaseSyncApplied"] = "已获取【%s】当前位面的最新空投共享信息。";
+localeData["SharedPhaseSyncApplied"] = "已成功获取【%s】当前位面的最新空投缓存数据。";
 
 -- 位面检测提示
 localeData["PhaseDetectedFirstTime"] = "【%s】当前位面：|cffffff00%s|r";

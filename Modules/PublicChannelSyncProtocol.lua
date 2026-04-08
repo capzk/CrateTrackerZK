@@ -16,7 +16,8 @@ local function EncodePayloadField(value)
         return "-"
     end
 
-    return text:gsub("|", "/")
+    local sanitized = text:gsub("|", "/")
+    return sanitized
 end
 
 local function DecodePayloadField(value)

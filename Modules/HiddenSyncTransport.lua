@@ -1,7 +1,6 @@
 -- HiddenSyncTransport.lua - 隐藏同步公共传输基础设施
 
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
-
 HiddenSyncTransport.TEAM_CHAT_TYPES = {
     RAID = true,
     RAID_WARNING = true,
@@ -140,4 +139,3 @@ function HiddenSyncTransport:SendAddonPayload(prefix, payload, distribution)
 end
 
 return HiddenSyncTransport
-

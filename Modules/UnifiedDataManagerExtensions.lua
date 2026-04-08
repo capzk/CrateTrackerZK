@@ -222,6 +222,16 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
     end
 
     state.lastNotifiedRecordKey = sharedRecord.recordKey;
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local message = string.format(
+        (L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].",
+        mapName
+    );
+    if Logger and Logger.Info then
+        Logger:Info("Notification", "通知", message);
+    end
 end
 
 function UnifiedDataManager:OnSharedDisplayReleased(mapId)
