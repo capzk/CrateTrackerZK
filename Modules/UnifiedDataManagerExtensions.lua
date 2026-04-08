@@ -263,6 +263,30 @@ function UnifiedDataManager:OnSharedDisplayReleased(mapId)
     state.activeRecordKey = nil;
 end
 
+function UnifiedDataManager:RefreshSharedDisplayActivation(mapId, currentTime)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return false;
+    end
+    if not self.isInitialized or type(mapId) ~= "number" then
+        return false;
+    end
+
+    self.sharedDisplayActivationProbeByMap = self.sharedDisplayActivationProbeByMap or {};
+    local probe = self.sharedDisplayActivationProbeByMap[mapId] or {};
+    self.sharedDisplayActivationProbeByMap[mapId] = probe;
+    probe.displayTimeBuffer = probe.displayTimeBuffer or {};
+    probe.persistentRecordBuffer = probe.persistentRecordBuffer or {};
+
+    local displayTime = self:GetDisplayTimeInto(
+        mapId,
+        currentTime or Utils:GetCurrentTimestamp(),
+        probe.displayTimeBuffer,
+        probe.persistentRecordBuffer
+    );
+    return type(displayTime) == "table"
+        and displayTime.source == self.TimeSource.PUBLIC_CHANNEL_SYNC;
+end
+
 function UnifiedDataManager:FormatTime(seconds, showOnlyMinutes)
     if TimeFormatter and TimeFormatter.FormatTime then
         return TimeFormatter:FormatTime(seconds, showOnlyMinutes, L);
