@@ -230,6 +230,9 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
     local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player") or nil
     local currentPhaseID = UnifiedDataManager and UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(mapData.id) or nil
     if currentMapID == mapData.mapID and currentPhaseID == syncState.phaseID then
+        if UnifiedDataManager and UnifiedDataManager.NotifySharedDisplayApplied then
+            UnifiedDataManager:NotifySharedDisplayApplied(mapData.id, record)
+        end
         if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
             UIRefreshCoordinator:RequestRowRefresh(mapData.id, {
                 affectsSort = true,

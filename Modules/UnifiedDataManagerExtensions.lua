@@ -203,6 +203,33 @@ function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outReco
     return nil;
 end
 
+function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
+    if IsPublicChannelSyncFeatureEnabled() ~= true then
+        return false;
+    end
+    if type(mapId) ~= "number" or type(sharedRecord) ~= "table" or type(sharedRecord.recordKey) ~= "string" then
+        return false;
+    end
+
+    local state = GetSharedDisplayState(self, mapId);
+    if state.lastNotifiedRecordKey == sharedRecord.recordKey then
+        return false;
+    end
+
+    state.lastNotifiedRecordKey = sharedRecord.recordKey;
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local message = string.format(
+        (L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].",
+        mapName
+    );
+    if Logger and Logger.Info then
+        Logger:Info("Notification", "通知", message);
+    end
+    return true;
+end
+
 function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecord)
     if IsPublicChannelSyncFeatureEnabled() ~= true then
         return;
@@ -217,21 +244,7 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
     end
 
     state.activeRecordKey = sharedRecord.recordKey;
-    if state.lastNotifiedRecordKey == sharedRecord.recordKey then
-        return;
-    end
-
-    state.lastNotifiedRecordKey = sharedRecord.recordKey;
-
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
-    local message = string.format(
-        (L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].",
-        mapName
-    );
-    if Logger and Logger.Info then
-        Logger:Info("Notification", "通知", message);
-    end
+    self:NotifySharedDisplayApplied(mapId, sharedRecord);
 end
 
 function UnifiedDataManager:OnSharedDisplayReleased(mapId)
