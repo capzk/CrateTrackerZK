@@ -25,6 +25,8 @@ localeData["NoTimeRecord"] = "[%s]No time record!!!";
 localeData["TimeRemaining"] = "[%s]War Supplies airdrop in: %s!!!";
 localeData["AutoTeamReportMessage"] = "Current[%s]War Supplies airdrop in: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Acquired the latest shared airdrop info for the current phase in [%s].";
+localeData["PhaseTeamAlertMessage"] = "Current %s phase changed: %s ➡ %s";
+localeData["UnknownPhaseValue"] = "unknown";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Current phase: |cffffff00%s|r";

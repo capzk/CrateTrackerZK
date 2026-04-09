@@ -1,25 +1,25 @@
--- PublicSyncChannelService.lua - 备用缓存共享传输管理
+-- TeamSharedSyncChannelService.lua - 团队共享缓存传输管理
 -- 注意：该链路只承载隐藏式 AddonMessage 共享，不发送任何可见聊天消息。
 
-local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
+local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
 
-PublicSyncChannelService.FEATURE_ENABLED = true
+TeamSharedSyncChannelService.FEATURE_ENABLED = true
 
-function PublicSyncChannelService:IsFeatureEnabled()
+function TeamSharedSyncChannelService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
-function PublicSyncChannelService:Initialize()
+function TeamSharedSyncChannelService:Initialize()
     self.isInitialized = self:IsFeatureEnabled() == true
     return self.isInitialized == true
 end
 
-function PublicSyncChannelService:Reset()
+function TeamSharedSyncChannelService:Reset()
     self.isInitialized = false
 end
 
-function PublicSyncChannelService:CanUsePublicChannel()
+function TeamSharedSyncChannelService:CanUseTeamChannel()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -29,7 +29,7 @@ function PublicSyncChannelService:CanUsePublicChannel()
         or false
 end
 
-function PublicSyncChannelService:GetResolvedChannelInfo()
+function TeamSharedSyncChannelService:GetResolvedChannelInfo()
     local distribution = HiddenSyncTransport and HiddenSyncTransport.ResolveDistribution and HiddenSyncTransport:ResolveDistribution() or nil
     if not distribution then
         return nil
@@ -42,17 +42,17 @@ function PublicSyncChannelService:GetResolvedChannelInfo()
     return buffer
 end
 
-function PublicSyncChannelService:EnsureChannelJoined(force)
+function TeamSharedSyncChannelService:EnsureTeamChannelReady(force)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
     if not self.isInitialized then
         self:Initialize()
     end
-    return self:CanUsePublicChannel() == true and self:GetResolvedChannelInfo() ~= nil
+    return self:CanUseTeamChannel() == true and self:GetResolvedChannelInfo() ~= nil
 end
 
-function PublicSyncChannelService:MatchesChannelContext(chatType, target, zoneChannelID, localChannelID, channelName)
+function TeamSharedSyncChannelService:MatchesTeamChannelContext(chatType, target, zoneChannelID, localChannelID, channelName)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -75,7 +75,7 @@ function PublicSyncChannelService:MatchesChannelContext(chatType, target, zoneCh
     return chatType == distribution
 end
 
-function PublicSyncChannelService:SendPayload(prefix, payload)
+function TeamSharedSyncChannelService:SendPayload(prefix, payload)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -83,7 +83,7 @@ function PublicSyncChannelService:SendPayload(prefix, payload)
         return false
     end
 
-    if self:EnsureChannelJoined() ~= true then
+    if self:EnsureTeamChannelReady() ~= true then
         return false
     end
 
@@ -99,4 +99,4 @@ function PublicSyncChannelService:SendPayload(prefix, payload)
         or false
 end
 
-return PublicSyncChannelService
+return TeamSharedSyncChannelService

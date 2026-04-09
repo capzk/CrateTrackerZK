@@ -48,27 +48,30 @@ function RuntimeResetManager:ResetSharedRuntimeState()
         Notification.visibleAutoEventStateByMap = {};
         Notification.lastShoutTime = {};
     end
+    if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.Reset then
+        PhaseTeamAlertCoordinator:Reset();
+    end
 
-    if PublicChannelSyncStore and PublicChannelSyncStore.Reset then
-        PublicChannelSyncStore:Reset();
+    if TeamSharedSyncStore and TeamSharedSyncStore.Reset then
+        TeamSharedSyncStore:Reset();
     end
-    if PublicChannelWarmupService and PublicChannelWarmupService.Reset then
-        PublicChannelWarmupService:Reset();
+    if TeamSharedWarmupService and TeamSharedWarmupService.Reset then
+        TeamSharedWarmupService:Reset();
     end
-    if PublicSyncChannelService and PublicSyncChannelService.Reset then
-        PublicSyncChannelService:Reset();
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.Reset then
+        TeamSharedSyncChannelService:Reset();
     end
-    if PublicChannelSyncListener then
-        PublicChannelSyncListener.isInitialized = false;
+    if TeamSharedSyncListener then
+        TeamSharedSyncListener.isInitialized = false;
     end
 
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
         CrateTrackerZK.phaseTimerTicker:Cancel();
         CrateTrackerZK.phaseTimerTicker = nil;
     end
-    if CrateTrackerZK and CrateTrackerZK.publicChannelWarmupTicker then
-        CrateTrackerZK.publicChannelWarmupTicker:Cancel();
-        CrateTrackerZK.publicChannelWarmupTicker = nil;
+    if CrateTrackerZK and CrateTrackerZK.teamSharedWarmupTicker then
+        CrateTrackerZK.teamSharedWarmupTicker:Cancel();
+        CrateTrackerZK.teamSharedWarmupTicker = nil;
     end
     if CrateTrackerZK then
         CrateTrackerZK.phaseTimerPaused = false;
@@ -144,8 +147,8 @@ function RuntimeResetManager:ResetCommandRuntimeState()
         TeamCommListener.isInitialized = false;
     end
 
-    if PublicChannelSyncListener then
-        PublicChannelSyncListener.isInitialized = false;
+    if TeamSharedSyncListener then
+        TeamSharedSyncListener.isInitialized = false;
     end
 
     if ShoutDetector then

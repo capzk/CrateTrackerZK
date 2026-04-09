@@ -88,6 +88,17 @@ local function GetPhaseScopedKey(mapId, expansionID)
     return tostring(ResolveMapExpansionID(mapId, expansionID)) .. ":" .. tostring(mapId);
 end
 
+local function GetObservedPhaseHistoryStore()
+    if StateBuckets and StateBuckets.GetObservedPhaseHistory then
+        return StateBuckets:GetObservedPhaseHistory();
+    end
+    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or {};
+    if type(uiDB.observedPhaseHistory) ~= "table" then
+        uiDB.observedPhaseHistory = {};
+    end
+    return uiDB.observedPhaseHistory;
+end
+
 local function IsPlayerCurrentlyOnTrackedMap(mapId)
     if type(mapId) ~= "number" then
         return false;
@@ -636,6 +647,40 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
     return true;
 end
 
+function UnifiedDataManager:GetObservedHistoricalPhase(mapId)
+    if type(mapId) ~= "number" then
+        return nil;
+    end
+    local historyStore = GetObservedPhaseHistoryStore();
+    local history = historyStore and historyStore[GetPhaseScopedKey(mapId)] or nil;
+    return type(history) == "table" and type(history.phaseId) == "string" and history.phaseId ~= "" and history.phaseId or nil;
+end
+
+function UnifiedDataManager:PersistObservedHistoricalPhase(mapId, phaseId, observedAt)
+    if type(mapId) ~= "number" then
+        return false;
+    end
+
+    local historyStore = GetObservedPhaseHistoryStore();
+    if type(historyStore) ~= "table" then
+        return false;
+    end
+
+    local scopedKey = GetPhaseScopedKey(mapId);
+    if type(phaseId) ~= "string" or phaseId == "" then
+        historyStore[scopedKey] = nil;
+        return true;
+    end
+
+    historyStore[scopedKey] = {
+        mapId = mapId,
+        expansionID = ResolveMapExpansionID(mapId),
+        phaseId = phaseId,
+        observedAt = tonumber(observedAt) or Utils:GetCurrentTimestamp(),
+    };
+    return true;
+end
+
 function UnifiedDataManager:PersistConfirmedAirdropState(mapId, state)
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
@@ -768,15 +813,26 @@ function UnifiedDataManager:GetPhaseDisplayInfoInto(mapId, outInfo, comparisonBu
     outInfo.currentPhaseID = comparison.current;
     outInfo.persistentPhaseID = comparison.persistent;
     PopulatePhaseColor(outInfo.color, 1, 1, 1);
+    local hasSharedDisplayActive = self.IsSharedDisplayActive and self:IsSharedDisplayActive(mapId) == true;
     
     if comparison.status == "match" then
         PopulatePhaseColor(outInfo.color, 0, 1, 0);
         outInfo.status = "匹配";
         outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：匹配", comparison.current, comparison.persistent);
     elseif comparison.status == "mismatch" then
-        PopulatePhaseColor(outInfo.color, 1, 0, 0);
-        outInfo.status = "不匹配";
-        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：不匹配", comparison.current, comparison.persistent);
+        if hasSharedDisplayActive then
+            PopulatePhaseColor(outInfo.color, 0.60, 1.00, 0.60);
+            outInfo.status = "共享缓存";
+            outInfo.tooltip = string.format(
+                "当前位面：%s\n持久化位面：%s\n状态：已命中当前位面的共享缓存",
+                comparison.current,
+                comparison.persistent
+            );
+        else
+            PopulatePhaseColor(outInfo.color, 1, 0, 0);
+            outInfo.status = "不匹配";
+            outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：不匹配", comparison.current, comparison.persistent);
+        end
     elseif comparison.status == "no_data" then
         outInfo.status = "无数据";
         outInfo.tooltip = "无位面数据";

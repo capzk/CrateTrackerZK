@@ -27,6 +27,8 @@ localeData["NoTimeRecord"] = "[%s]Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s]До воздушного десанта военных припасов: %s!!!";
 localeData["AutoTeamReportMessage"] = "На[%s]до сброса военных припасов осталось: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Получена актуальная общая информация о сбросе для текущей фазы в [%s].";
+localeData["PhaseTeamAlertMessage"] = "Фаза на %s изменилась: %s ➡ %s";
+localeData["UnknownPhaseValue"] = "неизвестно";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Текущая фаза: |cffffff00%s|r";

@@ -1,30 +1,30 @@
--- PublicChannelSyncListener.lua - 备用相位缓存共享同步监听与发送
+-- TeamSharedSyncListener.lua - 团队共享缓存同步监听与发送
 -- 注意：团队隐藏同步仍是唯一可靠同步来源。
 -- 本模块只负责 best-effort 的运行时缓存补充信息，用于当前位面的临时显示回退。
 
-local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
+local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
 
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport")
 local IconDetector = BuildEnv("IconDetector")
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
-local PublicChannelSyncProtocol = BuildEnv("PublicChannelSyncProtocol")
-local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
-local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
+local TeamSharedSyncProtocol = BuildEnv("TeamSharedSyncProtocol")
+local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
+local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
 
-PublicChannelSyncListener.isInitialized = false
-PublicChannelSyncListener.FEATURE_ENABLED = true
-PublicChannelSyncListener.syncStateBuffer = PublicChannelSyncListener.syncStateBuffer or {}
-PublicChannelSyncListener.channelContextBuffer = PublicChannelSyncListener.channelContextBuffer or {}
-PublicChannelSyncListener.ADDON_PREFIX = PublicChannelSyncProtocol and PublicChannelSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"
+TeamSharedSyncListener.isInitialized = false
+TeamSharedSyncListener.FEATURE_ENABLED = true
+TeamSharedSyncListener.syncStateBuffer = TeamSharedSyncListener.syncStateBuffer or {}
+TeamSharedSyncListener.channelContextBuffer = TeamSharedSyncListener.channelContextBuffer or {}
+TeamSharedSyncListener.ADDON_PREFIX = TeamSharedSyncProtocol and TeamSharedSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"
 
-function PublicChannelSyncListener:IsFeatureEnabled()
+function TeamSharedSyncListener:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
-function PublicChannelSyncListener:RegisterAddonPrefix()
+function TeamSharedSyncListener:RegisterAddonPrefix()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -42,41 +42,41 @@ local function SendSyncPayload(listener, syncState)
     if type(syncState) ~= "table" or type(syncState.phaseID) ~= "string" or syncState.phaseID == "" then
         return false
     end
-    if listener:EnsureBroadcastChannelAvailable() ~= true then
+    if listener:EnsureTeamSharedChannelAvailable() ~= true then
         return false
     end
 
-    local payload = PublicChannelSyncProtocol and PublicChannelSyncProtocol.BuildPayload and PublicChannelSyncProtocol:BuildPayload(syncState) or nil
+    local payload = TeamSharedSyncProtocol and TeamSharedSyncProtocol.BuildPayload and TeamSharedSyncProtocol:BuildPayload(syncState) or nil
     if type(payload) ~= "string" or payload == "" then
         return false
     end
 
-    return PublicSyncChannelService and PublicSyncChannelService.SendPayload
-        and PublicSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
         or false
 end
 
-function PublicChannelSyncListener:CanSendSharedSync()
+function TeamSharedSyncListener:CanSendSharedSync()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    return PublicSyncChannelService
-        and PublicSyncChannelService.CanUsePublicChannel
-        and PublicSyncChannelService:CanUsePublicChannel() == true
+    return TeamSharedSyncChannelService
+        and TeamSharedSyncChannelService.CanUseTeamChannel
+        and TeamSharedSyncChannelService:CanUseTeamChannel() == true
         or false
 end
 
-function PublicChannelSyncListener:CanReceiveSharedSync()
+function TeamSharedSyncListener:CanReceiveSharedSync()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if not PublicSyncChannelService or not PublicSyncChannelService.CanUsePublicChannel then
+    if not TeamSharedSyncChannelService or not TeamSharedSyncChannelService.CanUseTeamChannel then
         return false
     end
-    return PublicSyncChannelService:CanUsePublicChannel() == true
+    return TeamSharedSyncChannelService:CanUseTeamChannel() == true
 end
 
-function PublicChannelSyncListener:Initialize()
+function TeamSharedSyncListener:Initialize()
     if self:IsFeatureEnabled() ~= true then
         self.isInitialized = false
         return false
@@ -84,21 +84,21 @@ function PublicChannelSyncListener:Initialize()
     if TeamCommMapCache and TeamCommMapCache.EnsurePlayerIdentity then
         TeamCommMapCache:EnsurePlayerIdentity(self)
     end
-    if PublicChannelSyncStore and PublicChannelSyncStore.Initialize then
-        PublicChannelSyncStore:Initialize()
+    if TeamSharedSyncStore and TeamSharedSyncStore.Initialize then
+        TeamSharedSyncStore:Initialize()
     end
-    if PublicSyncChannelService and PublicSyncChannelService.Initialize then
-        PublicSyncChannelService:Initialize()
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.Initialize then
+        TeamSharedSyncChannelService:Initialize()
     end
     self:RegisterAddonPrefix()
-    if PublicSyncChannelService and PublicSyncChannelService.EnsureChannelJoined then
-        PublicSyncChannelService:EnsureChannelJoined()
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.EnsureTeamChannelReady then
+        TeamSharedSyncChannelService:EnsureTeamChannelReady()
     end
     self.isInitialized = true
     return true
 end
 
-function PublicChannelSyncListener:EnsureBroadcastChannelAvailable(force)
+function TeamSharedSyncListener:EnsureTeamSharedChannelAvailable(force)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -106,13 +106,13 @@ function PublicChannelSyncListener:EnsureBroadcastChannelAvailable(force)
         self:Initialize()
     end
     self:RegisterAddonPrefix()
-    if PublicSyncChannelService and PublicSyncChannelService.EnsureChannelJoined then
-        return PublicSyncChannelService:EnsureChannelJoined(force == true)
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.EnsureTeamChannelReady then
+        return TeamSharedSyncChannelService:EnsureTeamChannelReady(force == true)
     end
     return false
 end
 
-function PublicChannelSyncListener:SendSharedSync(syncState)
+function TeamSharedSyncListener:SendSharedSync(syncState)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -164,7 +164,7 @@ local function IsSharedSyncPayloadConsistent(syncState)
         and resolvedPhaseID == syncState.phaseID
 end
 
-function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
+function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatType, sender, ...)
     if self:IsFeatureEnabled() ~= true then
         return false
     end
@@ -177,9 +177,9 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
 
     self.channelContextBuffer = self.channelContextBuffer or {}
     local channelContext = ResolveCurrentChannelContext(self.channelContextBuffer, ...)
-    if not PublicSyncChannelService
-        or not PublicSyncChannelService.MatchesChannelContext
-        or PublicSyncChannelService:MatchesChannelContext(
+    if not TeamSharedSyncChannelService
+        or not TeamSharedSyncChannelService.MatchesTeamChannelContext
+        or TeamSharedSyncChannelService:MatchesTeamChannelContext(
             chatType,
             channelContext.target,
             channelContext.zoneChannelID,
@@ -194,9 +194,9 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
     end
 
     self.syncStateBuffer = self.syncStateBuffer or {}
-    local syncState = PublicChannelSyncProtocol
-        and PublicChannelSyncProtocol.ParsePayloadInto
-        and PublicChannelSyncProtocol:ParsePayloadInto(prefix, payload, self.syncStateBuffer)
+    local syncState = TeamSharedSyncProtocol
+        and TeamSharedSyncProtocol.ParsePayloadInto
+        and TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, self.syncStateBuffer)
         or nil
     if not syncState then
         return false
@@ -212,8 +212,8 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
 
     local currentTime = Utils:GetCurrentTimestamp()
     local changed, record = false, nil
-    if PublicChannelSyncStore and PublicChannelSyncStore.UpsertRecord then
-        changed, record = PublicChannelSyncStore:UpsertRecord(
+    if TeamSharedSyncStore and TeamSharedSyncStore.UpsertRecord then
+        changed, record = TeamSharedSyncStore:UpsertRecord(
             syncState.expansionID,
             syncState.mapID,
             syncState.phaseID,
@@ -247,4 +247,4 @@ function PublicChannelSyncListener:HandleAddonEvent(event, prefix, payload, chat
     return true
 end
 
-return PublicChannelSyncListener
+return TeamSharedSyncListener

@@ -1,20 +1,20 @@
--- PublicChannelSyncStore.lua - 备用相位缓存共享记录运行时存储
+-- TeamSharedSyncStore.lua - 团队共享缓存记录运行时存储
 -- 注意：这里只保存共享补充信息，不作为本地可靠事实源，也不写长期持久化。
 
-local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
+local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 
-PublicChannelSyncStore.FEATURE_ENABLED = true
-PublicChannelSyncStore.RECORD_TTL = 3600
-PublicChannelSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
-PublicChannelSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET = 120
+TeamSharedSyncStore.FEATURE_ENABLED = true
+TeamSharedSyncStore.RECORD_TTL = 3600
+TeamSharedSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
+TeamSharedSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET = 120
 
-function PublicChannelSyncStore:IsFeatureEnabled()
+function TeamSharedSyncStore:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
 local function EnsureRecords()
-    PublicChannelSyncStore.sharedPhaseRecords = PublicChannelSyncStore.sharedPhaseRecords or {}
-    return PublicChannelSyncStore.sharedPhaseRecords
+    TeamSharedSyncStore.sharedPhaseRecords = TeamSharedSyncStore.sharedPhaseRecords or {}
+    return TeamSharedSyncStore.sharedPhaseRecords
 end
 
 local function EnsureMapBucket(expansionID, mapID)
@@ -40,8 +40,8 @@ end
 
 local function IsTimestampWithinAcceptableWindow(timestamp, currentTime)
     local now = currentTime or Utils:GetCurrentTimestamp()
-    local oldestAllowed = now - PublicChannelSyncStore.RECORD_TTL
-    local newestAllowed = now + PublicChannelSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET
+    local oldestAllowed = now - TeamSharedSyncStore.RECORD_TTL
+    local newestAllowed = now + TeamSharedSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET
 
     return type(timestamp) == "number"
         and timestamp > oldestAllowed
@@ -80,7 +80,7 @@ local function PruneMapBucket(mapBucket, currentTime, maxRecords)
     end
 end
 
-function PublicChannelSyncStore:Initialize()
+function TeamSharedSyncStore:Initialize()
     if self:IsFeatureEnabled() ~= true then
         self.sharedPhaseRecords = {}
         return false
@@ -89,11 +89,11 @@ function PublicChannelSyncStore:Initialize()
     return true
 end
 
-function PublicChannelSyncStore:Reset()
+function TeamSharedSyncStore:Reset()
     self.sharedPhaseRecords = {}
 end
 
-function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecord, currentTime)
+function TeamSharedSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecord, currentTime)
     if self:IsFeatureEnabled() ~= true then
         return nil
     end
@@ -134,7 +134,7 @@ function PublicChannelSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRe
     return outRecord
 end
 
-function PublicChannelSyncStore:AppendActiveRecords(outRecords, currentTime)
+function TeamSharedSyncStore:AppendActiveRecords(outRecords, currentTime)
     if self:IsFeatureEnabled() ~= true or type(outRecords) ~= "table" then
         return outRecords
     end
@@ -178,7 +178,7 @@ function PublicChannelSyncStore:AppendActiveRecords(outRecords, currentTime)
     return outRecords
 end
 
-function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt)
+function TeamSharedSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt)
     if self:IsFeatureEnabled() ~= true then
         return false, nil
     end
@@ -223,7 +223,7 @@ function PublicChannelSyncStore:UpsertRecord(expansionID, mapID, phaseID, timest
     return true, record
 end
 
-function PublicChannelSyncStore:ClearExpiredRecords(currentTime)
+function TeamSharedSyncStore:ClearExpiredRecords(currentTime)
     if self:IsFeatureEnabled() ~= true then
         self.sharedPhaseRecords = {}
         return
@@ -252,4 +252,4 @@ function PublicChannelSyncStore:ClearExpiredRecords(currentTime)
     end
 end
 
-return PublicChannelSyncStore
+return TeamSharedSyncStore

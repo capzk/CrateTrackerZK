@@ -16,6 +16,20 @@ local function NormalizeAddonCallResult(...)
     return select(1, ...)
 end
 
+local function IsInstanceLikeContent()
+    local inInstance = IsInInstance and IsInInstance() or false
+    if inInstance == true then
+        return true
+    end
+    if GetInstanceInfo then
+        local _, instanceType = GetInstanceInfo()
+        if instanceType == "scenario" then
+            return true
+        end
+    end
+    return false
+end
+
 function HiddenSyncTransport:HasTeamChatContext()
     if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
         return true
@@ -33,7 +47,7 @@ function HiddenSyncTransport:IsNonInstanceTeamContext()
     if self:HasTeamChatContext() ~= true then
         return false
     end
-    if IsInInstance and IsInInstance() then
+    if IsInstanceLikeContent() == true then
         return false
     end
     return true

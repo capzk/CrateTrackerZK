@@ -28,11 +28,11 @@ local function HandleZoneChanged()
         if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
             TeamCommListener:RegisterAddonPrefix()
         end
-        if PublicChannelSyncListener
-            and PublicChannelSyncListener.EnsureBroadcastChannelAvailable
-            and PublicChannelSyncListener.IsFeatureEnabled
-            and PublicChannelSyncListener:IsFeatureEnabled() == true then
-            PublicChannelSyncListener:EnsureBroadcastChannelAvailable()
+        if TeamSharedSyncListener
+            and TeamSharedSyncListener.EnsureTeamSharedChannelAvailable
+            and TeamSharedSyncListener.IsFeatureEnabled
+            and TeamSharedSyncListener:IsFeatureEnabled() == true then
+            TeamSharedSyncListener:EnsureTeamSharedChannelAvailable()
         end
         if CoreShared:IsAreaActive() then
             if TimerManager then TimerManager:DetectMapIcons(currentMapID) end
@@ -43,8 +43,8 @@ local function HandleZoneChanged()
         if TickerController and TickerController.RefreshPhaseTicker then
             TickerController:RefreshPhaseTicker(CrateTrackerZK)
         end
-        if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
-            TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+        if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
+            TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
         end
     end)
 end
@@ -53,8 +53,8 @@ local function HandleGroupRosterUpdate()
     if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
         TeamCommListener:RegisterAddonPrefix()
     end
-    if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
-        TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+    if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
+        TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
     end
 end
 

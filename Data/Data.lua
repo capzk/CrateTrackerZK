@@ -282,6 +282,10 @@ function Data:TryMigrateSchema(oldVersion)
         uiDB.phaseCache = {};
         migratedCount = migratedCount + 1;
     end
+    if uiDB.observedPhaseHistory ~= nil and type(uiDB.observedPhaseHistory) ~= "table" then
+        uiDB.observedPhaseHistory = {};
+        migratedCount = migratedCount + 1;
+    end
 
     db.schemaVersion = self.SCHEMA_VERSION;
     if Logger and Logger.Info then
@@ -309,6 +313,7 @@ function Data:ResetDatabaseIfNeeded(forceReset)
             CRATETRACKERZK_UI_DB.hiddenMaps = nil;
             CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
             CRATETRACKERZK_UI_DB.phaseCache = nil;
+            CRATETRACKERZK_UI_DB.observedPhaseHistory = nil;
         end
         if Logger and Logger.Info then
             Logger:Info("Data", "初始化", string.format("执行强制重置（schema=%d）", self.SCHEMA_VERSION));
@@ -328,6 +333,7 @@ function Data:ResetDatabaseIfNeeded(forceReset)
                 CRATETRACKERZK_UI_DB.hiddenMaps = nil;
                 CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
                 CRATETRACKERZK_UI_DB.phaseCache = nil;
+                CRATETRACKERZK_UI_DB.observedPhaseHistory = nil;
             end
             if Logger and Logger.Warn then
                 Logger:Warn("Data", "初始化", string.format(

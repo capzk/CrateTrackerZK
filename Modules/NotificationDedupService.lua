@@ -297,49 +297,6 @@ function NotificationDedupService:IsRecentShout(notification, mapRef, windowSeco
     return isRecent, lastTime
 end
 
-function NotificationDedupService:ResolveVisibleAutoDispatchState(notification, mapRef, eventContext, outboundChatType, currentTime)
-    local state = {
-        outboundChatType = outboundChatType,
-        shouldAbortNotification = false,
-        shouldTrackVisibleSend = false,
-        blockReason = nil,
-    }
-
-    if not outboundChatType or notification.teamNotificationEnabled ~= true then
-        return state
-    end
-
-    currentTime = currentTime or Utils:GetCurrentTimestamp()
-
-    local hasRecentReceivedSync, lastReceivedSyncTime = self:HasRecentReceivedSync(
-        notification,
-        mapRef,
-        notification.RECEIVED_SYNC_VISIBLE_WINDOW,
-        currentTime,
-        eventContext
-    )
-    if lastReceivedSyncTime and not hasRecentReceivedSync then
-        state.outboundChatType = nil
-        state.blockReason = "hidden_sync_window_expired"
-        return state
-    end
-
-    if self:HasPlayerSentNotification(notification, mapRef, eventContext) then
-        state.shouldAbortNotification = true
-        state.blockReason = "player_already_sent"
-        return state
-    end
-
-    if not self:CanSendNotification(notification, mapRef, eventContext, currentTime) then
-        state.shouldAbortNotification = true
-        state.blockReason = "notification_window_expired"
-        return state
-    end
-
-    state.shouldTrackVisibleSend = true
-    return state
-end
-
 function NotificationDedupService:CommitVisibleAutoDispatch(notification, mapRef, eventContext, currentTime)
     return self:MarkPlayerSentNotification(notification, mapRef, eventContext, currentTime)
 end

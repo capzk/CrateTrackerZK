@@ -8,6 +8,7 @@ local Area = BuildEnv("Area");
 local MapTracker = BuildEnv("MapTracker");
 local ExpansionConfig = BuildEnv("ExpansionConfig");
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator");
+local PhaseTeamAlertCoordinator = BuildEnv("PhaseTeamAlertCoordinator");
 
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
@@ -100,6 +101,10 @@ function Phase:UpdatePhaseInfo(currentMapID)
         local currentPhaseID = nil;
         local uiNeedsRefresh = false;
         local previousPhaseID = UnifiedDataManager and UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
+        local historicalPhaseID = UnifiedDataManager
+            and UnifiedDataManager.GetObservedHistoricalPhase
+            and UnifiedDataManager:GetObservedHistoricalPhase(targetMapData.id)
+            or nil;
         
         if detectedPhaseID then
             if cachedPhaseID ~= detectedPhaseID then
@@ -121,9 +126,6 @@ function Phase:UpdatePhaseInfo(currentMapID)
             end
             -- 保留旧版 currentPhaseID 回写，兼容仍读取 mapData 的链路
             targetMapData.currentPhaseID = currentPhaseID;
-            if UnifiedDataManager and UnifiedDataManager.RefreshSharedDisplayActivation then
-                UnifiedDataManager:RefreshSharedDisplayActivation(targetMapData.id, Utils:GetCurrentTimestamp());
-            end
             if previousPhaseID ~= currentPhaseID then
                 if UnifiedDataManager and UnifiedDataManager.MarkSharedDisplayPhaseTransition then
                     UnifiedDataManager:MarkSharedDisplayPhaseTransition(
@@ -146,7 +148,32 @@ function Phase:UpdatePhaseInfo(currentMapID)
                     local mapName = Data:GetMapDisplayName(targetMapData);
                     local messageKey = isPhaseChanged and "InstanceChangedTo" or "PhaseDetectedFirstTime";
                     Logger:Info("Phase", "位面", string.format(L[messageKey], mapName, currentPhaseID));
+                    if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.HandleLocalPhaseDetected then
+                        PhaseTeamAlertCoordinator:HandleLocalPhaseDetected(
+                            targetMapData,
+                            previousPhaseID,
+                            historicalPhaseID,
+                            currentPhaseID
+                        );
+                    end
+                    if UnifiedDataManager and UnifiedDataManager.PersistObservedHistoricalPhase then
+                        UnifiedDataManager:PersistObservedHistoricalPhase(
+                            targetMapData.id,
+                            currentPhaseID,
+                            Utils:GetCurrentTimestamp()
+                        );
+                    end
                     self.lastReportedMapPhaseKey = mapPhaseKey;
+                end
+            end
+
+            if UnifiedDataManager and UnifiedDataManager.RefreshSharedDisplayActivation then
+                local sharedDisplayActivated = UnifiedDataManager:RefreshSharedDisplayActivation(
+                    targetMapData.id,
+                    Utils:GetCurrentTimestamp()
+                );
+                if sharedDisplayActivated == true then
+                    uiNeedsRefresh = true;
                 end
             end
             

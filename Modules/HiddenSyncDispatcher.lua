@@ -25,7 +25,7 @@ end
 function HiddenSyncDispatcher:GetHandlers()
     self.handlersBuffer = ClearArray(self.handlersBuffer)
     AppendHandler(self.handlersBuffer, TeamCommListener)
-    AppendHandler(self.handlersBuffer, PublicChannelSyncListener)
+    AppendHandler(self.handlersBuffer, TeamSharedSyncListener)
     return self.handlersBuffer
 end
 

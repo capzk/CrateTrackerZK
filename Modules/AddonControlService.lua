@@ -16,10 +16,10 @@ local MapTracker = BuildEnv("MapTracker")
 local Phase = BuildEnv("Phase")
 local TeamCommListener = BuildEnv("TeamCommListener")
 local TimerManager = BuildEnv("TimerManager")
-local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
-local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
-local PublicChannelWarmupService = BuildEnv("PublicChannelWarmupService")
-local PublicSyncChannelService = BuildEnv("PublicSyncChannelService")
+local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
+local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
+local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
+local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local ShoutDetector = BuildEnv("ShoutDetector")
 local Area = BuildEnv("Area")
@@ -59,18 +59,18 @@ end
 
 local function ResetSyncListeners()
     ResetModuleInitializationState(TeamCommListener)
-    ResetModuleInitializationState(PublicChannelSyncListener)
+    ResetModuleInitializationState(TeamSharedSyncListener)
 end
 
 local function ResetSharedSyncRuntimeState()
-    if PublicChannelSyncStore and PublicChannelSyncStore.Reset then
-        PublicChannelSyncStore:Reset()
+    if TeamSharedSyncStore and TeamSharedSyncStore.Reset then
+        TeamSharedSyncStore:Reset()
     end
-    if PublicChannelWarmupService and PublicChannelWarmupService.Reset then
-        PublicChannelWarmupService:Reset()
+    if TeamSharedWarmupService and TeamSharedWarmupService.Reset then
+        TeamSharedWarmupService:Reset()
     end
-    if PublicSyncChannelService and PublicSyncChannelService.Reset then
-        PublicSyncChannelService:Reset()
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.Reset then
+        TeamSharedSyncChannelService:Reset()
     end
     if UnifiedDataManager then
         UnifiedDataManager.sharedDisplayStateByMap = {}
@@ -80,7 +80,7 @@ end
 local function InitializeSyncListeners(enablePublicSync)
     InitializeModule(TeamCommListener)
     if enablePublicSync == true then
-        InitializeModule(PublicChannelSyncListener)
+        InitializeModule(TeamSharedSyncListener)
     end
 end
 
@@ -247,8 +247,8 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         ResetSharedSyncRuntimeState()
         InitializeSyncListeners(true)
         InitializeShoutDetector()
-        if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
-            TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+        if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
+            TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
         end
         if CrateTrackerZKFloatingButton then
             CrateTrackerZKFloatingButton:Show()
@@ -265,8 +265,8 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         if CrateTrackerZK and CrateTrackerZK.PauseAllDetections then
             CrateTrackerZK:PauseAllDetections()
         end
-        if TickerController and TickerController.StopPublicChannelWarmupTicker then
-            TickerController:StopPublicChannelWarmupTicker(CrateTrackerZK)
+        if TickerController and TickerController.StopTeamSharedWarmupTicker then
+            TickerController:StopTeamSharedWarmupTicker(CrateTrackerZK)
         end
         ResetSyncListeners()
         ResetSharedSyncRuntimeState()

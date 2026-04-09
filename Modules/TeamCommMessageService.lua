@@ -9,14 +9,15 @@ local TimerManager = BuildEnv("TimerManager")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local Data = BuildEnv("Data")
 local Notification = BuildEnv("Notification")
+local PhaseTeamAlertCoordinator = BuildEnv("PhaseTeamAlertCoordinator")
 
 TeamCommMessageService.syncContextBuffer = TeamCommMessageService.syncContextBuffer or {
     persistentStateBuffer = {},
 }
 
 local function RecordVisibleMessageWindow(mapKey, mapName, currentTime, eventContext)
-    if Notification and Notification.RecordReceivedSync then
-        Notification:RecordReceivedSync(mapKey or mapName, currentTime, eventContext)
+    if Notification and Notification.RecordConfirmedSyncReceipt then
+        Notification:RecordConfirmedSyncReceipt(mapKey or mapName, eventContext, currentTime)
     end
 end
 
@@ -192,6 +193,14 @@ end
 function TeamCommMessageService:ProcessSync(listener, syncState, chatType, sender)
     if type(syncState) ~= "table" then
         return false
+    end
+
+    if syncState.messageType == listener.ADDON_MESSAGE_TYPE_PHASE_CLAIM
+        or syncState.messageType == listener.ADDON_MESSAGE_TYPE_PHASE_ACK then
+        return PhaseTeamAlertCoordinator
+            and PhaseTeamAlertCoordinator.HandleRemoteCoordination
+            and PhaseTeamAlertCoordinator:HandleRemoteCoordination(listener, syncState, sender)
+            or false
     end
 
     return self:ProcessConfirmedSync(listener, syncState, chatType, sender)

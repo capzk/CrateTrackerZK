@@ -5,15 +5,15 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK");
 local TimeFormatter = BuildEnv("TimeFormatter");
 local L = CrateTrackerZK and CrateTrackerZK.L or {};
 local Data = BuildEnv("Data");
-local Logger = BuildEnv("Logger");
 local StateBuckets = BuildEnv("StateBuckets");
-local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore");
-local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener");
+local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore");
+local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener");
+local Notification = BuildEnv("Notification");
 
-local function IsPublicChannelSyncFeatureEnabled()
-    return PublicChannelSyncListener
-        and PublicChannelSyncListener.IsFeatureEnabled
-        and PublicChannelSyncListener:IsFeatureEnabled() == true;
+local function IsTeamSharedSyncFeatureEnabled()
+    return TeamSharedSyncListener
+        and TeamSharedSyncListener.IsFeatureEnabled
+        and TeamSharedSyncListener:IsFeatureEnabled() == true;
 end
 
 local function GetPhaseCacheStore()
@@ -104,10 +104,10 @@ end
 function UnifiedDataManager:ClearExpiredTemporaryData()
     self:ClearExpiredTemporaryTimes();
     self:ClearExpiredTemporaryPhases();
-    if IsPublicChannelSyncFeatureEnabled()
-        and PublicChannelSyncStore
-        and PublicChannelSyncStore.ClearExpiredRecords then
-        PublicChannelSyncStore:ClearExpiredRecords(Utils:GetCurrentTimestamp());
+    if IsTeamSharedSyncFeatureEnabled()
+        and TeamSharedSyncStore
+        and TeamSharedSyncStore.ClearExpiredRecords then
+        TeamSharedSyncStore:ClearExpiredRecords(Utils:GetCurrentTimestamp());
     end
 end
 
@@ -118,7 +118,7 @@ local function GetSharedDisplayState(self, mapId)
 end
 
 function UnifiedDataManager:MarkSharedDisplayPhaseTransition(mapId, previousPhaseId, currentPhaseId, changedAt)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return;
     end
     if type(mapId) ~= "number" then
@@ -146,7 +146,7 @@ function UnifiedDataManager:MarkSharedDisplayPhaseTransition(mapId, previousPhas
 end
 
 function UnifiedDataManager:CanUseSharedDisplayForPhase(mapId, phaseId)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return false;
     end
     if type(mapId) ~= "number"
@@ -177,8 +177,19 @@ function UnifiedDataManager:ClearSharedDisplayPhaseGate(mapId)
     state.activeRecordKey = nil;
 end
 
+function UnifiedDataManager:IsSharedDisplayActive(mapId)
+    if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
+        return false;
+    end
+
+    local state = self.sharedDisplayStateByMap[mapId];
+    return type(state) == "table"
+        and type(state.activeRecordKey) == "string"
+        and state.activeRecordKey ~= "";
+end
+
 function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outRecord)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return nil;
     end
     if not self.isInitialized or type(phaseId) ~= "string" or phaseId == "" or type(outRecord) ~= "table" then
@@ -190,8 +201,8 @@ function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outReco
         return nil;
     end
 
-    if PublicChannelSyncStore and PublicChannelSyncStore.GetRecordInto then
-        return PublicChannelSyncStore:GetRecordInto(
+    if TeamSharedSyncStore and TeamSharedSyncStore.GetRecordInto then
+        return TeamSharedSyncStore:GetRecordInto(
             mapData.expansionID,
             mapData.mapID,
             phaseId,
@@ -204,7 +215,7 @@ function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outReco
 end
 
 function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return false;
     end
     if type(mapId) ~= "number" or type(sharedRecord) ~= "table" or type(sharedRecord.recordKey) ~= "string" then
@@ -218,20 +229,14 @@ function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
 
     state.lastNotifiedRecordKey = sharedRecord.recordKey;
 
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
-    local message = string.format(
-        (L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].",
-        mapName
-    );
-    if Logger and Logger.Info then
-        Logger:Info("Notification", "通知", message);
+    if Notification and Notification.NotifySharedPhaseSyncApplied then
+        Notification:NotifySharedPhaseSyncApplied(mapId, sharedRecord);
     end
     return true;
 end
 
 function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecord)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return;
     end
     if type(mapId) ~= "number" or type(sharedRecord) ~= "table" or type(sharedRecord.recordKey) ~= "string" then
@@ -248,7 +253,7 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
 end
 
 function UnifiedDataManager:OnSharedDisplayReleased(mapId)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return;
     end
     if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
@@ -264,12 +269,15 @@ function UnifiedDataManager:OnSharedDisplayReleased(mapId)
 end
 
 function UnifiedDataManager:RefreshSharedDisplayActivation(mapId, currentTime)
-    if IsPublicChannelSyncFeatureEnabled() ~= true then
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
         return false;
     end
     if not self.isInitialized or type(mapId) ~= "number" then
         return false;
     end
+
+    local sharedState = GetSharedDisplayState(self, mapId);
+    local previousActiveRecordKey = type(sharedState) == "table" and sharedState.activeRecordKey or nil;
 
     self.sharedDisplayActivationProbeByMap = self.sharedDisplayActivationProbeByMap or {};
     local probe = self.sharedDisplayActivationProbeByMap[mapId] or {};
@@ -283,8 +291,10 @@ function UnifiedDataManager:RefreshSharedDisplayActivation(mapId, currentTime)
         probe.displayTimeBuffer,
         probe.persistentRecordBuffer
     );
+    local currentActiveRecordKey = type(sharedState) == "table" and sharedState.activeRecordKey or nil;
     return type(displayTime) == "table"
-        and displayTime.source == self.TimeSource.PUBLIC_CHANNEL_SYNC;
+        and displayTime.source == self.TimeSource.PUBLIC_CHANNEL_SYNC
+        and currentActiveRecordKey ~= previousActiveRecordKey;
 end
 
 function UnifiedDataManager:FormatTime(seconds, showOnlyMinutes)

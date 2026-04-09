@@ -6,10 +6,27 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local L = CrateTrackerZK and CrateTrackerZK.L or {}
 
+function NotificationQueryService:BuildAirdropDetectedMessage(mapName)
+    local format = (L and L["AirdropDetected"]) or "Airdrop detected on [%s]!"
+    return string.format(format, mapName or "")
+end
+
 function NotificationQueryService:BuildAutoTeamReportMessage(mapName, remaining)
     local format = (L and L["AutoTeamReportMessage"]) or "Current [%s] War Supply Crate in: %s!!"
     local timeText = (UnifiedDataManager and UnifiedDataManager.FormatTime and UnifiedDataManager:FormatTime(remaining, true)) or "--:--"
     return string.format(format, mapName, timeText)
+end
+
+function NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
+    local format = (L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s]."
+    return string.format(format, mapName or "")
+end
+
+function NotificationQueryService:BuildPhaseTeamAlertMessage(mapName, previousPhaseID, currentPhaseID)
+    local format = (L and L["PhaseTeamAlertMessage"]) or "Current %s phase changed: %s --> %s"
+    local previousText = previousPhaseID ~= nil and tostring(previousPhaseID) or ((L and L["UnknownPhaseValue"]) or "unknown")
+    local currentText = currentPhaseID ~= nil and tostring(currentPhaseID) or ((L and L["UnknownPhaseValue"]) or "unknown")
+    return string.format(format, mapName or "", previousText, currentText)
 end
 
 function NotificationQueryService:GetNearestAirdropInfo()

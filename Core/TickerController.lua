@@ -5,7 +5,7 @@ local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 
 local PHASE_TICK_INTERVAL = 10
-local DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL = 540
+local DEFAULT_TEAM_SHARED_WARMUP_INTERVAL = 540
 
 local function CanRunPhasePolling()
     if not CoreShared:IsAreaActive() or not Phase then
@@ -26,14 +26,14 @@ local function UpdatePhaseNowIfActive()
     return false
 end
 
-local function CanRunPublicChannelWarmup()
+local function CanRunTeamSharedWarmup()
     if not CoreShared:IsAddonEnabled() then
         return false
     end
-    if not PublicChannelWarmupService or not PublicChannelWarmupService.CanBroadcast then
+    if not TeamSharedWarmupService or not TeamSharedWarmupService.CanBroadcast then
         return false
     end
-    return PublicChannelWarmupService:CanBroadcast() == true
+    return TeamSharedWarmupService:CanBroadcast() == true
 end
 
 function TickerController:StartPhaseTicker(owner)
@@ -150,60 +150,63 @@ function TickerController:StartCleanupTicker(owner)
         if Notification and Notification.ClearExpiredTransientState then
             Notification:ClearExpiredTransientState(cleanupTime)
         end
+        if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.PruneExpiredState then
+            PhaseTeamAlertCoordinator:PruneExpiredState(cleanupTime)
+        end
         if Logger and Logger.PruneMessageCache then
             Logger:PruneMessageCache(cleanupTime)
         end
     end)
 end
 
-function TickerController:StartPublicChannelWarmupTicker(owner)
+function TickerController:StartTeamSharedWarmupTicker(owner)
     owner = owner or CrateTrackerZK
-    if not CanRunPublicChannelWarmup() then
-        self:StopPublicChannelWarmupTicker(owner)
+    if not CanRunTeamSharedWarmup() then
+        self:StopTeamSharedWarmupTicker(owner)
         return false
     end
-    if owner.publicChannelWarmupTicker then
+    if owner.teamSharedWarmupTicker then
         return true
     end
 
-    local interval = PublicChannelWarmupService and PublicChannelWarmupService.BROADCAST_INTERVAL or DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL
+    local interval = TeamSharedWarmupService and TeamSharedWarmupService.BROADCAST_INTERVAL or DEFAULT_TEAM_SHARED_WARMUP_INTERVAL
     if type(interval) ~= "number" or interval <= 0 then
-        interval = DEFAULT_PUBLIC_CHANNEL_WARMUP_INTERVAL
+        interval = DEFAULT_TEAM_SHARED_WARMUP_INTERVAL
     end
 
-    owner.publicChannelWarmupTicker = C_Timer.NewTicker(interval, function()
-        if not CanRunPublicChannelWarmup() then
-            self:StopPublicChannelWarmupTicker(owner)
+    owner.teamSharedWarmupTicker = C_Timer.NewTicker(interval, function()
+        if not CanRunTeamSharedWarmup() then
+            self:StopTeamSharedWarmupTicker(owner)
             return
         end
-        if PublicChannelWarmupService and PublicChannelWarmupService.StartBroadcastRound then
-            PublicChannelWarmupService:StartBroadcastRound()
+        if TeamSharedWarmupService and TeamSharedWarmupService.StartBroadcastRound then
+            TeamSharedWarmupService:StartBroadcastRound()
         end
     end)
-    if PublicChannelWarmupService and PublicChannelWarmupService.StartBroadcastRound then
-        PublicChannelWarmupService:StartBroadcastRound()
+    if TeamSharedWarmupService and TeamSharedWarmupService.StartBroadcastRound then
+        TeamSharedWarmupService:StartBroadcastRound()
     end
     return true
 end
 
-function TickerController:StopPublicChannelWarmupTicker(owner)
+function TickerController:StopTeamSharedWarmupTicker(owner)
     owner = owner or CrateTrackerZK
-    if owner.publicChannelWarmupTicker then
-        owner.publicChannelWarmupTicker:Cancel()
-        owner.publicChannelWarmupTicker = nil
+    if owner.teamSharedWarmupTicker then
+        owner.teamSharedWarmupTicker:Cancel()
+        owner.teamSharedWarmupTicker = nil
     end
-    if PublicChannelWarmupService and PublicChannelWarmupService.CancelPendingBroadcast then
-        PublicChannelWarmupService:CancelPendingBroadcast()
+    if TeamSharedWarmupService and TeamSharedWarmupService.CancelPendingBroadcast then
+        TeamSharedWarmupService:CancelPendingBroadcast()
     end
     return true
 end
 
-function TickerController:RefreshPublicChannelWarmupTicker(owner)
+function TickerController:RefreshTeamSharedWarmupTicker(owner)
     owner = owner or CrateTrackerZK
-    if CanRunPublicChannelWarmup() then
-        return self:StartPublicChannelWarmupTicker(owner)
+    if CanRunTeamSharedWarmup() then
+        return self:StartTeamSharedWarmupTicker(owner)
     end
-    self:StopPublicChannelWarmupTicker(owner)
+    self:StopTeamSharedWarmupTicker(owner)
     return false
 end
 

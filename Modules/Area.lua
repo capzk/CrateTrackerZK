@@ -15,11 +15,23 @@ Area.AccessMode = {
     SYNC_ONLY = "sync_only",
 };
 
-local function ResolveAreaAccess(self, currentMapID)
+local function GetInstanceContext()
     local inInstance, instanceType = false, nil;
     if IsInInstance then
         inInstance, instanceType = IsInInstance();
     end
+    if (inInstance ~= true) and GetInstanceInfo then
+        local _, fallbackInstanceType = GetInstanceInfo();
+        if fallbackInstanceType == "scenario" then
+            inInstance = true;
+            instanceType = fallbackInstanceType;
+        end
+    end
+    return inInstance == true, instanceType;
+end
+
+local function ResolveAreaAccess(self, currentMapID)
+    local inInstance, instanceType = GetInstanceContext();
 
     local playerMapID = self:GetCurrentMapId(currentMapID);
     if inInstance == true then
@@ -64,14 +76,16 @@ function Area:CanUseTrackedMapFeatures(currentMapID)
 end
 
 function Area:CanProcessTeamMessages()
-    if IsInInstance and IsInInstance() then
+    local inInstance = GetInstanceContext();
+    if inInstance == true then
         return false;
     end
     return true;
 end
 
 function Area:IsActive()
-    if IsInInstance and IsInInstance() then
+    local inInstance = GetInstanceContext();
+    if inInstance == true then
         return false;
     end
     return self.lastAreaValidState == true and not self.detectionPaused;

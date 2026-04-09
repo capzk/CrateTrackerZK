@@ -25,6 +25,8 @@ localeData["NoTimeRecord"] = "【%s】暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】距離戰爭補給空投還有：%s！！！";
 localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";
 localeData["SharedPhaseSyncApplied"] = "已取得【%s】當前位面的最新空投共享資訊。";
+localeData["PhaseTeamAlertMessage"] = "當前%s位面發生變化：%s ➡ %s";
+localeData["UnknownPhaseValue"] = "未知";
 
 -- 位面檢測提示
 localeData["PhaseDetectedFirstTime"] = "【%s】當前位面：|cffffff00%s|r";

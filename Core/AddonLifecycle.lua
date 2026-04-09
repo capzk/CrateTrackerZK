@@ -52,8 +52,8 @@ function AddonLifecycle:OnLogin()
             Area.detectionPaused = true
         end
         TickerController:PauseAllDetections(CrateTrackerZK)
-        if TickerController and TickerController.StopPublicChannelWarmupTicker then
-            TickerController:StopPublicChannelWarmupTicker(CrateTrackerZK)
+        if TickerController and TickerController.StopTeamSharedWarmupTicker then
+            TickerController:StopTeamSharedWarmupTicker(CrateTrackerZK)
         end
         if CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
             CrateTrackerZK:CreateFloatingButton()
@@ -80,19 +80,19 @@ function AddonLifecycle:OnLogin()
     end
 
     if TeamCommListener then TeamCommListener:Initialize() end
-    if PublicChannelSyncListener
-        and PublicChannelSyncListener.Initialize
-        and PublicChannelSyncListener.IsFeatureEnabled
-        and PublicChannelSyncListener:IsFeatureEnabled() == true then
-        PublicChannelSyncListener:Initialize()
+    if TeamSharedSyncListener
+        and TeamSharedSyncListener.Initialize
+        and TeamSharedSyncListener.IsFeatureEnabled
+        and TeamSharedSyncListener:IsFeatureEnabled() == true then
+        TeamSharedSyncListener:Initialize()
     end
-    if PublicChannelWarmupService and PublicChannelWarmupService.Initialize then
-        PublicChannelWarmupService:Initialize()
+    if TeamSharedWarmupService and TeamSharedWarmupService.Initialize then
+        TeamSharedWarmupService:Initialize()
     end
     if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     if TimerManager then TimerManager:Initialize() end
-    if TickerController and TickerController.RefreshPublicChannelWarmupTicker then
-        TickerController:RefreshPublicChannelWarmupTicker(CrateTrackerZK)
+    if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
+        TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
     end
 
     if addonEnabled and CoreShared:IsAreaActive() then

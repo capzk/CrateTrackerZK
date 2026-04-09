@@ -26,6 +26,8 @@ localeData["NoTimeRecord"] = "[%s]기록된 시간 없음!!!";
 localeData["TimeRemaining"] = "[%s]전쟁 보급품 공중 투하: %s!!!";
 localeData["AutoTeamReportMessage"] = "현재[%s]전쟁 보급품 보유량: %s!!";
 localeData["SharedPhaseSyncApplied"] = "[%s] 현재 위상의 최신 공중 보급 공유 정보를 가져왔습니다.";
+localeData["PhaseTeamAlertMessage"] = "%s 현재 위상 변경: %s ➡ %s";
+localeData["UnknownPhaseValue"] = "알 수 없음";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] 현재 위상 ID: |cffffff00%s|r";

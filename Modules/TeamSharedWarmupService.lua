@@ -1,24 +1,24 @@
--- PublicChannelWarmupService.lua - 团队备用共享缓存低频预热广播
+-- TeamSharedWarmupService.lua - 团队备用共享缓存低频预热广播
 -- 注意：本服务只广播运行时备用缓存候选数据，不写长期持久化，也不影响主 CTKZK_SYNC。
 
-local PublicChannelWarmupService = BuildEnv("PublicChannelWarmupService")
+local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
 
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local Data = BuildEnv("Data")
 local IconDetector = BuildEnv("IconDetector")
-local PublicChannelSyncListener = BuildEnv("PublicChannelSyncListener")
-local PublicChannelSyncStore = BuildEnv("PublicChannelSyncStore")
+local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
+local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 
-PublicChannelWarmupService.FEATURE_ENABLED = true
-PublicChannelWarmupService.BROADCAST_INTERVAL = 540
-PublicChannelWarmupService.SEND_INTERVAL = 1
+TeamSharedWarmupService.FEATURE_ENABLED = true
+TeamSharedWarmupService.BROADCAST_INTERVAL = 540
+TeamSharedWarmupService.SEND_INTERVAL = 1
 
-PublicChannelWarmupService.broadcastQueue = PublicChannelWarmupService.broadcastQueue or {}
-PublicChannelWarmupService.broadcastTimer = PublicChannelWarmupService.broadcastTimer or nil
-PublicChannelWarmupService.broadcastIndex = PublicChannelWarmupService.broadcastIndex or 0
-PublicChannelWarmupService.sharedRecordBuffer = PublicChannelWarmupService.sharedRecordBuffer or {}
-PublicChannelWarmupService.candidateByKeyBuffer = PublicChannelWarmupService.candidateByKeyBuffer or {}
-PublicChannelWarmupService.persistentStateBuffer = PublicChannelWarmupService.persistentStateBuffer or {}
+TeamSharedWarmupService.broadcastQueue = TeamSharedWarmupService.broadcastQueue or {}
+TeamSharedWarmupService.broadcastTimer = TeamSharedWarmupService.broadcastTimer or nil
+TeamSharedWarmupService.broadcastIndex = TeamSharedWarmupService.broadcastIndex or 0
+TeamSharedWarmupService.sharedRecordBuffer = TeamSharedWarmupService.sharedRecordBuffer or {}
+TeamSharedWarmupService.candidateByKeyBuffer = TeamSharedWarmupService.candidateByKeyBuffer or {}
+TeamSharedWarmupService.persistentStateBuffer = TeamSharedWarmupService.persistentStateBuffer or {}
 
 local function ClearArray(buffer)
     if type(buffer) ~= "table" then
@@ -45,8 +45,8 @@ local function BuildCandidateKey(expansionID, mapID, phaseID)
 end
 
 local function GetSharedRecordTTL()
-    if PublicChannelSyncStore and type(PublicChannelSyncStore.RECORD_TTL) == "number" then
-        return PublicChannelSyncStore.RECORD_TTL
+    if TeamSharedSyncStore and type(TeamSharedSyncStore.RECORD_TTL) == "number" then
+        return TeamSharedSyncStore.RECORD_TTL
     end
     return 3600
 end
@@ -102,30 +102,30 @@ local function UpsertCandidate(candidateByKey, expansionID, mapID, phaseID, time
     return true
 end
 
-function PublicChannelWarmupService:IsFeatureEnabled()
+function TeamSharedWarmupService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
-function PublicChannelWarmupService:CanBroadcast()
+function TeamSharedWarmupService:CanBroadcast()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
     if not CoreShared or not CoreShared.IsAddonEnabled or CoreShared:IsAddonEnabled() ~= true then
         return false
     end
-    if not PublicChannelSyncListener
-        or not PublicChannelSyncListener.IsFeatureEnabled
-        or PublicChannelSyncListener:IsFeatureEnabled() ~= true then
+    if not TeamSharedSyncListener
+        or not TeamSharedSyncListener.IsFeatureEnabled
+        or TeamSharedSyncListener:IsFeatureEnabled() ~= true then
         return false
     end
-    if not PublicChannelSyncListener.CanSendSharedSync
-        or PublicChannelSyncListener:CanSendSharedSync() ~= true then
+    if not TeamSharedSyncListener.CanSendSharedSync
+        or TeamSharedSyncListener:CanSendSharedSync() ~= true then
         return false
     end
     return true
 end
 
-function PublicChannelWarmupService:Initialize()
+function TeamSharedWarmupService:Initialize()
     self.broadcastQueue = self.broadcastQueue or {}
     self.sharedRecordBuffer = self.sharedRecordBuffer or {}
     self.candidateByKeyBuffer = self.candidateByKeyBuffer or {}
@@ -133,7 +133,7 @@ function PublicChannelWarmupService:Initialize()
     return true
 end
 
-function PublicChannelWarmupService:CancelPendingBroadcast()
+function TeamSharedWarmupService:CancelPendingBroadcast()
     if self.broadcastTimer and self.broadcastTimer.Cancel then
         self.broadcastTimer:Cancel()
     end
@@ -143,7 +143,7 @@ function PublicChannelWarmupService:CancelPendingBroadcast()
     return true
 end
 
-function PublicChannelWarmupService:Reset()
+function TeamSharedWarmupService:Reset()
     self:CancelPendingBroadcast()
     self.sharedRecordBuffer = ClearArray(self.sharedRecordBuffer)
     self.candidateByKeyBuffer = ClearMap(self.candidateByKeyBuffer)
@@ -151,7 +151,7 @@ function PublicChannelWarmupService:Reset()
     return true
 end
 
-function PublicChannelWarmupService:CollectPersistentCandidates(candidateByKey, currentTime)
+function TeamSharedWarmupService:CollectPersistentCandidates(candidateByKey, currentTime)
     if type(candidateByKey) ~= "table" then
         return 0
     end
@@ -192,15 +192,15 @@ function PublicChannelWarmupService:CollectPersistentCandidates(candidateByKey, 
     return count
 end
 
-function PublicChannelWarmupService:CollectSharedCandidates(candidateByKey, currentTime)
+function TeamSharedWarmupService:CollectSharedCandidates(candidateByKey, currentTime)
     if type(candidateByKey) ~= "table" then
         return 0
     end
 
     local sharedRecords = self.sharedRecordBuffer or {}
     ClearArray(sharedRecords)
-    if PublicChannelSyncStore and PublicChannelSyncStore.AppendActiveRecords then
-        PublicChannelSyncStore:AppendActiveRecords(sharedRecords, currentTime)
+    if TeamSharedSyncStore and TeamSharedSyncStore.AppendActiveRecords then
+        TeamSharedSyncStore:AppendActiveRecords(sharedRecords, currentTime)
     end
 
     local count = 0
@@ -227,7 +227,7 @@ function PublicChannelWarmupService:CollectSharedCandidates(candidateByKey, curr
     return count
 end
 
-function PublicChannelWarmupService:BuildBroadcastQueue(currentTime)
+function TeamSharedWarmupService:BuildBroadcastQueue(currentTime)
     self:Initialize()
 
     local candidateByKey = ClearMap(self.candidateByKeyBuffer)
@@ -262,7 +262,7 @@ function PublicChannelWarmupService:BuildBroadcastQueue(currentTime)
     return queue
 end
 
-function PublicChannelWarmupService:ScheduleNextSend(delaySeconds)
+function TeamSharedWarmupService:ScheduleNextSend(delaySeconds)
     if not C_Timer or not C_Timer.NewTimer then
         self:CancelPendingBroadcast()
         return false
@@ -280,7 +280,7 @@ function PublicChannelWarmupService:ScheduleNextSend(delaySeconds)
     return true
 end
 
-function PublicChannelWarmupService:SendNextRecord()
+function TeamSharedWarmupService:SendNextRecord()
     if self:CanBroadcast() ~= true then
         self:CancelPendingBroadcast()
         return false
@@ -292,8 +292,8 @@ function PublicChannelWarmupService:SendNextRecord()
         return false
     end
 
-    if PublicChannelSyncListener and PublicChannelSyncListener.SendSharedSync then
-        PublicChannelSyncListener:SendSharedSync(record)
+    if TeamSharedSyncListener and TeamSharedSyncListener.SendSharedSync then
+        TeamSharedSyncListener:SendSharedSync(record)
     end
 
     self.broadcastIndex = self.broadcastIndex + 1
@@ -305,7 +305,7 @@ function PublicChannelWarmupService:SendNextRecord()
     return true
 end
 
-function PublicChannelWarmupService:StartBroadcastRound()
+function TeamSharedWarmupService:StartBroadcastRound()
     if self:CanBroadcast() ~= true then
         self:CancelPendingBroadcast()
         return false
@@ -323,4 +323,4 @@ function PublicChannelWarmupService:StartBroadcastRound()
     return self:ScheduleNextSend(0)
 end
 
-return PublicChannelWarmupService
+return TeamSharedWarmupService

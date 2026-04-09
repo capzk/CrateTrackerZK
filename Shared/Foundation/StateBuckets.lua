@@ -76,4 +76,12 @@ function StateBuckets:GetPhaseCache()
     return uiDB.phaseCache
 end
 
+function StateBuckets:GetObservedPhaseHistory()
+    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or {}
+    if type(uiDB.observedPhaseHistory) ~= "table" then
+        uiDB.observedPhaseHistory = {}
+    end
+    return uiDB.observedPhaseHistory
+end
+
 return StateBuckets

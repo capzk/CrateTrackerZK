@@ -3,14 +3,16 @@
 local ADDON_NAME = "CrateTrackerZK";
 local CrateTrackerZK = BuildEnv(ADDON_NAME);
 local L = CrateTrackerZK.L;
-local AirdropEventService = BuildEnv("AirdropEventService");
 local Notification = BuildEnv('Notification');
 local Area = BuildEnv("Area");
 local NotificationSettingsStore = BuildEnv("NotificationSettingsStore");
 local NotificationDedupService = BuildEnv("NotificationDedupService");
+local NotificationDecisionService = BuildEnv("NotificationDecisionService");
 local NotificationOutputService = BuildEnv("NotificationOutputService");
 local NotificationQueryService = BuildEnv("NotificationQueryService");
 local TeamCommListener = BuildEnv("TeamCommListener");
+local Data = BuildEnv("Data");
+local UnifiedDataManager = BuildEnv("UnifiedDataManager");
 
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
@@ -116,23 +118,60 @@ local function NormalizeInterval(value)
     return numberValue;
 end
 
-local function BuildVisibleAutoDispatchState(notification, mapRef, eventContext, outboundChatType, currentTime)
-    if NotificationDedupService and NotificationDedupService.ResolveVisibleAutoDispatchState then
-        return NotificationDedupService:ResolveVisibleAutoDispatchState(
-            notification,
-            mapRef,
-            eventContext,
-            outboundChatType,
-            currentTime
-        );
+local function BuildAutomaticNotificationRequest(mapName, detectionSource, eventContext)
+    eventContext = type(eventContext) == "table" and eventContext or {};
+    return {
+        kind = "airdrop_auto",
+        source = detectionSource,
+        mapKey = eventContext.mapKey or mapName,
+        mapId = eventContext.mapId or eventContext.mapID or eventContext.id,
+        mapName = mapName,
+        eventTimestamp = eventContext.eventTimestamp or eventContext.timestamp,
+        objectGUID = eventContext.objectGUID,
+        allowTeamChat = true,
+        allowLocalFallback = true,
+        allowSound = true,
+        chatIntent = "automatic",
+    };
+end
+
+local function ExecuteNotificationDecision(notification, message, decision)
+    if NotificationOutputService and NotificationOutputService.ExecuteDecision then
+        return NotificationOutputService:ExecuteDecision(notification, message, decision);
     end
 
     return {
-        outboundChatType = outboundChatType,
-        shouldAbortNotification = false,
-        shouldTrackVisibleSend = false,
-        blockReason = nil,
+        sentTeamChat = false,
+        sentLocalFallback = false,
+        sentText = false,
+        playedSound = false,
     };
+end
+
+local function SendManualVisibleMessage(message, preferredChatType)
+    local result = {
+        sentTeamChat = false,
+        sentLocalFallback = false,
+        sentText = false,
+        err = nil,
+    };
+
+    if preferredChatType then
+        if NotificationOutputService and NotificationOutputService.SendManualMessage then
+            local success, err = NotificationOutputService:SendManualMessage(message, preferredChatType);
+            result.sentTeamChat = success == true;
+            result.sentText = result.sentTeamChat;
+            result.err = err;
+        end
+        return result;
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        result.sentLocalFallback = NotificationOutputService:SendLocalMessage(message) == true;
+        result.sentText = result.sentLocalFallback;
+    end
+
+    return result;
 end
 
 function Notification:SetAutoTeamReportEnabled(enabled)
@@ -208,10 +247,15 @@ function Notification:IsRecentShout(mapRef, windowSeconds, currentTime)
     return false, nil;
 end
 
-function Notification:RecordReceivedSync(mapRef, timestamp, eventContext)
+function Notification:RecordConfirmedSyncReceipt(mapRef, eventContext, receivedAt)
     if NotificationDedupService and NotificationDedupService.RecordReceivedSync then
-        return NotificationDedupService:RecordReceivedSync(self, mapRef, timestamp, eventContext);
+        return NotificationDedupService:RecordReceivedSync(self, mapRef, receivedAt, eventContext);
     end
+    return false;
+end
+
+function Notification:RecordReceivedSync(mapRef, timestamp, eventContext)
+    return self:RecordConfirmedSyncReceipt(mapRef, eventContext, timestamp);
 end
 
 function Notification:ClearExpiredTransientState(currentTime)
@@ -262,8 +306,8 @@ function Notification:SendAirdropSync(syncState)
         return false;
     end
 
-    if NotificationOutputService and NotificationOutputService.SendAirdropSync then
-        return NotificationOutputService:SendAirdropSync(syncState, chatType);
+    if TeamCommListener and TeamCommListener.SendConfirmedSync then
+        return TeamCommListener:SendConfirmedSync(syncState, chatType);
     end
     return false;
 end
@@ -276,53 +320,26 @@ function Notification:NotifyAirdropDetected(mapName, detectionSource, eventConte
     
     eventContext = eventContext or {};
     local mapNotificationKey = eventContext.mapKey or mapName;
-    local chatType = self:GetTeamChatType();
-    local outboundChatType = chatType;
     local currentTime = Utils:GetCurrentTimestamp();
     -- 记录喊话时间，用于后续图标检测的去重
     if detectionSource == "npc_shout" then
         self:RecordShout(mapNotificationKey, currentTime);
     end
-    local isRecentShout, lastShoutTime = self:IsRecentShout(mapNotificationKey, self.SHOUT_DEDUP_WINDOW, currentTime);
-    local shouldSuppressMapIcon = detectionSource == "map_icon"
-        and (
-            (AirdropEventService and AirdropEventService.ShouldSuppressMapIconNotification
-                and AirdropEventService:ShouldSuppressMapIconNotification(lastShoutTime, currentTime, self.SHOUT_DEDUP_WINDOW))
-            or isRecentShout
-        );
-    if shouldSuppressMapIcon then
-        self:NoteSuppressedVisibleAutoDispatch(mapNotificationKey, eventContext, lastShoutTime or currentTime);
+
+    local request = BuildAutomaticNotificationRequest(mapName, detectionSource, eventContext);
+    local decision = NotificationDecisionService
+        and NotificationDecisionService.DecideVisibleNotification
+        and NotificationDecisionService:DecideVisibleNotification(self, request, currentTime)
+        or nil;
+    if not decision or decision.suppress == true then
         return;
     end
 
-    local visibleAutoDispatchState = BuildVisibleAutoDispatchState(
-        self,
-        mapNotificationKey,
-        eventContext,
-        outboundChatType,
-        currentTime
-    );
-    outboundChatType = visibleAutoDispatchState.outboundChatType;
-    if visibleAutoDispatchState.shouldAbortNotification then
-        local message = string.format(L["AirdropDetected"], mapName);
-        Logger:Info("Notification", "通知", message);
-        return;
-    end
-    
-    local message = string.format(L["AirdropDetected"], mapName);
-
-    if NotificationOutputService and NotificationOutputService.PlayDelayedAlertSound then
-        NotificationOutputService:PlayDelayedAlertSound(self);
-    else
-        self:PlayAirdropAlertSound();
-    end
-    
-    local visibleSendSuccess = false;
-    if NotificationOutputService and NotificationOutputService.SendMessage then
-        visibleSendSuccess = NotificationOutputService:SendMessage(self, message, outboundChatType) == true;
-    end
-
-    if visibleAutoDispatchState.shouldTrackVisibleSend and outboundChatType and visibleSendSuccess then
+    local message = NotificationQueryService and NotificationQueryService.BuildAirdropDetectedMessage
+        and NotificationQueryService:BuildAirdropDetectedMessage(mapName)
+        or string.format(L["AirdropDetected"], mapName);
+    local outputResult = ExecuteNotificationDecision(self, message, decision);
+    if decision.trackDispatch == true and outputResult and outputResult.sentText == true then
         self:CommitVisibleAutoDispatch(mapNotificationKey, eventContext, currentTime);
     end
 end
@@ -339,6 +356,86 @@ function Notification:GetNearestAirdropInfo()
         return NotificationQueryService:GetNearestAirdropInfo();
     end
     return nil;
+end
+
+function Notification:NotifySharedPhaseSyncApplied(mapId, sharedRecord)
+    if not self.isInitialized then self:Initialize() end
+    if type(mapId) ~= "number" or type(sharedRecord) ~= "table" then
+        return false;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local request = {
+        kind = "shared_phase_sync_applied",
+        source = "public_channel_sync",
+        mapKey = mapId,
+        mapId = mapId,
+        mapName = mapName,
+        eventTimestamp = sharedRecord.timestamp,
+        objectGUID = sharedRecord.objectGUID,
+        allowTeamChat = false,
+        allowLocalFallback = true,
+        allowSound = false,
+        chatIntent = "automatic",
+    };
+    local decision = NotificationDecisionService
+        and NotificationDecisionService.DecideVisibleNotification
+        and NotificationDecisionService:DecideVisibleNotification(self, request, Utils:GetCurrentTimestamp())
+        or nil;
+    if not decision or decision.suppress == true then
+        return false;
+    end
+
+    local message = NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
+        and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
+        or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName);
+    local outputResult = ExecuteNotificationDecision(self, message, decision);
+    return outputResult and outputResult.sentText == true or false;
+end
+
+function Notification:NotifyPhaseTeamAlert(mapName, previousPhaseID, currentPhaseID)
+    if not self.isInitialized then self:Initialize() end
+    if type(mapName) ~= "string" or mapName == "" then
+        return false
+    end
+    if currentPhaseID == nil then
+        return false
+    end
+    if not self:IsTeamNotificationEnabled() then
+        return false
+    end
+
+    local teamChatType = self:GetTeamChatType()
+    if type(teamChatType) ~= "string" or teamChatType == "" then
+        return false
+    end
+
+    -- 位面变化提醒只走普通小队/团队频道，不升级为团队通知。
+    local visibleChatType = NotificationOutputService
+        and NotificationOutputService.GetStandardVisibleChatType
+        and NotificationOutputService:GetStandardVisibleChatType(teamChatType)
+        or nil
+    if type(visibleChatType) ~= "string" or visibleChatType == "" then
+        return false
+    end
+
+    local message = NotificationQueryService
+        and NotificationQueryService.BuildPhaseTeamAlertMessage
+        and NotificationQueryService:BuildPhaseTeamAlertMessage(mapName, previousPhaseID, currentPhaseID)
+        or string.format(
+            (L and L["PhaseTeamAlertMessage"]) or "Current %s phase changed: %s --> %s",
+            mapName,
+            tostring(previousPhaseID or ((L and L["UnknownPhaseValue"]) or "unknown")),
+            tostring(currentPhaseID)
+        )
+    return NotificationOutputService
+        and NotificationOutputService.SendTeamMessage
+        and NotificationOutputService:SendTeamMessage(message, visibleChatType, {
+            logFailure = true,
+            label = "发送位面团队提醒失败",
+        }) == true
+        or false
 end
 
 function Notification:SendAutoTeamReport()
@@ -378,15 +475,11 @@ function Notification:SendAutoTeamReport()
         local visibleChatType = NotificationOutputService
             and NotificationOutputService.GetManualAirdropChatType
             and NotificationOutputService:GetManualAirdropChatType(self, chatType);
-        if NotificationOutputService and NotificationOutputService.SendManualMessage then
-            NotificationOutputService:SendManualMessage(message, visibleChatType);
+        if visibleChatType then
+            SendManualVisibleMessage(message, visibleChatType);
         end
     else
-        if Logger and Logger.Info then
-            Logger:Info("Notification", "通知", message);
-        elseif DEFAULT_CHAT_FRAME then
-            DEFAULT_CHAT_FRAME:AddMessage(message);
-        end
+        SendManualVisibleMessage(message, nil);
     end
     return true;
 end
@@ -432,14 +525,11 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
         local visibleChatType = NotificationOutputService
             and NotificationOutputService.GetManualAirdropChatType
             and NotificationOutputService:GetManualAirdropChatType(self, chatType);
-        local success, err = false, nil;
-        if NotificationOutputService and NotificationOutputService.SendManualMessage then
-            success, err = NotificationOutputService:SendManualMessage(message, visibleChatType);
-        end
-        if not success then
-            Logger:Warn("Notification", "通知", "发送小队/团队消息失败: " .. tostring(err or "未知错误"));
+        local outputResult = visibleChatType and SendManualVisibleMessage(message, visibleChatType) or nil;
+        if not outputResult or outputResult.sentText ~= true then
+            Logger:Warn("Notification", "通知", "发送小队/团队消息失败: " .. tostring(outputResult and outputResult.err or "未知错误"));
         end
     else
-        Logger:Info("Notification", "通知", systemMessage);
+        SendManualVisibleMessage(systemMessage, nil);
     end
 end

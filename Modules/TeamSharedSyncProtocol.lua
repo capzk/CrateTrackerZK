@@ -1,10 +1,10 @@
--- PublicChannelSyncProtocol.lua - 备用相位缓存共享协议
+-- TeamSharedSyncProtocol.lua - 团队共享缓存同步协议
 
-local PublicChannelSyncProtocol = BuildEnv("PublicChannelSyncProtocol")
+local TeamSharedSyncProtocol = BuildEnv("TeamSharedSyncProtocol")
 
-PublicChannelSyncProtocol.ADDON_PREFIX = "CTKZK_PSYNC"
-PublicChannelSyncProtocol.MESSAGE_TYPE = "PHASE_AIRDROP"
-PublicChannelSyncProtocol.PROTOCOL_VERSION = 1
+TeamSharedSyncProtocol.ADDON_PREFIX = "CTKZK_PSYNC"
+TeamSharedSyncProtocol.MESSAGE_TYPE = "PHASE_AIRDROP"
+TeamSharedSyncProtocol.PROTOCOL_VERSION = 1
 
 local function EncodePayloadField(value)
     if value == nil then
@@ -28,7 +28,7 @@ local function DecodePayloadField(value)
     return value
 end
 
-function PublicChannelSyncProtocol:BuildPayload(syncState)
+function TeamSharedSyncProtocol:BuildPayload(syncState)
     if type(syncState) ~= "table" then
         return nil
     end
@@ -66,7 +66,7 @@ function PublicChannelSyncProtocol:BuildPayload(syncState)
     }, "|")
 end
 
-function PublicChannelSyncProtocol:ParsePayloadInto(prefix, payload, outState)
+function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     if prefix ~= self.ADDON_PREFIX or type(payload) ~= "string" or type(outState) ~= "table" then
         return nil
     end
@@ -108,4 +108,4 @@ function PublicChannelSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     return outState
 end
 
-return PublicChannelSyncProtocol
+return TeamSharedSyncProtocol

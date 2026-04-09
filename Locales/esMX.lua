@@ -25,6 +25,8 @@ localeData["NoTimeRecord"] = "[%s]¡Sin registro de tiempo!!!";
 localeData["TimeRemaining"] = "[%s]Suministros de guerra en: %s!!!";
 localeData["AutoTeamReportMessage"] = "Actual[%s]Suministros de guerra en: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Se obtuvo la informacion compartida mas reciente del lanzamiento de suministros para la fase actual en [%s].";
+localeData["PhaseTeamAlertMessage"] = "La fase actual en %s cambio: %s ➡ %s";
+localeData["UnknownPhaseValue"] = "desconocida";
 
 -- Phase Detection Alerts
 localeData["PhaseDetectedFirstTime"] = "[%s] Fase actual: |cffffff00%s|r";

@@ -2,15 +2,6 @@
 
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local Logger = BuildEnv("Logger")
-local TeamCommListener = BuildEnv("TeamCommListener")
-
-local function NormalizeAddonCallResult(...)
-    local secondary = select(2, ...)
-    if secondary ~= nil then
-        return secondary
-    end
-    return select(1, ...)
-end
 
 local function TryPlaySound(path)
     if not path or path == "" or not PlaySoundFile then
@@ -47,19 +38,24 @@ function NotificationOutputService:PlayDelayedAlertSound(notification)
         C_Timer.After(1, function()
             self:PlayAirdropAlertSound(notification)
         end)
-        return
+        return true
     end
     self:PlayAirdropAlertSound(notification)
+    return true
 end
 
-local function ResolveAddonDistribution(chatType)
-    if chatType == "RAID_WARNING" then
-        return "RAID"
+local function TrySendChatMessage(message, chatType)
+    if type(message) ~= "string" or message == "" then
+        return false, "empty_message"
     end
-    if chatType == "RAID" or chatType == "PARTY" or chatType == "INSTANCE_CHAT" then
-        return chatType
+    if type(chatType) ~= "string" or chatType == "" then
+        return false, "invalid_chat_type"
     end
-    return nil
+
+    local success, err = pcall(function()
+        SendChatMessage(message, chatType)
+    end)
+    return success, err
 end
 
 local function ResolveAutomaticVisibleChatType(chatType)
@@ -156,24 +152,52 @@ function NotificationOutputService:GetManualAirdropChatType(notification, chatTy
     return "RAID_WARNING"
 end
 
-function NotificationOutputService:SendMessage(notification, message, chatType)
-    local outboundChatType = self:GetAutomaticVisibleChatType(chatType)
-    if chatType and notification and notification.teamNotificationEnabled and outboundChatType then
-        local success, err = pcall(function()
-            SendChatMessage(message, outboundChatType)
-        end)
-        if not success and Logger and Logger.Warn then
-            Logger:Warn(
-                "Notification",
-                "通知",
-                string.format("发送自动团队消息失败：类型=%s，错误=%s", outboundChatType, tostring(err))
-            )
-        end
-        return success
+function NotificationOutputService:SendTeamMessage(message, chatType, options)
+    local success, err = TrySendChatMessage(message, chatType)
+    if success ~= true and options and options.logFailure == true and Logger and Logger.Warn then
+        local label = options.label or "发送团队消息失败"
+        Logger:Warn(
+            "Notification",
+            "通知",
+            string.format("%s：类型=%s，错误=%s", label, tostring(chatType), tostring(err))
+        )
+    end
+    return success, err
+end
+
+function NotificationOutputService:SendLocalMessage(message)
+    Logger:Info("Notification", "通知", message)
+    return true
+end
+
+function NotificationOutputService:ExecuteDecision(notification, message, decision)
+    local result = {
+        sentTeamChat = false,
+        sentLocalFallback = false,
+        sentText = false,
+        playedSound = false,
+    }
+    if type(decision) ~= "table" or decision.suppress == true then
+        return result
     end
 
-    Logger:Info("Notification", "通知", message)
-    return false
+    if decision.sendTeamChat == true then
+        result.sentTeamChat = self:SendTeamMessage(message, decision.chatType, {
+            logFailure = true,
+            label = "发送自动团队消息失败",
+        }) == true
+    end
+    if result.sentTeamChat ~= true and decision.sendLocalFallback == true then
+        result.sentLocalFallback = self:SendLocalMessage(message) == true
+    end
+
+    result.sentText = result.sentTeamChat == true or result.sentLocalFallback == true
+
+    if decision.playSound == true then
+        result.playedSound = self:PlayDelayedAlertSound(notification) == true
+    end
+
+    return result
 end
 
 function NotificationOutputService:SendManualMessage(message, chatType)
@@ -184,19 +208,9 @@ function NotificationOutputService:SendManualMessage(message, chatType)
         standardChatType = self:GetStandardVisibleChatType(chatType)
     end
     if chatType and standardChatType then
-        local success, err = pcall(function()
-            SendChatMessage(message, standardChatType)
-        end)
-        return success, err
+        return self:SendTeamMessage(message, standardChatType)
     end
     return false, nil
-end
-
-function NotificationOutputService:SendAirdropSync(syncState, chatType)
-    if TeamCommListener and TeamCommListener.SendConfirmedSync then
-        return TeamCommListener:SendConfirmedSync(syncState, chatType)
-    end
-    return false
 end
 
 return NotificationOutputService
