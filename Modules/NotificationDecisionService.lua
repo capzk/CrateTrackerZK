@@ -118,15 +118,6 @@ function NotificationDecisionService:DecideVisibleNotification(notification, req
 
     currentTime = currentTime or Utils:GetCurrentTimestamp()
 
-    if request.kind == "shared_phase_sync_applied" then
-        decision.playSound = request.allowSound == true
-        decision.sendTeamChat = false
-        decision.sendLocalFallback = request.allowLocalFallback == true
-        decision.chatType = nil
-        decision.trackDispatch = false
-        return decision
-    end
-
     if request.kind ~= "airdrop_auto" then
         decision.suppress = true
         decision.reason = "unsupported_kind"

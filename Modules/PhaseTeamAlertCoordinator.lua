@@ -6,11 +6,16 @@ local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local Notification = BuildEnv("Notification")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local Data = BuildEnv("Data")
+local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 
 PhaseTeamAlertCoordinator.MAX_VISIBLE_SENDERS = 2
 PhaseTeamAlertCoordinator.CLAIM_COLLECTION_DELAY = 0.6
 PhaseTeamAlertCoordinator.EVENT_TTL = 20
+PhaseTeamAlertCoordinator.SHARED_FOLLOWUP_DELAY = 0.5
+PhaseTeamAlertCoordinator.REMAINING_FOLLOWUP_DELAY = 0.8
 PhaseTeamAlertCoordinator.eventStateByKey = PhaseTeamAlertCoordinator.eventStateByKey or {}
+PhaseTeamAlertCoordinator.phaseAlertGuardBuffers = PhaseTeamAlertCoordinator.phaseAlertGuardBuffers or {}
+PhaseTeamAlertCoordinator.sharedRecordBuffer = PhaseTeamAlertCoordinator.sharedRecordBuffer or {}
 
 local function NormalizeSenderKey(sender)
     if type(sender) ~= "string" or sender == "" then
@@ -46,6 +51,17 @@ local function CancelEvaluationTimer(state)
     state.evaluationTimer = nil
 end
 
+local function CancelFollowupTimer(state)
+    if type(state) ~= "table" then
+        return
+    end
+    if state.followupTimer and state.followupTimer.Cancel then
+        state.followupTimer:Cancel()
+    end
+    state.followupTimer = nil
+    state.followupStage = nil
+end
+
 local function CountVisibleSenders(state)
     if type(state) ~= "table" or type(state.visibleSenderKeys) ~= "table" then
         return 0
@@ -76,6 +92,12 @@ local function AcquireEventState(self, expansionID, mapID, phaseID, mapName, cur
             visibleSenderKeys = {},
             localSenderKey = nil,
             localSenderName = nil,
+            runtimeMapId = nil,
+            sharedRecord = nil,
+            visiblePhaseAlertSent = false,
+            sharedFollowupSent = false,
+            followupStage = nil,
+            followupTimer = nil,
             evaluationTimer = nil,
         }
         self.eventStateByKey[eventKey] = state
@@ -200,10 +222,28 @@ local function BuildPhaseAlertSyncState(targetMapData, phaseID, timestamp)
     }
 end
 
+local function CopySharedRecordInto(outRecord, sharedRecord)
+    if type(outRecord) ~= "table" or type(sharedRecord) ~= "table" then
+        return nil
+    end
+    outRecord.expansionID = sharedRecord.expansionID
+    outRecord.mapID = sharedRecord.mapID
+    outRecord.phaseID = sharedRecord.phaseID
+    outRecord.timestamp = sharedRecord.timestamp
+    outRecord.objectGUID = sharedRecord.objectGUID
+    outRecord.source = sharedRecord.source
+    outRecord.sender = sharedRecord.sender
+    outRecord.receivedAt = sharedRecord.receivedAt
+    outRecord.expiresAt = sharedRecord.expiresAt
+    outRecord.recordKey = sharedRecord.recordKey
+    return outRecord
+end
+
 function PhaseTeamAlertCoordinator:Reset()
     self.eventStateByKey = self.eventStateByKey or {}
     for eventKey, state in pairs(self.eventStateByKey) do
         CancelEvaluationTimer(state)
+        CancelFollowupTimer(state)
         self.eventStateByKey[eventKey] = nil
     end
 end
@@ -218,11 +258,121 @@ function PhaseTeamAlertCoordinator:PruneExpiredState(currentTime)
             or type(lastSeenAt) ~= "number"
             or (now - lastSeenAt) > (self.EVENT_TTL or 20) then
             CancelEvaluationTimer(state)
+            CancelFollowupTimer(state)
             self.eventStateByKey[eventKey] = nil
             removedCount = removedCount + 1
         end
     end
     return removedCount
+end
+
+function PhaseTeamAlertCoordinator:ExecuteSharedFollowupStep(state, stage)
+    if type(state) ~= "table" or type(stage) ~= "string" then
+        return false
+    end
+    if type(state.runtimeMapId) ~= "number" or state.visiblePhaseAlertSent ~= true then
+        CancelFollowupTimer(state)
+        return false
+    end
+
+    state.followupTimer = nil
+    state.followupStage = nil
+
+    if stage == "shared" then
+        local sharedSent = Notification
+            and Notification.SendSharedPhaseSyncAppliedTeamMessage
+            and Notification:SendSharedPhaseSyncAppliedTeamMessage(state.runtimeMapId, state.sharedRecord) == true
+            or false
+        if sharedSent ~= true then
+            return false
+        end
+        return self:ScheduleSharedFollowupStep(
+            state,
+            "remaining",
+            self.REMAINING_FOLLOWUP_DELAY or 0.8
+        )
+    end
+
+    if stage == "remaining" then
+        local remainingSent = Notification
+            and Notification.SendTimeRemainingTeamMessage
+            and Notification:SendTimeRemainingTeamMessage(state.runtimeMapId) == true
+            or false
+        if remainingSent == true then
+            state.sharedFollowupSent = true
+        end
+        return remainingSent == true
+    end
+
+    return false
+end
+
+function PhaseTeamAlertCoordinator:ScheduleSharedFollowupStep(state, stage, delaySeconds)
+    if type(state) ~= "table" or type(stage) ~= "string" or stage == "" then
+        return false
+    end
+    if state.sharedFollowupSent == true then
+        return false
+    end
+    if state.followupTimer or state.followupStage then
+        return true
+    end
+
+    local delay = tonumber(delaySeconds) or 0
+    if delay < 0 then
+        delay = 0
+    end
+
+    state.followupStage = stage
+    if C_Timer and C_Timer.NewTimer then
+        state.followupTimer = C_Timer.NewTimer(delay, function()
+            self:ExecuteSharedFollowupStep(state, stage)
+        end)
+        return true
+    end
+
+    if C_Timer and C_Timer.After then
+        state.followupTimer = {}
+        C_Timer.After(delay, function()
+            self:ExecuteSharedFollowupStep(state, stage)
+        end)
+        return true
+    end
+
+    return self:ExecuteSharedFollowupStep(state, stage)
+end
+
+function PhaseTeamAlertCoordinator:TrySendSharedFollowup(state)
+    if type(state) ~= "table" or state.sharedFollowupSent == true or state.visiblePhaseAlertSent ~= true then
+        return false
+    end
+    if type(state.runtimeMapId) ~= "number" then
+        return false
+    end
+
+    local sharedRecord = state.sharedRecord
+    if type(sharedRecord) ~= "table" then
+        self.sharedRecordBuffer = self.sharedRecordBuffer or {}
+        sharedRecord = UnifiedDataManager
+            and UnifiedDataManager.GetSharedPhaseTimeRecordInto
+            and UnifiedDataManager:GetSharedPhaseTimeRecordInto(
+                state.runtimeMapId,
+                state.currentPhaseID or state.phaseID,
+                self.sharedRecordBuffer
+            )
+            or nil
+        if type(sharedRecord) ~= "table" then
+            return false
+        end
+        state.sharedRecord = CopySharedRecordInto(state.sharedRecord or {}, sharedRecord)
+        sharedRecord = state.sharedRecord
+    end
+
+    return self:ScheduleSharedFollowupStep(
+        state,
+        "shared",
+        self.SHARED_FOLLOWUP_DELAY or 0.5
+    )
 end
 
 function PhaseTeamAlertCoordinator:EvaluateVisibleSend(eventKey)
@@ -260,7 +410,10 @@ function PhaseTeamAlertCoordinator:EvaluateVisibleSend(eventKey)
         return false
     end
 
+    state.visiblePhaseAlertSent = true
+
     MarkVisibleSender(state, state.localSenderName, Utils:GetCurrentTimestamp())
+    self:TrySendSharedFollowup(state)
 
     local syncState = BuildPhaseAlertSyncState(state, state.phaseID, state.createdAt)
     local teamChatType = Notification and Notification.GetTeamChatType and Notification:GetTeamChatType() or nil
@@ -295,6 +448,18 @@ function PhaseTeamAlertCoordinator:HandleLocalPhaseDetected(targetMapData, previ
         return false
     end
 
+    self.phaseAlertGuardBuffers = self.phaseAlertGuardBuffers or {}
+    local shouldSuppress = UnifiedDataManager
+        and UnifiedDataManager.ShouldSuppressPhaseTeamAlert
+        and UnifiedDataManager:ShouldSuppressPhaseTeamAlert(
+            targetMapData.id,
+            currentPhaseID,
+            self.phaseAlertGuardBuffers
+        ) == true
+    if shouldSuppress then
+        return false
+    end
+
     local coordinationContext = ResolveCoordinationContext()
     if not coordinationContext then
         return false
@@ -323,6 +488,11 @@ function PhaseTeamAlertCoordinator:HandleLocalPhaseDetected(targetMapData, previ
     state.previousPhaseID = baselinePhaseID
     state.currentPhaseID = currentPhaseID
     state.phaseID = currentPhaseID
+    state.runtimeMapId = targetMapData.id
+    state.sharedRecord = nil
+    state.visiblePhaseAlertSent = false
+    state.sharedFollowupSent = false
+    CancelFollowupTimer(state)
 
     local localSenderName = GetLocalSenderName()
     local localSenderKey = UpsertClaim(state, localSenderName, now, now)
@@ -376,6 +546,32 @@ function PhaseTeamAlertCoordinator:HandleRemoteCoordination(listener, syncState,
 
     MarkVisibleSender(state, sender, now)
     return true
+end
+
+function PhaseTeamAlertCoordinator:HandleSharedDisplayActivated(mapId, sharedRecord)
+    if type(mapId) ~= "number" or type(sharedRecord) ~= "table" then
+        return false
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil
+    if type(mapData) ~= "table"
+        or type(mapData.expansionID) ~= "string"
+        or type(mapData.mapID) ~= "number"
+        or type(sharedRecord.phaseID) ~= "string"
+        or sharedRecord.phaseID == "" then
+        return false
+    end
+
+    local eventKey = BuildEventKey(mapData.expansionID, mapData.mapID, sharedRecord.phaseID)
+    local state = self.eventStateByKey and self.eventStateByKey[eventKey] or nil
+    if type(state) ~= "table" then
+        return false
+    end
+
+    state.runtimeMapId = mapId
+    state.lastSeenAt = Utils:GetCurrentTimestamp()
+    state.sharedRecord = CopySharedRecordInto(state.sharedRecord or {}, sharedRecord)
+    return self:TrySendSharedFollowup(state)
 end
 
 return PhaseTeamAlertCoordinator

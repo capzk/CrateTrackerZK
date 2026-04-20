@@ -490,23 +490,44 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
     return true;
 end
 
--- 选择事件时间戳：优先采用未过期且与检测时间相近的临时时间
-function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, currentPhaseId)
+-- 选择事件时间戳：
+-- 1. 优先采用未过期且与检测时间相近的临时时间；
+-- 2. 若当前位面存在同 objectGUID 的共享缓存记录，则采用共享缓存中的原始事件时间。
+function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID)
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
     local record = self:GetValidTemporaryTime(mapId);
-    if not record then
-        return fallback, false;
+    if record then
+        if type(currentPhaseId) == "string"
+            and currentPhaseId ~= ""
+            and not CanUseTemporaryRecordForPhase(self, mapId, currentPhaseId, record) then
+            record = nil;
+        end
+    end
+
+    if record then
+        local delta = math.abs(fallback - record.timestamp);
+        if delta <= self.TEMPORARY_TIME_ADOPTION_WINDOW then
+            return record.timestamp, true;
+        end
     end
 
     if type(currentPhaseId) == "string"
         and currentPhaseId ~= ""
-        and not CanUseTemporaryRecordForPhase(self, mapId, currentPhaseId, record) then
-        return fallback, false;
-    end
-    
-    local delta = math.abs(fallback - record.timestamp);
-    if delta <= self.TEMPORARY_TIME_ADOPTION_WINDOW then
-        return record.timestamp, true;
+        and type(detectedObjectGUID) == "string"
+        and detectedObjectGUID ~= ""
+        and self.GetSharedPhaseTimeRecordInto then
+        self.selectEventTimestampSharedRecordBuffer = self.selectEventTimestampSharedRecordBuffer or {};
+        local sharedRecord = self:GetSharedPhaseTimeRecordInto(
+            mapId,
+            currentPhaseId,
+            self.selectEventTimestampSharedRecordBuffer
+        );
+        if sharedRecord
+            and type(sharedRecord.objectGUID) == "string"
+            and sharedRecord.objectGUID == detectedObjectGUID
+            and type(sharedRecord.timestamp) == "number" then
+            return sharedRecord.timestamp, true;
+        end
     end
     
     return fallback, false;
@@ -760,19 +781,31 @@ function UnifiedDataManager:ComparePhasesInto(mapId, outResult)
     
     local currentPhase = self:GetCurrentPhase(mapId);
     local persistentPhase = self:GetPersistentPhase(mapId);
+    local historicalPhase = self.GetObservedHistoricalPhase and self:GetObservedHistoricalPhase(mapId) or nil;
+    local baselinePhase = persistentPhase;
+    local baselineSource = "persistent";
+    if (type(baselinePhase) ~= "string" or baselinePhase == "")
+        and type(historicalPhase) == "string"
+        and historicalPhase ~= "" then
+        baselinePhase = historicalPhase;
+        baselineSource = "historical";
+    end
     
     outResult.match = false;
     outResult.current = currentPhase;
     outResult.persistent = persistentPhase;
+    outResult.historical = historicalPhase;
+    outResult.baseline = baselinePhase;
+    outResult.baselineSource = baselineSource;
     outResult.status = "unknown";
     
-    if not currentPhase and not persistentPhase then
+    if not currentPhase and not baselinePhase then
         outResult.status = "no_data";
     elseif not currentPhase then
         outResult.status = "no_current";
-    elseif not persistentPhase then
+    elseif not baselinePhase then
         outResult.status = "no_persistent";
-    elseif currentPhase == persistentPhase then
+    elseif currentPhase == baselinePhase then
         outResult.match = true;
         outResult.status = "match";
     else
@@ -806,44 +839,49 @@ function UnifiedDataManager:GetPhaseDisplayInfoInto(mapId, outInfo, comparisonBu
         return nil;
     end
     outInfo.color = outInfo.color or {};
-    outInfo.phaseId = comparison.current or comparison.persistent or "未知";
+    outInfo.phaseId = comparison.current or comparison.baseline or "未知";
     outInfo.status = "未知";
     outInfo.tooltip = "";
     outInfo.compareStatus = comparison.status;
     outInfo.currentPhaseID = comparison.current;
     outInfo.persistentPhaseID = comparison.persistent;
+    outInfo.historicalPhaseID = comparison.historical;
+    outInfo.baselinePhaseID = comparison.baseline;
+    outInfo.baselineSource = comparison.baselineSource;
     PopulatePhaseColor(outInfo.color, 1, 1, 1);
     local hasSharedDisplayActive = self.IsSharedDisplayActive and self:IsSharedDisplayActive(mapId) == true;
+    local baselineLabel = comparison.baselineSource == "historical" and "历史位面" or "持久化位面";
     
     if comparison.status == "match" then
         PopulatePhaseColor(outInfo.color, 0, 1, 0);
         outInfo.status = "匹配";
-        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：匹配", comparison.current, comparison.persistent);
+        outInfo.tooltip = string.format("当前位面：%s\n%s：%s\n状态：匹配", comparison.current, baselineLabel, comparison.baseline);
     elseif comparison.status == "mismatch" then
         if hasSharedDisplayActive then
             PopulatePhaseColor(outInfo.color, 0.60, 1.00, 0.60);
             outInfo.status = "共享缓存";
             outInfo.tooltip = string.format(
-                "当前位面：%s\n持久化位面：%s\n状态：已命中当前位面的共享缓存",
+                "当前位面：%s\n%s：%s\n状态：已命中当前位面的共享缓存",
                 comparison.current,
-                comparison.persistent
+                baselineLabel,
+                comparison.baseline
             );
         else
             PopulatePhaseColor(outInfo.color, 1, 0, 0);
             outInfo.status = "不匹配";
-            outInfo.tooltip = string.format("当前位面：%s\n持久化位面：%s\n状态：不匹配", comparison.current, comparison.persistent);
+            outInfo.tooltip = string.format("当前位面：%s\n%s：%s\n状态：不匹配", comparison.current, baselineLabel, comparison.baseline);
         end
     elseif comparison.status == "no_data" then
         outInfo.status = "无数据";
         outInfo.tooltip = "无位面数据";
     elseif comparison.status == "no_current" then
         outInfo.status = "无当前位面";
-        outInfo.tooltip = string.format("持久化位面：%s\n当前位面：未检测到", comparison.persistent);
-        outInfo.phaseId = comparison.persistent;
+        outInfo.tooltip = string.format("%s：%s\n当前位面：未检测到", baselineLabel, comparison.baseline);
+        outInfo.phaseId = comparison.baseline;
     elseif comparison.status == "no_persistent" then
         PopulatePhaseColor(outInfo.color, 0, 1, 0);
-        outInfo.status = "无持久化位面";
-        outInfo.tooltip = string.format("当前位面：%s\n持久化位面：无", comparison.current);
+        outInfo.status = comparison.baselineSource == "historical" and "无持久化位面" or "无持久化位面";
+        outInfo.tooltip = string.format("当前位面：%s\n%s：无", comparison.current, baselineLabel);
         outInfo.phaseId = comparison.current;
     end
     

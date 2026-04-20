@@ -22,7 +22,6 @@ localeData["FloatingButtonTooltipLine3"] = "ПКМ - открыть настро
 localeData["Enabled"] = "включены";
 localeData["Disabled"] = "выключены";
 localeData["AirdropDetected"] = "[%s]Обнаружен сброс военных припасов!!!";
-localeData["AirdropDetectedManual"] = "[%s]Сброс военных припасов!!!";
 localeData["NoTimeRecord"] = "[%s]Нет записи о времени!!!";
 localeData["TimeRemaining"] = "[%s]До воздушного десанта военных припасов: %s!!!";
 localeData["AutoTeamReportMessage"] = "На[%s]до сброса военных припасов осталось: %s!!";

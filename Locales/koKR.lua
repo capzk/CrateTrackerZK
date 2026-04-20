@@ -20,8 +20,7 @@ localeData["FloatingButtonTooltipLine3"] = "우클릭으로 설정 열기";
 -- Notifications (Airdrop)
 localeData["Enabled"] = "그룹 알림 활성화";
 localeData["Disabled"] = "그룹 알림 비활성화";
-localeData["AirdropDetected"] = "[%s]전쟁 보급품 공중 투하 감지!!!";  -- Auto detection message (with "Detected" keyword)
-localeData["AirdropDetectedManual"] = "[%s]전쟁 보급품 공중 투하!!!";  -- Manual notification message (without "Detected" keyword)
+localeData["AirdropDetected"] = "[%s]전쟁 보급품 공중 투하 감지!!!";  -- Unified airdrop message
 localeData["NoTimeRecord"] = "[%s]기록된 시간 없음!!!";
 localeData["TimeRemaining"] = "[%s]전쟁 보급품 공중 투하: %s!!!";
 localeData["AutoTeamReportMessage"] = "현재[%s]전쟁 보급품 보유량: %s!!";

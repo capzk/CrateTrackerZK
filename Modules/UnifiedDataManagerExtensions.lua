@@ -9,6 +9,8 @@ local StateBuckets = BuildEnv("StateBuckets");
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore");
 local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener");
 local Notification = BuildEnv("Notification");
+local PhaseTeamAlertCoordinator = BuildEnv("PhaseTeamAlertCoordinator");
+local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator");
 
 local function IsTeamSharedSyncFeatureEnabled()
     return TeamSharedSyncListener
@@ -214,6 +216,59 @@ function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outReco
     return nil;
 end
 
+function UnifiedDataManager:GetLatestSharedPhaseRecordForMapInto(mapId, outRecord)
+    if IsTeamSharedSyncFeatureEnabled() ~= true then
+        return nil;
+    end
+    if not self.isInitialized or type(mapId) ~= "number" or type(outRecord) ~= "table" then
+        return nil;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    if not mapData or type(mapData.expansionID) ~= "string" or type(mapData.mapID) ~= "number" then
+        return nil;
+    end
+
+    if TeamSharedSyncStore and TeamSharedSyncStore.GetLatestRecordForMapInto then
+        return TeamSharedSyncStore:GetLatestRecordForMapInto(
+            mapData.expansionID,
+            mapData.mapID,
+            outRecord,
+            Utils:GetCurrentTimestamp()
+        );
+    end
+
+    return nil;
+end
+
+function UnifiedDataManager:ShouldSuppressPhaseTeamAlert(mapId, currentPhaseId, buffers)
+    if not self.isInitialized then
+        return false, nil;
+    end
+    if type(mapId) ~= "number" or type(currentPhaseId) ~= "string" or currentPhaseId == "" then
+        return false, nil;
+    end
+
+    local persistentPhaseId = self.GetPersistentPhase and self:GetPersistentPhase(mapId) or nil;
+    if type(persistentPhaseId) == "string" and persistentPhaseId ~= "" and persistentPhaseId == currentPhaseId then
+        return true, "persistent_airdrop_phase_match";
+    end
+
+    local bufferState = type(buffers) == "table" and buffers or {};
+    bufferState.sharedRecordBuffer = bufferState.sharedRecordBuffer or {};
+    local latestSharedRecord = self.GetLatestSharedPhaseRecordForMapInto
+        and self:GetLatestSharedPhaseRecordForMapInto(mapId, bufferState.sharedRecordBuffer)
+        or nil;
+    if latestSharedRecord
+        and type(latestSharedRecord.phaseID) == "string"
+        and latestSharedRecord.phaseID ~= ""
+        and latestSharedRecord.phaseID == currentPhaseId then
+        return true, "shared_airdrop_phase_match";
+    end
+
+    return false, nil;
+end
+
 function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
     if IsTeamSharedSyncFeatureEnabled() ~= true then
         return false;
@@ -223,16 +278,27 @@ function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
     end
 
     local state = GetSharedDisplayState(self, mapId);
-    if state.lastNotifiedRecordKey == sharedRecord.recordKey then
-        return false;
+    local isFirstNotifyForRecord = state.lastNotifiedRecordKey ~= sharedRecord.recordKey;
+    if isFirstNotifyForRecord then
+        state.lastNotifiedRecordKey = sharedRecord.recordKey;
     end
 
-    state.lastNotifiedRecordKey = sharedRecord.recordKey;
-
-    if Notification and Notification.NotifySharedPhaseSyncApplied then
+    if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.HandleSharedDisplayActivated then
+        PhaseTeamAlertCoordinator:HandleSharedDisplayActivated(mapId, sharedRecord);
+    end
+    if isFirstNotifyForRecord and Notification and Notification.NotifySharedPhaseSyncApplied then
         Notification:NotifySharedPhaseSyncApplied(mapId, sharedRecord);
     end
-    return true;
+    if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
+        UIRefreshCoordinator:RequestRowRefresh(mapId, {
+            affectsSort = true,
+            force = true,
+            delay = 0,
+        });
+    elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+        UIRefreshCoordinator:RefreshMainTable(true);
+    end
+    return isFirstNotifyForRecord == true;
 end
 
 function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecord)
@@ -249,6 +315,15 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
     end
 
     state.activeRecordKey = sharedRecord.recordKey;
+    if self.SetTemporaryTime
+        and type(sharedRecord.timestamp) == "number" then
+        self:SetTemporaryTime(
+            mapId,
+            sharedRecord.timestamp,
+            self.TimeSource.PUBLIC_CHANNEL_SYNC,
+            type(phaseId) == "string" and phaseId ~= "" and phaseId or sharedRecord.phaseID
+        );
+    end
     self:NotifySharedDisplayApplied(mapId, sharedRecord);
 end
 
@@ -265,7 +340,19 @@ function UnifiedDataManager:OnSharedDisplayReleased(mapId)
         return;
     end
 
+    local previousActiveRecordKey = state.activeRecordKey;
     state.activeRecordKey = nil;
+    if type(previousActiveRecordKey) == "string" and previousActiveRecordKey ~= "" then
+        if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
+            UIRefreshCoordinator:RequestRowRefresh(mapId, {
+                affectsSort = true,
+                force = true,
+                delay = 0,
+            });
+        elseif UIRefreshCoordinator and UIRefreshCoordinator.RefreshMainTable then
+            UIRefreshCoordinator:RefreshMainTable(true);
+        end
+    end
 end
 
 function UnifiedDataManager:RefreshSharedDisplayActivation(mapId, currentTime)

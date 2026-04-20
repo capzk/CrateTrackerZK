@@ -20,7 +20,6 @@ localeData["FloatingButtonTooltipLine3"] = "Clic-derecho para abrir los ajustes"
 localeData["Enabled"] = "Notificaciones de equipo activadas";
 localeData["Disabled"] = "Notificaciones de equipo desactivadas";
 localeData["AirdropDetected"] = "[%s]¡Suministros de guerra detectados!!!";
-localeData["AirdropDetectedManual"] = "[%s]¡Suministros de guerra!!!";
 localeData["NoTimeRecord"] = "[%s]¡Sin registro de tiempo!!!";
 localeData["TimeRemaining"] = "[%s]Suministros de guerra en: %s!!!";
 localeData["AutoTeamReportMessage"] = "Actual[%s]Suministros de guerra en: %s!!";

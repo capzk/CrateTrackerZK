@@ -174,6 +174,24 @@ local function SendManualVisibleMessage(message, preferredChatType)
     return result;
 end
 
+local function ResolveStandardVisibleChatType(notification)
+    if type(notification) ~= "table"
+        or not notification.IsTeamNotificationEnabled
+        or notification:IsTeamNotificationEnabled() ~= true then
+        return nil;
+    end
+
+    local teamChatType = notification.GetTeamChatType and notification:GetTeamChatType() or nil;
+    if type(teamChatType) ~= "string" or teamChatType == "" then
+        return nil;
+    end
+
+    return NotificationOutputService
+        and NotificationOutputService.GetStandardVisibleChatType
+        and NotificationOutputService:GetStandardVisibleChatType(teamChatType)
+        or nil;
+end
+
 function Notification:SetAutoTeamReportEnabled(enabled)
     if enabled and not self:IsTeamNotificationEnabled() then
         self.autoTeamReportEnabled = false;
@@ -366,32 +384,69 @@ function Notification:NotifySharedPhaseSyncApplied(mapId, sharedRecord)
 
     local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
-    local request = {
-        kind = "shared_phase_sync_applied",
-        source = "public_channel_sync",
-        mapKey = mapId,
-        mapId = mapId,
-        mapName = mapName,
-        eventTimestamp = sharedRecord.timestamp,
-        objectGUID = sharedRecord.objectGUID,
-        allowTeamChat = false,
-        allowLocalFallback = true,
-        allowSound = false,
-        chatIntent = "automatic",
-    };
-    local decision = NotificationDecisionService
-        and NotificationDecisionService.DecideVisibleNotification
-        and NotificationDecisionService:DecideVisibleNotification(self, request, Utils:GetCurrentTimestamp())
-        or nil;
-    if not decision or decision.suppress == true then
-        return false;
-    end
-
     local message = NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
         and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
         or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName);
-    local outputResult = ExecuteNotificationDecision(self, message, decision);
-    return outputResult and outputResult.sentText == true or false;
+
+    return NotificationOutputService
+        and NotificationOutputService.SendLocalMessage
+        and NotificationOutputService:SendLocalMessage(message) == true
+        or false;
+end
+
+function Notification:SendSharedPhaseSyncAppliedTeamMessage(mapId, sharedRecord)
+    if not self.isInitialized then self:Initialize() end
+    if type(mapId) ~= "number" or type(sharedRecord) ~= "table" then
+        return false;
+    end
+
+    local visibleChatType = ResolveStandardVisibleChatType(self);
+    if type(visibleChatType) ~= "string" or visibleChatType == "" then
+        return false;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local message = NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
+        and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
+        or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName);
+
+    return NotificationOutputService
+        and NotificationOutputService.SendTeamMessage
+        and NotificationOutputService:SendTeamMessage(message, visibleChatType) == true
+        or false;
+end
+
+function Notification:SendTimeRemainingTeamMessage(mapId)
+    if not self.isInitialized then self:Initialize() end
+    if type(mapId) ~= "number" then
+        return false;
+    end
+
+    local visibleChatType = ResolveStandardVisibleChatType(self);
+    if type(visibleChatType) ~= "string" or visibleChatType == "" then
+        return false;
+    end
+
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
+    if not mapData then
+        return false;
+    end
+
+    local remaining = UnifiedDataManager and UnifiedDataManager.GetRemainingTime and UnifiedDataManager:GetRemainingTime(mapId) or nil;
+    if type(remaining) ~= "number" then
+        return false;
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId);
+    local message = NotificationQueryService and NotificationQueryService.BuildTimeRemainingMessage
+        and NotificationQueryService:BuildTimeRemainingMessage(mapName, remaining)
+        or string.format((L and L["TimeRemaining"]) or "[%s]War Supplies airdrop in: %s!!!", mapName, UnifiedDataManager:FormatTime(remaining, true));
+
+    return NotificationOutputService
+        and NotificationOutputService.SendTeamMessage
+        and NotificationOutputService:SendTeamMessage(message, visibleChatType) == true
+        or false;
 end
 
 function Notification:NotifyPhaseTeamAlert(mapName, previousPhaseID, currentPhaseID)
@@ -500,7 +555,9 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
     local remaining = nil;
     
     if isAirdropActive then
-        message = string.format(L["AirdropDetectedManual"], displayName);
+        message = NotificationQueryService and NotificationQueryService.BuildAirdropDetectedMessage
+            and NotificationQueryService:BuildAirdropDetectedMessage(displayName)
+            or string.format(L["AirdropDetected"], displayName);
         systemMessage = message;
     else
         remaining = UnifiedDataManager:GetRemainingTime(mapData.id);
@@ -527,7 +584,7 @@ function Notification:NotifyMapRefresh(mapData, isAirdropActive, clickButton)
             and NotificationOutputService:GetManualAirdropChatType(self, chatType);
         local outputResult = visibleChatType and SendManualVisibleMessage(message, visibleChatType) or nil;
         if not outputResult or outputResult.sentText ~= true then
-            Logger:Warn("Notification", "通知", "发送小队/团队消息失败: " .. tostring(outputResult and outputResult.err or "未知错误"));
+            SendManualVisibleMessage(systemMessage, nil);
         end
     else
         SendManualVisibleMessage(systemMessage, nil);

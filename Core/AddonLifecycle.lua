@@ -94,6 +94,9 @@ function AddonLifecycle:OnLogin()
     if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
         TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
     end
+    if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
+        TeamSharedWarmupService:HandleTeamContextChanged(false)
+    end
 
     if addonEnabled and CoreShared:IsAreaActive() then
         TickerController:StartMapIconDetection(CrateTrackerZK, 1)

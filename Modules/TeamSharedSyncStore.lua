@@ -4,7 +4,7 @@
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 
 TeamSharedSyncStore.FEATURE_ENABLED = true
-TeamSharedSyncStore.RECORD_TTL = 3600
+TeamSharedSyncStore.RECORD_TTL = 18000
 TeamSharedSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
 TeamSharedSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET = 120
 
@@ -131,6 +131,60 @@ function TeamSharedSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecor
     outRecord.receivedAt = record.receivedAt
     outRecord.expiresAt = record.expiresAt
     outRecord.recordKey = record.recordKey
+    return outRecord
+end
+
+function TeamSharedSyncStore:GetLatestRecordForMapInto(expansionID, mapID, outRecord, currentTime)
+    if self:IsFeatureEnabled() ~= true then
+        return nil
+    end
+    if type(expansionID) ~= "string" or type(mapID) ~= "number" or type(outRecord) ~= "table" then
+        return nil
+    end
+
+    local records = EnsureRecords()
+    local expansionBucket = records[expansionID]
+    local mapBucket = expansionBucket and expansionBucket[mapID]
+    if type(mapBucket) ~= "table" then
+        return nil
+    end
+
+    local now = currentTime or Utils:GetCurrentTimestamp()
+    local latestRecord = nil
+    for phaseID, record in pairs(mapBucket) do
+        if IsExpired(record, now) then
+            mapBucket[phaseID] = nil
+        elseif latestRecord == nil
+            or (tonumber(record.timestamp) or 0) > (tonumber(latestRecord.timestamp) or 0)
+            or (
+                (tonumber(record.timestamp) or 0) == (tonumber(latestRecord.timestamp) or 0)
+                and (tonumber(record.receivedAt) or 0) > (tonumber(latestRecord.receivedAt) or 0)
+            ) then
+            latestRecord = record
+        end
+    end
+
+    if next(mapBucket) == nil then
+        expansionBucket[mapID] = nil
+        if next(expansionBucket) == nil then
+            records[expansionID] = nil
+        end
+    end
+
+    if type(latestRecord) ~= "table" then
+        return nil
+    end
+
+    outRecord.expansionID = expansionID
+    outRecord.mapID = mapID
+    outRecord.phaseID = latestRecord.phaseID
+    outRecord.timestamp = latestRecord.timestamp
+    outRecord.objectGUID = latestRecord.objectGUID
+    outRecord.source = latestRecord.source
+    outRecord.sender = latestRecord.sender
+    outRecord.receivedAt = latestRecord.receivedAt
+    outRecord.expiresAt = latestRecord.expiresAt
+    outRecord.recordKey = latestRecord.recordKey
     return outRecord
 end
 

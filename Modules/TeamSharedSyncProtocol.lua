@@ -4,6 +4,7 @@ local TeamSharedSyncProtocol = BuildEnv("TeamSharedSyncProtocol")
 
 TeamSharedSyncProtocol.ADDON_PREFIX = "CTKZK_PSYNC"
 TeamSharedSyncProtocol.MESSAGE_TYPE = "PHASE_AIRDROP"
+TeamSharedSyncProtocol.REQUEST_MESSAGE_TYPE = "SYNC_REQUEST"
 TeamSharedSyncProtocol.PROTOCOL_VERSION = 1
 
 local function EncodePayloadField(value)
@@ -66,9 +67,67 @@ function TeamSharedSyncProtocol:BuildPayload(syncState)
     }, "|")
 end
 
+function TeamSharedSyncProtocol:BuildRequestPayload(requestState)
+    if type(requestState) ~= "table" then
+        return nil
+    end
+
+    local requestID = DecodePayloadField(EncodePayloadField(requestState.requestID))
+    local timestamp = tonumber(requestState.timestamp)
+    if type(requestID) ~= "string" or requestID == "" then
+        return nil
+    end
+    if not timestamp or timestamp <= 0 then
+        return nil
+    end
+
+    return table.concat({
+        self.REQUEST_MESSAGE_TYPE,
+        tostring(self.PROTOCOL_VERSION),
+        EncodePayloadField(requestID),
+        tostring(math.floor(timestamp)),
+    }, "|")
+end
+
 function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     if prefix ~= self.ADDON_PREFIX or type(payload) ~= "string" or type(outState) ~= "table" then
         return nil
+    end
+
+    outState.messageType = nil
+    outState.requestID = nil
+    outState.expansionID = nil
+    outState.mapID = nil
+    outState.phaseID = nil
+    outState.timestamp = nil
+    outState.objectGUID = nil
+
+    local messageType = payload:match("^([^|]+)|")
+    if type(messageType) ~= "string" or messageType == "" then
+        return nil
+    end
+
+    if messageType == self.REQUEST_MESSAGE_TYPE then
+        local requestMessageType, requestVersionText, requestIDText, requestTimestampText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+        local requestProtocolVersion = tonumber(requestVersionText)
+        local requestID = DecodePayloadField(requestIDText)
+        local requestTimestamp = tonumber(requestTimestampText)
+
+        if requestMessageType ~= self.REQUEST_MESSAGE_TYPE or requestProtocolVersion ~= self.PROTOCOL_VERSION then
+            return nil
+        end
+        if type(requestID) ~= "string" or requestID == "" then
+            return nil
+        end
+        if not requestTimestamp or requestTimestamp <= 0 then
+            return nil
+        end
+
+        outState.messageType = requestMessageType
+        outState.requestID = requestID
+        outState.timestamp = requestTimestamp
+        return outState
     end
 
     local messageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
@@ -105,6 +164,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     outState.phaseID = phaseID
     outState.timestamp = timestamp
     outState.objectGUID = objectGUID
+    outState.messageType = messageType
     return outState
 end
 

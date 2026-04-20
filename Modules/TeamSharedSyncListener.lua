@@ -13,6 +13,7 @@ local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
+local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
 
 TeamSharedSyncListener.isInitialized = false
 TeamSharedSyncListener.FEATURE_ENABLED = true
@@ -122,6 +123,29 @@ function TeamSharedSyncListener:SendSharedSync(syncState)
     return SendSyncPayload(self, syncState)
 end
 
+function TeamSharedSyncListener:SendSyncRequest(requestState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if self:CanSendSharedSync() ~= true then
+        return false
+    end
+    if self:EnsureTeamSharedChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = TeamSharedSyncProtocol and TeamSharedSyncProtocol.BuildRequestPayload
+        and TeamSharedSyncProtocol:BuildRequestPayload(requestState)
+        or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
+        or false
+end
+
 local function ResolveCurrentChannelContext(outContext, ...)
     outContext = type(outContext) == "table" and outContext or {}
     outContext.target = select(1, ...)
@@ -200,6 +224,12 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
         or nil
     if not syncState then
         return false
+    end
+    if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.REQUEST_MESSAGE_TYPE or "SYNC_REQUEST") then
+        return TeamSharedWarmupService
+            and TeamSharedWarmupService.HandleSyncRequest
+            and TeamSharedWarmupService:HandleSyncRequest(syncState, sender)
+            or false
     end
     if IsSharedSyncPayloadConsistent(syncState) ~= true then
         return false

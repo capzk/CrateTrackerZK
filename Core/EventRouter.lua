@@ -46,6 +46,9 @@ local function HandleZoneChanged()
         if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
             TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
         end
+        if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
+            TeamSharedWarmupService:HandleTeamContextChanged(false)
+        end
     end)
 end
 
@@ -55,6 +58,9 @@ local function HandleGroupRosterUpdate()
     end
     if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
         TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
+    end
+    if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
+        TeamSharedWarmupService:HandleTeamContextChanged(false)
     end
 end
 

@@ -19,8 +19,7 @@ localeData["FloatingButtonTooltipLine3"] = "右鍵開啟設定";
 -- 通知（空投）
 localeData["Enabled"] = "團隊通知已開啟";
 localeData["Disabled"] = "團隊通知已關閉";
-localeData["AirdropDetected"] = "【%s】檢測到戰爭補給正在空投！！！";  -- 自動檢測消息（帶"檢測到"關鍵字）
-localeData["AirdropDetectedManual"] = "【%s】戰爭補給正在空投！！！";  -- 手動通知消息（不帶"檢測到"關鍵字）
+localeData["AirdropDetected"] = "【%s】檢測到戰爭補給正在空投！！！";  -- 統一空投訊息
 localeData["NoTimeRecord"] = "【%s】暫無時間記錄！！！";
 localeData["TimeRemaining"] = "【%s】距離戰爭補給空投還有：%s！！！";
 localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";

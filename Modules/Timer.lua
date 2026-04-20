@@ -292,7 +292,8 @@ function TimerManager:DetectMapIcons(currentMapID)
         local eventTimestamp = UnifiedDataManager:SelectEventTimestamp(
             targetMapData.id,
             detectionState.firstDetectedTime,
-            iconResult and iconResult.phaseID or nil
+            iconResult and iconResult.phaseID or nil,
+            objectGUID
         );
         local shouldSendNotification = ShouldSendNotification(eventTimestamp, currentTime);
         

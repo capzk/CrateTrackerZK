@@ -14,6 +14,7 @@ local WIDTH_PROFILE_VERSION = MainFrameMetrics.WIDTH_PROFILE_VERSION
 local UI_STATE_MIGRATION_VERSION = MainFrameMetrics.UI_STATE_MIGRATION_VERSION
 local RESIZE_LAYOUT_NOTIFY_INTERVAL = MainFrameMetrics.RESIZE_LAYOUT_NOTIFY_INTERVAL
 local RESIZE_LAYOUT_PIXEL_STEP = MainFrameMetrics.RESIZE_LAYOUT_PIXEL_STEP
+local MAIN_FRAME_STRATA = "MEDIUM"
 
 local function EnsureUIState()
     if MainFrameState and MainFrameState.EnsureUIState then
@@ -157,7 +158,8 @@ function MainFrame:Create()
     frame.__ctkHeightControlledByUser = false
     frame:SetSize(FRAME_CFG.width, GetAdaptiveDefaultHeight())
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    frame:SetFrameStrata("LOW")
+    frame:SetFrameStrata(MAIN_FRAME_STRATA)
+    frame:SetToplevel(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetClampedToScreen(true)

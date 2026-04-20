@@ -22,6 +22,12 @@ function NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
     return string.format(format, mapName or "")
 end
 
+function NotificationQueryService:BuildTimeRemainingMessage(mapName, remaining)
+    local format = (L and L["TimeRemaining"]) or "[%s]War Supplies airdrop in: %s!!!"
+    local timeText = (UnifiedDataManager and UnifiedDataManager.FormatTime and UnifiedDataManager:FormatTime(remaining, true)) or "--:--"
+    return string.format(format, mapName or "", timeText)
+end
+
 function NotificationQueryService:BuildPhaseTeamAlertMessage(mapName, previousPhaseID, currentPhaseID)
     local format = (L and L["PhaseTeamAlertMessage"]) or "Current %s phase changed: %s --> %s"
     local previousText = previousPhaseID ~= nil and tostring(previousPhaseID) or ((L and L["UnknownPhaseValue"]) or "unknown")

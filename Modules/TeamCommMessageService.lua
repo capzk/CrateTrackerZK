@@ -39,13 +39,6 @@ local function AcquireSyncContextBuffer()
     return buffer
 end
 
-local function IsSameTrackedMapContext(currentMapID, mapData)
-    if type(currentMapID) ~= "number" or type(mapData) ~= "table" or type(mapData.mapID) ~= "number" then
-        return false
-    end
-    return currentMapID == mapData.mapID
-end
-
 local function HasSameObjectGUID(localGUID, incomingGUID)
     if AirdropEventService and AirdropEventService.HasSameObjectGUID then
         return AirdropEventService:HasSameObjectGUID(localGUID, incomingGUID)
@@ -69,7 +62,8 @@ local function ShouldPersistIncomingConfirmedState(persistentState, incomingTime
 
     local localGUID = persistentState.currentAirdropObjectGUID
     if HasSameObjectGUID(localGUID, incomingGUID) then
-        return false
+        local localTimestamp = GetConfirmedTimestamp(persistentState)
+        return type(localTimestamp) ~= "number" or incomingTimestamp < localTimestamp
     end
 
     local localTimestamp = GetConfirmedTimestamp(persistentState)
@@ -119,21 +113,14 @@ local function ResolveSyncContext(listener, mapID, sender, outContext)
         return nil
     end
 
-    local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local isOnMap = IsSameTrackedMapContext(currentMapID, mapData)
-    local persistentState = nil
-    if not isOnMap then
-        persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
-            and UnifiedDataManager:GetPersistentAirdropStateInto(mapData.id, outContext.persistentStateBuffer)
-            or nil
-    end
+    local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
+        and UnifiedDataManager:GetPersistentAirdropStateInto(mapData.id, outContext.persistentStateBuffer)
+        or nil
     outContext.mapId = mapData.id
     outContext.mapID = numericMapID
     outContext.mapData = mapData
     outContext.mapName = mapName
-    outContext.currentMapID = currentMapID
     outContext.persistentState = persistentState
-    outContext.isOnMap = isOnMap
     outContext.currentTime = Utils:GetCurrentTimestamp()
     outContext.sender = sender
     return outContext
@@ -160,13 +147,9 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
         objectGUID = incomingGUID,
     })
 
-    if context.isOnMap then
-        return true
-    end
-
-    -- 同地图确认状态采用单调更新规则：
-    -- 1. 同 objectGUID 视为同一空投事件，忽略重复同步；
-    -- 2. 不同 objectGUID 只有时间更晚时才允许覆盖。
+    -- 确认状态采用“同事件最早时间优先、跨事件仅接受更新事件”的规则：
+    -- 1. 同 objectGUID 视为同一空投事件，若收到更早时间则允许回写修正；
+    -- 2. 不同 objectGUID 只有时间更晚时才允许覆盖为新事件。
     if not ShouldPersistIncomingConfirmedState(context.persistentState, syncTimestamp, incomingGUID) then
         return true
     end

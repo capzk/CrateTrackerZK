@@ -7,11 +7,18 @@ local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local Data = BuildEnv("Data")
 local IconDetector = BuildEnv("IconDetector")
 local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
+local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 
 TeamSharedWarmupService.FEATURE_ENABLED = true
 TeamSharedWarmupService.BROADCAST_INTERVAL = 540
 TeamSharedWarmupService.SEND_INTERVAL = 1
+TeamSharedWarmupService.REQUEST_COOLDOWN = 15
+TeamSharedWarmupService.REQUEST_ACCEPT_WINDOW = 30
+TeamSharedWarmupService.REQUEST_RESPONSE_JITTER_MIN = 0.35
+TeamSharedWarmupService.REQUEST_RESPONSE_JITTER_MAX = 1.10
+TeamSharedWarmupService.REQUEST_RESPONSE_STATE_TTL = 60
+TeamSharedWarmupService.REQUEST_MAX_FUTURE_OFFSET = 10
 
 TeamSharedWarmupService.broadcastQueue = TeamSharedWarmupService.broadcastQueue or {}
 TeamSharedWarmupService.broadcastTimer = TeamSharedWarmupService.broadcastTimer or nil
@@ -19,6 +26,13 @@ TeamSharedWarmupService.broadcastIndex = TeamSharedWarmupService.broadcastIndex 
 TeamSharedWarmupService.sharedRecordBuffer = TeamSharedWarmupService.sharedRecordBuffer or {}
 TeamSharedWarmupService.candidateByKeyBuffer = TeamSharedWarmupService.candidateByKeyBuffer or {}
 TeamSharedWarmupService.persistentStateBuffer = TeamSharedWarmupService.persistentStateBuffer or {}
+TeamSharedWarmupService.lastTeamChannelReady = TeamSharedWarmupService.lastTeamChannelReady or false
+TeamSharedWarmupService.lastSyncRequestAt = TeamSharedWarmupService.lastSyncRequestAt or 0
+TeamSharedWarmupService.requestSequence = TeamSharedWarmupService.requestSequence or 0
+TeamSharedWarmupService.pendingResponseTimer = TeamSharedWarmupService.pendingResponseTimer or nil
+TeamSharedWarmupService.requestResponseStateByKey = TeamSharedWarmupService.requestResponseStateByKey or {}
+TeamSharedWarmupService.pendingFollowupBroadcast = TeamSharedWarmupService.pendingFollowupBroadcast or false
+TeamSharedWarmupService.lastTeamContextKey = TeamSharedWarmupService.lastTeamContextKey or nil
 
 local function ClearArray(buffer)
     if type(buffer) ~= "table" then
@@ -38,6 +52,37 @@ local function ClearMap(buffer)
         buffer[key] = nil
     end
     return buffer
+end
+
+local function BuildRequestResponseKey(sender, requestID)
+    return tostring(sender or "unknown") .. ":" .. tostring(requestID or "unknown")
+end
+
+local function NormalizeJitterDelay(minDelay, maxDelay)
+    local resolvedMin = tonumber(minDelay) or 0
+    local resolvedMax = tonumber(maxDelay) or resolvedMin
+    if resolvedMax < resolvedMin then
+        resolvedMax = resolvedMin
+    end
+    if resolvedMin < 0 then
+        resolvedMin = 0
+    end
+    if resolvedMax <= resolvedMin then
+        return resolvedMin
+    end
+    return resolvedMin + (math.random() * (resolvedMax - resolvedMin))
+end
+
+local function GetTeamContextKey()
+    local resolved = TeamSharedSyncChannelService
+        and TeamSharedSyncChannelService.GetResolvedChannelInfo
+        and TeamSharedSyncChannelService:GetResolvedChannelInfo()
+        or nil
+    local distribution = resolved and resolved.distribution or nil
+    if type(distribution) ~= "string" or distribution == "" then
+        return nil
+    end
+    return distribution
 end
 
 local function BuildCandidateKey(expansionID, mapID, phaseID)
@@ -106,6 +151,25 @@ function TeamSharedWarmupService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
 
+function TeamSharedWarmupService:CanRequestSync()
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if not CoreShared or not CoreShared.IsAddonEnabled or CoreShared:IsAddonEnabled() ~= true then
+        return false
+    end
+    if not TeamSharedSyncListener
+        or not TeamSharedSyncListener.IsFeatureEnabled
+        or TeamSharedSyncListener:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if not TeamSharedSyncListener.CanSendSharedSync
+        or TeamSharedSyncListener:CanSendSharedSync() ~= true then
+        return false
+    end
+    return true
+end
+
 function TeamSharedWarmupService:CanBroadcast()
     if self:IsFeatureEnabled() ~= true then
         return false
@@ -130,6 +194,7 @@ function TeamSharedWarmupService:Initialize()
     self.sharedRecordBuffer = self.sharedRecordBuffer or {}
     self.candidateByKeyBuffer = self.candidateByKeyBuffer or {}
     self.persistentStateBuffer = self.persistentStateBuffer or {}
+    self.requestResponseStateByKey = self.requestResponseStateByKey or {}
     return true
 end
 
@@ -139,16 +204,165 @@ function TeamSharedWarmupService:CancelPendingBroadcast()
     end
     self.broadcastTimer = nil
     self.broadcastIndex = 0
+    self.pendingFollowupBroadcast = false
     self.broadcastQueue = ClearArray(self.broadcastQueue)
+    return true
+end
+
+function TeamSharedWarmupService:CancelPendingResponse()
+    if self.pendingResponseTimer and self.pendingResponseTimer.Cancel then
+        self.pendingResponseTimer:Cancel()
+    end
+    self.pendingResponseTimer = nil
     return true
 end
 
 function TeamSharedWarmupService:Reset()
     self:CancelPendingBroadcast()
+    self:CancelPendingResponse()
     self.sharedRecordBuffer = ClearArray(self.sharedRecordBuffer)
     self.candidateByKeyBuffer = ClearMap(self.candidateByKeyBuffer)
     self.persistentStateBuffer = ClearMap(self.persistentStateBuffer)
+    self.requestResponseStateByKey = ClearMap(self.requestResponseStateByKey)
+    self.lastTeamChannelReady = false
+    self.lastTeamContextKey = nil
+    self.lastSyncRequestAt = 0
+    self.requestSequence = 0
+    self.pendingFollowupBroadcast = false
     return true
+end
+
+function TeamSharedWarmupService:PruneRequestResponseState(currentTime)
+    local stateByKey = self.requestResponseStateByKey or {}
+    local now = currentTime or Utils:GetCurrentTimestamp()
+    local ttl = tonumber(self.REQUEST_RESPONSE_STATE_TTL) or 60
+    for requestKey, respondedAt in pairs(stateByKey) do
+        if type(respondedAt) ~= "number" or (now - respondedAt) > ttl then
+            stateByKey[requestKey] = nil
+        end
+    end
+    self.requestResponseStateByKey = stateByKey
+    return stateByKey
+end
+
+function TeamSharedWarmupService:BuildSyncRequestState(currentTime)
+    self.requestSequence = (tonumber(self.requestSequence) or 0) + 1
+    local now = tonumber(currentTime) or Utils:GetCurrentTimestamp()
+    return {
+        requestID = tostring(now) .. "-" .. tostring(self.requestSequence),
+        timestamp = now,
+    }
+end
+
+function TeamSharedWarmupService:SendSyncRequest(currentTime, force)
+    if self:CanRequestSync() ~= true then
+        return false
+    end
+
+    local now = tonumber(currentTime) or Utils:GetCurrentTimestamp()
+    if force ~= true then
+        local lastSentAt = tonumber(self.lastSyncRequestAt) or 0
+        if (now - lastSentAt) < (tonumber(self.REQUEST_COOLDOWN) or 15) then
+            return false
+        end
+    end
+
+    local requestState = self:BuildSyncRequestState(now)
+    if TeamSharedSyncListener and TeamSharedSyncListener.SendSyncRequest and TeamSharedSyncListener:SendSyncRequest(requestState) == true then
+        self.lastSyncRequestAt = now
+        return true
+    end
+    return false
+end
+
+function TeamSharedWarmupService:HandleTeamContextChanged(forceRequest)
+    local canRequestSync = self:CanRequestSync() == true
+    local previousReady = self.lastTeamChannelReady == true
+    local previousContextKey = self.lastTeamContextKey
+    self.lastTeamChannelReady = canRequestSync
+
+    if canRequestSync ~= true then
+        self.lastTeamContextKey = nil
+        self:CancelPendingResponse()
+        return false
+    end
+
+    local currentContextKey = GetTeamContextKey()
+    self.lastTeamContextKey = currentContextKey
+    local contextChanged = previousReady == true
+        and type(previousContextKey) == "string"
+        and previousContextKey ~= ""
+        and type(currentContextKey) == "string"
+        and currentContextKey ~= ""
+        and previousContextKey ~= currentContextKey
+
+    if previousReady ~= true or contextChanged == true or forceRequest == true then
+        return self:SendSyncRequest(
+            Utils:GetCurrentTimestamp(),
+            previousReady ~= true or contextChanged == true or forceRequest == true
+        )
+    end
+
+    return false
+end
+
+function TeamSharedWarmupService:ScheduleResponseBroadcast(delaySeconds)
+    if self.pendingResponseTimer then
+        return true
+    end
+    if self.broadcastTimer or (self.broadcastIndex > 0 and self.broadcastQueue[self.broadcastIndex]) then
+        self.pendingFollowupBroadcast = true
+        return true
+    end
+    if not C_Timer or not C_Timer.NewTimer then
+        return self:StartBroadcastRound()
+    end
+
+    local delay = tonumber(delaySeconds) or 0
+    if delay < 0 then
+        delay = 0
+    end
+
+    self.pendingResponseTimer = C_Timer.NewTimer(delay, function()
+        self.pendingResponseTimer = nil
+        self:StartBroadcastRound()
+    end)
+    return true
+end
+
+function TeamSharedWarmupService:HandleSyncRequest(syncState, sender)
+    if self:CanBroadcast() ~= true then
+        return false
+    end
+    if type(syncState) ~= "table" or type(syncState.requestID) ~= "string" or syncState.requestID == "" then
+        return false
+    end
+    if type(sender) ~= "string" or sender == "" then
+        return false
+    end
+
+    local now = Utils:GetCurrentTimestamp()
+    local requestTimestamp = tonumber(syncState.timestamp)
+    local acceptWindow = tonumber(self.REQUEST_ACCEPT_WINDOW) or 30
+    local maxFutureOffset = tonumber(self.REQUEST_MAX_FUTURE_OFFSET) or 10
+    if type(requestTimestamp) ~= "number"
+        or requestTimestamp < (now - acceptWindow)
+        or requestTimestamp > (now + maxFutureOffset) then
+        return false
+    end
+
+    local stateByKey = self:PruneRequestResponseState(now)
+    local requestKey = BuildRequestResponseKey(sender, syncState.requestID)
+    if stateByKey[requestKey] ~= nil then
+        return false
+    end
+    stateByKey[requestKey] = now
+
+    local delay = NormalizeJitterDelay(
+        self.REQUEST_RESPONSE_JITTER_MIN,
+        self.REQUEST_RESPONSE_JITTER_MAX
+    )
+    return self:ScheduleResponseBroadcast(delay)
 end
 
 function TeamSharedWarmupService:CollectPersistentCandidates(candidateByKey, currentTime)
@@ -301,7 +515,14 @@ function TeamSharedWarmupService:SendNextRecord()
         return self:ScheduleNextSend(self.SEND_INTERVAL)
     end
 
+    local shouldFollowup = self.pendingFollowupBroadcast == true and self:CanBroadcast() == true
     self:CancelPendingBroadcast()
+    if shouldFollowup then
+        return self:ScheduleResponseBroadcast(NormalizeJitterDelay(
+            self.REQUEST_RESPONSE_JITTER_MIN,
+            self.REQUEST_RESPONSE_JITTER_MAX
+        ))
+    end
     return true
 end
 
