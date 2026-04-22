@@ -50,6 +50,16 @@ local function ComputeDistance(x1, y1, x2, y2)
     return 0
 end
 
+local function GetRuntimeNow()
+    if type(GetTime) == "function" then
+        local ok, value = pcall(GetTime)
+        if ok and type(value) == "number" then
+            return value
+        end
+    end
+    return Utils:GetCurrentTimestamp()
+end
+
 local function ComputeRouteVector(route)
     if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ComputeRouteVector then
         return AirdropTrajectoryGeometryService:ComputeRouteVector(route)
@@ -98,6 +108,7 @@ local function BuildObservationState(targetMapData, iconResult, currentTime)
         motionDX = nil,
         motionDY = nil,
         motionRecordedAt = nil,
+        motionRecordedAtRealtime = nil,
         sampledPoints = {},
         lastRecordedPointKey = nil,
     }
@@ -593,12 +604,14 @@ function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconR
     end
 
     local currentTime = Utils:GetCurrentTimestamp()
-    local recentMotionAge = type(state.motionRecordedAt) == "number" and (currentTime - state.motionRecordedAt) or math.huge
+    local runtimeNow = GetRuntimeNow()
+    local motionRecordedAt = tonumber(state.motionRecordedAtRealtime) or tonumber(state.motionRecordedAt)
+    local recentMotionAge = type(motionRecordedAt) == "number" and (runtimeNow - motionRecordedAt) or math.huge
     if type(state.motionDX) ~= "number"
         or type(state.motionDY) ~= "number"
         or recentMotionAge > (self.MATCH_RECENT_MOTION_WINDOW or 0.6) then
         if type(state.uniqueMatchState) == "table"
-            and (currentTime - (tonumber(state.uniqueMatchState.lastMatchedAt) or 0)) > (self.MATCH_GAP_GRACE or 3) then
+            and (runtimeNow - (tonumber(state.uniqueMatchState.lastMatchedAt) or 0)) > (self.MATCH_GAP_GRACE or 3) then
             state.uniqueMatchState = nil
         end
         return false
@@ -668,7 +681,7 @@ function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconR
     local shouldResetUniqueState = type(uniqueState) ~= "table"
         or uniqueState.routeKey ~= route.routeKey
         or type(uniqueState.lastMatchedAt) ~= "number"
-        or (currentTime - uniqueState.lastMatchedAt) > (self.MATCH_GAP_GRACE or 3)
+        or (runtimeNow - uniqueState.lastMatchedAt) > (self.MATCH_GAP_GRACE or 3)
     if shouldResetUniqueState then
         uniqueState = {
             routeKey = route.routeKey,
@@ -678,7 +691,7 @@ function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconR
             matchedSamples = 1,
             minProjection = candidate.projection,
             maxProjection = candidate.projection,
-            lastMatchedAt = currentTime,
+            lastMatchedAt = runtimeNow,
         }
         state.uniqueMatchState = uniqueState
     else
@@ -686,11 +699,11 @@ function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconR
             state.uniqueMatchState = nil
             return false
         end
-        local deltaTime = currentTime - uniqueState.lastMatchedAt
+        local deltaTime = runtimeNow - uniqueState.lastMatchedAt
         if deltaTime > 0 and deltaTime <= (self.MATCH_GAP_GRACE or 3) then
             uniqueState.accumulatedDuration = (tonumber(uniqueState.accumulatedDuration) or 0) + deltaTime
         end
-        uniqueState.lastMatchedAt = currentTime
+        uniqueState.lastMatchedAt = runtimeNow
         uniqueState.matchedSamples = (tonumber(uniqueState.matchedSamples) or 0) + 1
         uniqueState.route = route
         uniqueState.routeLength = candidate.routeLength
@@ -955,6 +968,7 @@ function AirdropTrajectoryService:HandleDetectedIcon(targetMapData, iconResult, 
             state.motionDX = positionX - state.startAnchorX
             state.motionDY = positionY - state.startAnchorY
             state.motionRecordedAt = currentTime
+            state.motionRecordedAtRealtime = GetRuntimeNow()
             state.lastX = positionX
             state.lastY = positionY
             state.endX = positionX
@@ -995,6 +1009,7 @@ function AirdropTrajectoryService:HandleDetectedIcon(targetMapData, iconResult, 
         state.motionDX = positionX - state.lastX
         state.motionDY = positionY - state.lastY
         state.motionRecordedAt = currentTime
+        state.motionRecordedAtRealtime = GetRuntimeNow()
         state.lastX = positionX
         state.lastY = positionY
         state.sampleCount = (tonumber(state.sampleCount) or 1) + 1
