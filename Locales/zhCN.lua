@@ -25,6 +25,7 @@ localeData["TimeRemaining"] = "【%s】距离战争物资空投还有：%s！！
 localeData["AutoTeamReportMessage"] = "当前【%s】距离战争物资空投还有：%s！！";
 localeData["SharedPhaseSyncApplied"] = "已成功获取【%s】当前位面的最新空投缓存数据。";
 localeData["PhaseTeamAlertMessage"] = "当前%s位面发生变化：%s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "【%s】已匹配空投轨迹，预测落点坐标：%.1f, %.1f";
 localeData["UnknownPhaseValue"] = "未知";
 
 -- 位面检测提示
@@ -56,6 +57,8 @@ localeData["SettingsAddonToggle"] = "插件开关";
 localeData["SettingsLeaderMode"] = "团长模式";
 localeData["SettingsLeaderModeTooltip"] = "开启后，团队中的可见空投通知与自动播报会优先发送到团队警告频道；如果当前没有团队警告权限，则自动回落到普通团队频道。";
 localeData["SettingsTeamNotify"] = "团队通知";
+localeData["SettingsPhaseTeamAlert"] = "位面变化团队报告";
+localeData["SettingsPhaseTeamAlertTooltip"] = "开启后，会在团队频道发送位面变化消息。";
 localeData["SettingsSoundAlert"] = "声音提醒";
 localeData["SettingsAutoReport"] = "自动通知";
 localeData["SettingsAutoReportInterval"] = "通知频率（秒）";
@@ -91,6 +94,7 @@ localeData["SettingsHelpText"] = [[
    消息设置：控制手动发送和自动发送相关行为
    团长模式：开启后，团队中的可见空投通知与自动通知会优先发送到团队警告频道；如果没有权限，则回落到普通团队频道
    团队通知：开启后，会把消息发送到小队或团队频道
+   位面变化团队报告：开启后，会先发送位面变化消息；若随后成功获取当前位面的共享缓存，再按顺序补发缓存获取和剩余时间消息
    声音提示：开启后，检测到空投时会播放提示音
    自动通知：开启后，会按设定频率自动发送最近的空投倒计时
    通知频率（秒）：设置自动通知发送间隔

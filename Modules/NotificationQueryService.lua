@@ -35,6 +35,11 @@ function NotificationQueryService:BuildPhaseTeamAlertMessage(mapName, previousPh
     return string.format(format, mapName or "", previousText, currentText)
 end
 
+function NotificationQueryService:BuildTrajectoryPredictionMessage(mapName, x, y)
+    local format = (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %.1f, %.1f"
+    return string.format(format, mapName or "", tonumber(x) or 0, tonumber(y) or 0)
+end
+
 function NotificationQueryService:GetNearestAirdropInfo()
     if not Data or not Data.GetAllMaps then
         return nil

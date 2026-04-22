@@ -47,6 +47,7 @@
         <Script file="Modules/UnifiedDataManagerExtensions.lua"/>
         <Script file="Data/Data.lua"/>
         <Script file="Modules/AirdropEventService.lua"/>
+        <Script file="Modules/AirdropTrajectoryStore.lua"/>
     
     <!-- 功能模块 -->
     <Script file="Modules/UIRefreshCoordinator.lua"/>
@@ -62,9 +63,11 @@
     <Script file="Modules/TeamSharedSyncProtocol.lua"/>
     <Script file="Modules/TeamSharedSyncChannelService.lua"/>
     <Script file="Modules/TeamSharedSyncStore.lua"/>
+    <Script file="Modules/AirdropTrajectorySyncService.lua"/>
     <Script file="Modules/TeamSharedSyncListener.lua"/>
     <Script file="Modules/TeamSharedWarmupService.lua"/>
     <Script file="Modules/Notification.lua"/>
+    <Script file="Modules/AirdropTrajectoryAlertCoordinator.lua"/>
     <Script file="Modules/RuntimeResetManager.lua"/>
     <Script file="Modules/TeamCommListener.lua"/>
     <Script file="Modules/HiddenSyncDispatcher.lua"/>
@@ -73,6 +76,7 @@
     <!-- 重构后的检测相关模块（在 Timer.lua 之前加载） -->
     <Script file="Modules/IconDetector.lua"/>
     <Script file="Modules/ShoutDetector.lua"/>
+    <Script file="Modules/AirdropTrajectoryService.lua"/>
     <Script file="Modules/MapTracker.lua"/>
     <Script file="Modules/PhaseProbeService.lua"/>
     <Script file="Modules/Timer.lua"/>

@@ -58,6 +58,8 @@ local function ResetDetectionResult(outResult)
     outResult.phaseID = nil;
     outResult.vignetteGUID = nil;
     outResult.vignetteID = nil;
+    outResult.positionX = nil;
+    outResult.positionY = nil;
     return outResult;
 end
 
@@ -142,6 +144,30 @@ local function IsVignetteOnMapHierarchy(vignetteGUID, currentMapID, trackedMapID
     return false;
 end
 
+local function ResolveVignettePosition(vignetteGUID, currentMapID, trackedMapID)
+    if not C_VignetteInfo or not C_VignetteInfo.GetVignettePosition then
+        return nil, nil;
+    end
+
+    local position = nil;
+    if type(trackedMapID) == "number" then
+        position = C_VignetteInfo.GetVignettePosition(vignetteGUID, trackedMapID);
+    end
+    if not position and type(currentMapID) == "number" then
+        position = C_VignetteInfo.GetVignettePosition(vignetteGUID, currentMapID);
+    end
+    if type(position) ~= "table" then
+        return nil, nil;
+    end
+
+    local x = tonumber(position.x);
+    local y = tonumber(position.y);
+    if type(x) ~= "number" or type(y) ~= "number" then
+        return nil, nil;
+    end
+    return x, y;
+end
+
 function IconDetector:DetectIconInto(currentMapID, trackedMapID, outResult)
     if type(trackedMapID) == "table" and outResult == nil then
         outResult = trackedMapID;
@@ -172,12 +198,15 @@ function IconDetector:DetectIconInto(currentMapID, trackedMapID, outResult)
                 end
                 
                 local phaseID = ExtractPhaseID(objectGUID);
+                local positionX, positionY = ResolveVignettePosition(vignetteGUID, currentMapID, trackedMapID);
                 outResult.detected = true;
                 outResult.objectGUID = objectGUID;
                 outResult.spawnUID = spawnUID;
                 outResult.phaseID = phaseID;
                 outResult.vignetteGUID = vignetteGUID;
                 outResult.vignetteID = vignetteInfo.vignetteID;
+                outResult.positionX = positionX;
+                outResult.positionY = positionY;
                 return outResult;
             end
         end

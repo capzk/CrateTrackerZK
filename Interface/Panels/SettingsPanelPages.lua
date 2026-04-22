@@ -212,7 +212,25 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         end
     end)
 
-    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.teamNotification, lt("SettingsSoundAlert", "声音提醒"), function(enabled)
+    controls.phaseTeamAlert = SettingsPanelFactory:CreateCheckbox(
+        page,
+        controls.teamNotification,
+        lt("SettingsPhaseTeamAlert", "位面变化团队报告"),
+        function(enabled)
+            if SettingsPanelActions and SettingsPanelActions.SetPhaseTeamAlertEnabled then
+                SettingsPanelActions:SetPhaseTeamAlertEnabled(enabled)
+            end
+            if onRefresh then
+                onRefresh()
+            end
+        end,
+        lt(
+            "SettingsPhaseTeamAlertTooltip",
+            "开启后，检测到当前地图位面发生变化时，会发送“当前某地图位面发生变化”到小队或团队频道。"
+        )
+    )
+
+    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.phaseTeamAlert, lt("SettingsSoundAlert", "声音提醒"), function(enabled)
         if SettingsPanelActions and SettingsPanelActions.SetSoundAlertEnabled then
             SettingsPanelActions:SetSoundAlertEnabled(enabled)
         end

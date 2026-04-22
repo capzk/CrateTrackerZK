@@ -26,6 +26,12 @@ function SettingsPanelActions:SetLeaderModeEnabled(enabled)
     end
 end
 
+function SettingsPanelActions:SetPhaseTeamAlertEnabled(enabled)
+    if Notification and Notification.SetPhaseTeamAlertEnabled then
+        Notification:SetPhaseTeamAlertEnabled(enabled == true)
+    end
+end
+
 function SettingsPanelActions:SetSoundAlertEnabled(enabled)
     if Notification and Notification.SetSoundAlertEnabled then
         Notification:SetSoundAlertEnabled(enabled == true)

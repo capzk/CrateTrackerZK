@@ -29,6 +29,7 @@ if not Area then
 end
 
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 TimerManager.detectionSources = {
     MAP_ICON = "map_icon",
@@ -48,6 +49,9 @@ function TimerManager:Initialize()
     -- 初始化UnifiedDataManager
     if UnifiedDataManager and UnifiedDataManager.Initialize then
         UnifiedDataManager:Initialize();
+    end
+    if AirdropTrajectoryService and AirdropTrajectoryService.Initialize then
+        AirdropTrajectoryService:Initialize();
     end
 end
 
@@ -172,8 +176,13 @@ function TimerManager:DetectMapIcons(currentMapID)
         return false;
     end
     
+    local currentTime = getCurrentTimestamp();
+    
     local targetMapData = MapTracker:GetTargetMapData(playerMapID);
     if not targetMapData then
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch and MapTracker.lastDetectedMapId then
+            AirdropTrajectoryService:HandleMapSwitch(MapTracker.lastDetectedMapId, currentTime);
+        end
         return false;
     end
 
@@ -181,13 +190,14 @@ function TimerManager:DetectMapIcons(currentMapID)
     if Data and Data.IsMapHidden and Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID) then
         -- 清除该地图的检测状态，避免残留
         self.detectionState[targetMapData.id] = nil;
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleNoDetection then
+            AirdropTrajectoryService:HandleNoDetection(targetMapData, currentTime);
+        end
         return false;
     end
 
     local mapDisplayName = Data:GetMapDisplayName(targetMapData);
     local mapNotificationKey = targetMapData.id;
-    
-    local currentTime = getCurrentTimestamp();
     local mapChangeState = nil;
     if MapTracker.OnMapChanged then
         mapChangeState = MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
@@ -198,6 +208,9 @@ function TimerManager:DetectMapIcons(currentMapID)
     end
 
     if mapChangeState and mapChangeState.configMapChanged then
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch then
+            AirdropTrajectoryService:HandleMapSwitch(mapChangeState.oldMapId, currentTime);
+        end
         ActivateMapSwitchGuard(self, targetMapData, currentTime);
     end
     if IsMapSwitchGuardActive(self, targetMapData, currentTime) then
@@ -216,6 +229,9 @@ function TimerManager:DetectMapIcons(currentMapID)
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
         self.detectionState[targetMapData.id] = nil;
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleNoDetection then
+            AirdropTrajectoryService:HandleNoDetection(targetMapData, currentTime);
+        end
         return false;
     end
     
@@ -233,6 +249,10 @@ function TimerManager:DetectMapIcons(currentMapID)
         Logger:Error("Timer", "错误", string.format("检测到格式不正确的 objectGUID：地图=%s，objectGUID=%s（只有%d部分，需要至少7部分）", 
             mapDisplayName, objectGUID, guidPartCount));
         return false;
+    end
+
+    if AirdropTrajectoryService and AirdropTrajectoryService.HandleDetectedIcon then
+        AirdropTrajectoryService:HandleDetectedIcon(targetMapData, iconResult, currentTime);
     end
     
     -- objectGUID 比对：相同则跳过（同一事件）

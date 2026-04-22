@@ -17,6 +17,7 @@ local UnifiedDataManager = BuildEnv("UnifiedDataManager");
 Notification.isInitialized = false;
 Notification.teamNotificationEnabled = true;
 Notification.leaderModeEnabled = false;
+Notification.phaseTeamAlertEnabled = false;
 Notification.soundAlertEnabled = true;
 Notification.autoTeamReportEnabled = false;
 Notification.autoTeamReportInterval = 60;
@@ -38,6 +39,7 @@ function Notification:Initialize()
         local settings = NotificationSettingsStore:Load();
         self.teamNotificationEnabled = settings.teamNotificationEnabled;
         self.leaderModeEnabled = settings.leaderModeEnabled;
+        self.phaseTeamAlertEnabled = settings.phaseTeamAlertEnabled;
         self.soundAlertEnabled = settings.soundAlertEnabled;
         self.autoTeamReportEnabled = settings.autoTeamReportEnabled;
         self.autoTeamReportInterval = settings.autoTeamReportInterval;
@@ -53,6 +55,10 @@ end
 
 function Notification:IsLeaderModeEnabled()
     return self.leaderModeEnabled == true;
+end
+
+function Notification:IsPhaseTeamAlertEnabled()
+    return self.phaseTeamAlertEnabled == true;
 end
 
 function Notification:IsSoundAlertEnabled()
@@ -95,6 +101,13 @@ function Notification:SetLeaderModeEnabled(enabled)
     self.leaderModeEnabled = enabled == true;
     if NotificationSettingsStore and NotificationSettingsStore.SetLeaderModeEnabled then
         NotificationSettingsStore:SetLeaderModeEnabled(self.leaderModeEnabled);
+    end
+end
+
+function Notification:SetPhaseTeamAlertEnabled(enabled)
+    self.phaseTeamAlertEnabled = enabled == true;
+    if NotificationSettingsStore and NotificationSettingsStore.SetPhaseTeamAlertEnabled then
+        NotificationSettingsStore:SetPhaseTeamAlertEnabled(self.phaseTeamAlertEnabled);
     end
 end
 
@@ -457,6 +470,9 @@ function Notification:NotifyPhaseTeamAlert(mapName, previousPhaseID, currentPhas
     if currentPhaseID == nil then
         return false
     end
+    if not self:IsPhaseTeamAlertEnabled() then
+        return false
+    end
     if not self:IsTeamNotificationEnabled() then
         return false
     end
@@ -491,6 +507,64 @@ function Notification:NotifyPhaseTeamAlert(mapName, previousPhaseID, currentPhas
             label = "发送位面团队提醒失败",
         }) == true
         or false
+end
+
+function Notification:SendTrajectoryPredictionTeamMessage(mapId, routeKey, objectGUID, endX, endY, eventTimestamp)
+    if not self.isInitialized then self:Initialize() end
+    if type(mapId) ~= "number" or type(routeKey) ~= "string" or routeKey == "" then
+        return false
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return false
+    end
+    if not self:IsTeamNotificationEnabled() then
+        return false
+    end
+
+    local visibleChatType = ResolveStandardVisibleChatType(self)
+    if type(visibleChatType) ~= "string" or visibleChatType == "" then
+        return false
+    end
+
+    local currentTime = Utils:GetCurrentTimestamp()
+    local mapKey = "trajectory:" .. tostring(mapId) .. ":" .. routeKey
+    local eventContext = {
+        mapKey = mapKey,
+        eventTimestamp = tonumber(eventTimestamp) or currentTime,
+        objectGUID = objectGUID,
+    }
+
+    if self.HasPlayerSentNotification and self:HasPlayerSentNotification(mapKey, eventContext) then
+        return false
+    end
+    if self.CanSendNotification and self:CanSendNotification(mapKey, eventContext, currentTime) ~= true then
+        return false
+    end
+
+    local mapData = Data and Data.GetMapByMapID and Data:GetMapByMapID(mapId) or nil
+    if not mapData and Data and Data.GetMap then
+        mapData = Data:GetMap(mapId)
+    end
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
+    local message = NotificationQueryService and NotificationQueryService.BuildTrajectoryPredictionMessage
+        and NotificationQueryService:BuildTrajectoryPredictionMessage(
+            mapName,
+            (tonumber(endX) or 0) * 100,
+            (tonumber(endY) or 0) * 100
+        )
+        or string.format((L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %.1f, %.1f", mapName, (tonumber(endX) or 0) * 100, (tonumber(endY) or 0) * 100)
+
+    local sent = NotificationOutputService
+        and NotificationOutputService.SendTeamMessage
+        and NotificationOutputService:SendTeamMessage(message, visibleChatType, {
+            logFailure = true,
+            label = "发送轨迹预测团队消息失败",
+        }) == true
+        or false
+    if sent == true and self.CommitVisibleAutoDispatch then
+        self:CommitVisibleAutoDispatch(mapKey, eventContext, currentTime)
+    end
+    return sent == true
 end
 
 function Notification:SendAutoTeamReport()

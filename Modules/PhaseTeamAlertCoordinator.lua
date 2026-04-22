@@ -184,6 +184,8 @@ end
 
 local function ResolveCoordinationContext()
     if not Notification
+        or not Notification.IsPhaseTeamAlertEnabled
+        or Notification:IsPhaseTeamAlertEnabled() ~= true
         or not Notification.IsTeamNotificationEnabled
         or Notification:IsTeamNotificationEnabled() ~= true then
         return nil
@@ -237,6 +239,34 @@ local function CopySharedRecordInto(outRecord, sharedRecord)
     outRecord.expiresAt = sharedRecord.expiresAt
     outRecord.recordKey = sharedRecord.recordKey
     return outRecord
+end
+
+local function EnsureSharedRecordForSequence(self, state)
+    if type(self) ~= "table" or type(state) ~= "table" then
+        return nil
+    end
+    if type(state.sharedRecord) == "table" then
+        return state.sharedRecord
+    end
+    if type(state.runtimeMapId) ~= "number" then
+        return nil
+    end
+
+    self.sharedRecordBuffer = self.sharedRecordBuffer or {}
+    local sharedRecord = UnifiedDataManager
+        and UnifiedDataManager.GetSharedPhaseTimeRecordInto
+        and UnifiedDataManager:GetSharedPhaseTimeRecordInto(
+            state.runtimeMapId,
+            state.currentPhaseID or state.phaseID,
+            self.sharedRecordBuffer
+        )
+        or nil
+    if type(sharedRecord) ~= "table" then
+        return nil
+    end
+
+    state.sharedRecord = CopySharedRecordInto(state.sharedRecord or {}, sharedRecord)
+    return state.sharedRecord
 end
 
 function PhaseTeamAlertCoordinator:Reset()
@@ -350,22 +380,9 @@ function PhaseTeamAlertCoordinator:TrySendSharedFollowup(state)
         return false
     end
 
-    local sharedRecord = state.sharedRecord
+    local sharedRecord = EnsureSharedRecordForSequence(self, state)
     if type(sharedRecord) ~= "table" then
-        self.sharedRecordBuffer = self.sharedRecordBuffer or {}
-        sharedRecord = UnifiedDataManager
-            and UnifiedDataManager.GetSharedPhaseTimeRecordInto
-            and UnifiedDataManager:GetSharedPhaseTimeRecordInto(
-                state.runtimeMapId,
-                state.currentPhaseID or state.phaseID,
-                self.sharedRecordBuffer
-            )
-            or nil
-        if type(sharedRecord) ~= "table" then
-            return false
-        end
-        state.sharedRecord = CopySharedRecordInto(state.sharedRecord or {}, sharedRecord)
-        sharedRecord = state.sharedRecord
+        return false
     end
 
     return self:ScheduleSharedFollowupStep(
@@ -516,6 +533,13 @@ function PhaseTeamAlertCoordinator:HandleRemoteCoordination(listener, syncState,
     if type(syncState) ~= "table" then
         return false
     end
+    if not Notification
+        or not Notification.IsPhaseTeamAlertEnabled
+        or Notification:IsPhaseTeamAlertEnabled() ~= true
+        or not Notification.IsTeamNotificationEnabled
+        or Notification:IsTeamNotificationEnabled() ~= true then
+        return false
+    end
 
     local messageType = syncState.messageType
     if messageType ~= "PHASE_CLAIM" and messageType ~= "PHASE_ACK" then
@@ -571,7 +595,13 @@ function PhaseTeamAlertCoordinator:HandleSharedDisplayActivated(mapId, sharedRec
     state.runtimeMapId = mapId
     state.lastSeenAt = Utils:GetCurrentTimestamp()
     state.sharedRecord = CopySharedRecordInto(state.sharedRecord or {}, sharedRecord)
-    return self:TrySendSharedFollowup(state)
+    if state.visiblePhaseAlertSent == true then
+        return self:TrySendSharedFollowup(state)
+    end
+    if state.evaluationTimer then
+        return true
+    end
+    return self:EvaluateVisibleSend(state.eventKey)
 end
 
 return PhaseTeamAlertCoordinator

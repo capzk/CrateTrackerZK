@@ -27,6 +27,7 @@ localeData["TimeRemaining"] = "[%s]До воздушного десанта во
 localeData["AutoTeamReportMessage"] = "На[%s]до сброса военных припасов осталось: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Получена актуальная общая информация о сбросе для текущей фазы в [%s].";
 localeData["PhaseTeamAlertMessage"] = "Фаза на %s изменилась: %s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "[%s] Маршрут сброса распознан, предполагаемые координаты падения: %.1f, %.1f";
 localeData["UnknownPhaseValue"] = "неизвестно";
 
 -- Phase Detection Alerts
@@ -59,6 +60,8 @@ localeData["SettingsAddonToggle"] = "Переключатель аддона";
 localeData["SettingsLeaderMode"] = "Режим лидера";
 localeData["SettingsLeaderModeTooltip"] = "При включении видимые уведомления о сбросе и автооповещения в рейде будут по возможности отправляться в предупреждение рейда; без прав они автоматически вернутся в обычный рейдовый чат.";
 localeData["SettingsTeamNotify"] = "Уведомления группы";
+localeData["SettingsPhaseTeamAlert"] = "Отчет о смене фазы";
+localeData["SettingsPhaseTeamAlertTooltip"] = "При включении сообщения о смене фазы будут отправляться в чат группы.";
 localeData["SettingsSoundAlert"] = "Звуковое напоминание";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
 localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";

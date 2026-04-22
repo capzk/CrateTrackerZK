@@ -25,6 +25,7 @@ localeData["TimeRemaining"] = "【%s】距離戰爭補給空投還有：%s！！
 localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";
 localeData["SharedPhaseSyncApplied"] = "已取得【%s】當前位面的最新空投共享資訊。";
 localeData["PhaseTeamAlertMessage"] = "當前%s位面發生變化：%s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "【%s】已匹配空投軌跡，預測落點座標：%.1f, %.1f";
 localeData["UnknownPhaseValue"] = "未知";
 
 -- 位面檢測提示
@@ -56,6 +57,8 @@ localeData["SettingsAddonToggle"] = "插件開關";
 localeData["SettingsLeaderMode"] = "團長模式";
 localeData["SettingsLeaderModeTooltip"] = "開啟後，團隊中的可見空投通知與自動播報會優先發送到團隊警告頻道；如果目前沒有團隊警告權限，則自動回退到普通團隊頻道。";
 localeData["SettingsTeamNotify"] = "團隊通知";
+localeData["SettingsPhaseTeamAlert"] = "位面變化團隊報告";
+localeData["SettingsPhaseTeamAlertTooltip"] = "開啟後，會在團隊頻道發送位面變化訊息。";
 localeData["SettingsSoundAlert"] = "聲音提醒";
 localeData["SettingsAutoReport"] = "自動通知";
 localeData["SettingsAutoReportInterval"] = "通知頻率（秒）";

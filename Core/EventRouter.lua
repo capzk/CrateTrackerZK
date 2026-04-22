@@ -49,6 +49,9 @@ local function HandleZoneChanged()
         if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
             TeamSharedWarmupService:HandleTeamContextChanged(false)
         end
+        if AirdropTrajectorySyncService and AirdropTrajectorySyncService.HandleTeamContextChanged then
+            AirdropTrajectorySyncService:HandleTeamContextChanged(false)
+        end
     end)
 end
 
@@ -61,6 +64,9 @@ local function HandleGroupRosterUpdate()
     end
     if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
         TeamSharedWarmupService:HandleTeamContextChanged(false)
+    end
+    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.HandleTeamContextChanged then
+        AirdropTrajectorySyncService:HandleTeamContextChanged(false)
     end
 end
 

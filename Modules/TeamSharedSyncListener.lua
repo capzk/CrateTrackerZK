@@ -14,6 +14,8 @@ local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Data = BuildEnv("Data")
 local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
+local AirdropTrajectorySyncService = BuildEnv("AirdropTrajectorySyncService")
+local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 
 TeamSharedSyncListener.isInitialized = false
 TeamSharedSyncListener.FEATURE_ENABLED = true
@@ -48,6 +50,27 @@ local function SendSyncPayload(listener, syncState)
     end
 
     local payload = TeamSharedSyncProtocol and TeamSharedSyncProtocol.BuildPayload and TeamSharedSyncProtocol:BuildPayload(syncState) or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
+        or false
+end
+
+local function SendTrajectoryPayload(listener, routeState)
+    if type(routeState) ~= "table" or type(routeState.mapID) ~= "number" then
+        return false
+    end
+    if listener:EnsureTeamSharedChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = TeamSharedSyncProtocol
+        and TeamSharedSyncProtocol.BuildTrajectoryPayload
+        and TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
+        or nil
     if type(payload) ~= "string" or payload == "" then
         return false
     end
@@ -146,6 +169,88 @@ function TeamSharedSyncListener:SendSyncRequest(requestState)
         or false
 end
 
+function TeamSharedSyncListener:SendTrajectoryRoute(routeState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if self:CanSendSharedSync() ~= true then
+        return false
+    end
+    return SendTrajectoryPayload(self, routeState)
+end
+
+function TeamSharedSyncListener:SendTrajectorySyncRequest(requestState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if self:CanSendSharedSync() ~= true then
+        return false
+    end
+    if self:EnsureTeamSharedChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = TeamSharedSyncProtocol
+        and TeamSharedSyncProtocol.BuildTrajectoryRequestPayload
+        and TeamSharedSyncProtocol:BuildTrajectoryRequestPayload(requestState)
+        or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
+        or false
+end
+
+function TeamSharedSyncListener:SendTrajectoryAlertClaim(syncState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if self:CanSendSharedSync() ~= true then
+        return false
+    end
+    if self:EnsureTeamSharedChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = TeamSharedSyncProtocol
+        and TeamSharedSyncProtocol.BuildTrajectoryAlertPayload
+        and TeamSharedSyncProtocol:BuildTrajectoryAlertPayload(syncState, TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE)
+        or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
+        or false
+end
+
+function TeamSharedSyncListener:SendTrajectoryAlertAck(syncState)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
+    if self:CanSendSharedSync() ~= true then
+        return false
+    end
+    if self:EnsureTeamSharedChannelAvailable() ~= true then
+        return false
+    end
+
+    local payload = TeamSharedSyncProtocol
+        and TeamSharedSyncProtocol.BuildTrajectoryAlertPayload
+        and TeamSharedSyncProtocol:BuildTrajectoryAlertPayload(syncState, TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE)
+        or nil
+    if type(payload) ~= "string" or payload == "" then
+        return false
+    end
+
+    return TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
+        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
+        or false
+end
+
 local function ResolveCurrentChannelContext(outContext, ...)
     outContext = type(outContext) == "table" and outContext or {}
     outContext.target = select(1, ...)
@@ -229,6 +334,25 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
         return TeamSharedWarmupService
             and TeamSharedWarmupService.HandleSyncRequest
             and TeamSharedWarmupService:HandleSyncRequest(syncState, sender)
+            or false
+    end
+    if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_REQUEST_MESSAGE_TYPE or "TRAJECTORY_REQUEST") then
+        return AirdropTrajectorySyncService
+            and AirdropTrajectorySyncService.HandleSyncRequest
+            and AirdropTrajectorySyncService:HandleSyncRequest(syncState, sender)
+            or false
+    end
+    if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_MESSAGE_TYPE or "TRAJECTORY_ROUTE") then
+        return AirdropTrajectorySyncService
+            and AirdropTrajectorySyncService.HandleTrajectoryRoute
+            and AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
+            or false
+    end
+    if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE or "TRAJECTORY_ALERT_CLAIM")
+        or syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE or "TRAJECTORY_ALERT_ACK") then
+        return AirdropTrajectoryAlertCoordinator
+            and AirdropTrajectoryAlertCoordinator.HandleRemoteCoordination
+            and AirdropTrajectoryAlertCoordinator:HandleRemoteCoordination(syncState, sender)
             or false
     end
     if IsSharedSyncPayloadConsistent(syncState) ~= true then

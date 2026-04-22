@@ -180,14 +180,29 @@ function UnifiedDataManager:ClearSharedDisplayPhaseGate(mapId)
 end
 
 function UnifiedDataManager:IsSharedDisplayActive(mapId)
-    if type(mapId) ~= "number" or type(self.sharedDisplayStateByMap) ~= "table" then
+    if type(mapId) ~= "number" then
         return false;
     end
 
-    local state = self.sharedDisplayStateByMap[mapId];
-    return type(state) == "table"
-        and type(state.activeRecordKey) == "string"
-        and state.activeRecordKey ~= "";
+    if type(self.sharedDisplayStateByMap) == "table" then
+        local state = self.sharedDisplayStateByMap[mapId];
+        if type(state) == "table"
+            and type(state.activeRecordKey) == "string"
+            and state.activeRecordKey ~= "" then
+            return true;
+        end
+    end
+
+    local currentPhaseId = self.GetCurrentPhase and self:GetCurrentPhase(mapId) or nil;
+    if type(currentPhaseId) ~= "string" or currentPhaseId == "" then
+        return false;
+    end
+
+    local temporaryRecord = self.GetValidTemporaryTime and self:GetValidTemporaryTime(mapId) or nil;
+    return type(temporaryRecord) == "table"
+        and temporaryRecord.source == self.TimeSource.PUBLIC_CHANNEL_SYNC
+        and type(temporaryRecord.phaseId) == "string"
+        and temporaryRecord.phaseId == currentPhaseId;
 end
 
 function UnifiedDataManager:GetSharedPhaseTimeRecordInto(mapId, phaseId, outRecord)

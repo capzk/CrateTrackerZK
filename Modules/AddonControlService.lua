@@ -20,6 +20,10 @@ local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
 local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
 local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
+local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
+local AirdropTrajectorySyncService = BuildEnv("AirdropTrajectorySyncService")
+local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local ShoutDetector = BuildEnv("ShoutDetector")
 local Area = BuildEnv("Area")
@@ -75,6 +79,15 @@ local function ResetSharedSyncRuntimeState()
     if UnifiedDataManager then
         UnifiedDataManager.sharedDisplayStateByMap = {}
     end
+    if AirdropTrajectoryService and AirdropTrajectoryService.Reset then
+        AirdropTrajectoryService:Reset()
+    end
+    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.Reset then
+        AirdropTrajectorySyncService:Reset()
+    end
+    if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.Reset then
+        AirdropTrajectoryAlertCoordinator:Reset()
+    end
 end
 
 local function InitializeSyncListeners(enablePublicSync)
@@ -97,6 +110,9 @@ local function RefreshTrackedMapRuntime()
     if Data and Data.Initialize then
         Data:Initialize()
     end
+    if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize then
+        AirdropTrajectoryStore:Initialize()
+    end
 
     if UnifiedDataManager then
         if not UnifiedDataManager.isInitialized and UnifiedDataManager.Initialize then
@@ -108,6 +124,9 @@ local function RefreshTrackedMapRuntime()
 
     if TimerManager then
         TimerManager.detectionState = {}
+    end
+    if AirdropTrajectoryService and AirdropTrajectoryService.Reset then
+        AirdropTrajectoryService:Reset()
     end
 
     if MapTracker and MapTracker.Initialize then
@@ -201,6 +220,7 @@ function AddonControlService:ClearDataAndReinitialize()
         if CRATETRACKERZK_DB then
             CRATETRACKERZK_DB.expansionData = {}
             CRATETRACKERZK_DB.mapData = nil
+            CRATETRACKERZK_DB.trajectoryData = nil
             if Data and Data.SCHEMA_VERSION then
                 CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION
             end
@@ -238,6 +258,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         if TimerManager and TimerManager.Initialize and not TimerManager.isInitialized then
             TimerManager:Initialize()
         end
+        if AirdropTrajectorySyncService and AirdropTrajectorySyncService.Initialize then
+            AirdropTrajectorySyncService:Initialize()
+        end
         if Area then
             Area.lastAreaValidState = nil
             Area.lastAccessMode = nil
@@ -249,6 +272,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
         InitializeShoutDetector()
         if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
             TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
+        end
+        if AirdropTrajectorySyncService and AirdropTrajectorySyncService.HandleTeamContextChanged then
+            AirdropTrajectorySyncService:HandleTeamContextChanged(true)
         end
         if CrateTrackerZKFloatingButton then
             CrateTrackerZKFloatingButton:Show()

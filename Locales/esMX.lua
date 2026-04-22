@@ -25,6 +25,7 @@ localeData["TimeRemaining"] = "[%s]Suministros de guerra en: %s!!!";
 localeData["AutoTeamReportMessage"] = "Actual[%s]Suministros de guerra en: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Se obtuvo la informacion compartida mas reciente del lanzamiento de suministros para la fase actual en [%s].";
 localeData["PhaseTeamAlertMessage"] = "La fase actual en %s cambio: %s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "[%s] Se ha reconocido la trayectoria del lanzamiento. Coordenadas previstas del punto de caida: %.1f, %.1f";
 localeData["UnknownPhaseValue"] = "desconocida";
 
 -- Phase Detection Alerts
@@ -57,6 +58,8 @@ localeData["SettingsAddonToggle"] = "Alternar Addon";
 localeData["SettingsLeaderMode"] = "Modo de lider";
 localeData["SettingsLeaderModeTooltip"] = "Cuando esta activado, las notificaciones visibles de suministros y los reportes automaticos en banda preferiran aviso de banda; si no tienes permiso, volveran automaticamente al chat de banda normal.";
 localeData["SettingsTeamNotify"] = "Notificaciones de equipo";
+localeData["SettingsPhaseTeamAlert"] = "Reporte de cambio de fase";
+localeData["SettingsPhaseTeamAlertTooltip"] = "Cuando esta activado, los mensajes de cambio de fase se enviaran al chat del grupo.";
 localeData["SettingsSoundAlert"] = "Alerta de sonido";
 localeData["SettingsAutoReport"] = "Notificar automaticamente";
 localeData["SettingsAutoReportInterval"] = "Intervalo de reporte (seg)";

@@ -26,6 +26,7 @@ localeData["TimeRemaining"] = "[%s]전쟁 보급품 공중 투하: %s!!!";
 localeData["AutoTeamReportMessage"] = "현재[%s]전쟁 보급품 보유량: %s!!";
 localeData["SharedPhaseSyncApplied"] = "[%s] 현재 위상의 최신 공중 보급 공유 정보를 가져왔습니다.";
 localeData["PhaseTeamAlertMessage"] = "%s 현재 위상 변경: %s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "[%s] 공중 보급 경로를 일치시켰습니다. 예상 낙하지점 좌표: %.1f, %.1f";
 localeData["UnknownPhaseValue"] = "알 수 없음";
 
 -- Phase Detection Alerts
@@ -57,6 +58,8 @@ localeData["SettingsAddonToggle"] = "애드온 전환";
 localeData["SettingsLeaderMode"] = "공대장 모드";
 localeData["SettingsLeaderModeTooltip"] = "활성화하면 공격대의 표시형 공중 보급 알림과 자동 방송이 우선 공격대 경보로 전송되며, 권한이 없으면 일반 공격대 채팅으로 자동 전환됩니다.";
 localeData["SettingsTeamNotify"] = "그룹 알림";
+localeData["SettingsPhaseTeamAlert"] = "위상 변경 팀 알림";
+localeData["SettingsPhaseTeamAlertTooltip"] = "활성화하면 위상 변경 메시지가 파티 또는 공격대 채팅으로 전송됩니다.";
 localeData["SettingsSoundAlert"] = "사운드 리마인더";
 localeData["SettingsAutoReport"] = "자동 알림";
 localeData["SettingsAutoReportInterval"] = "알림 간격 (초)";

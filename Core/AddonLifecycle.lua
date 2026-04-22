@@ -37,6 +37,9 @@ function AddonLifecycle:OnLogin()
     if Data then
         Data:Initialize()
     end
+    if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize then
+        AirdropTrajectoryStore:Initialize()
+    end
 
     ResetRuntimeState()
 
@@ -89,6 +92,9 @@ function AddonLifecycle:OnLogin()
     if TeamSharedWarmupService and TeamSharedWarmupService.Initialize then
         TeamSharedWarmupService:Initialize()
     end
+    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.Initialize then
+        AirdropTrajectorySyncService:Initialize()
+    end
     if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
     if TimerManager then TimerManager:Initialize() end
     if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
@@ -96,6 +102,9 @@ function AddonLifecycle:OnLogin()
     end
     if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
         TeamSharedWarmupService:HandleTeamContextChanged(false)
+    end
+    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.HandleTeamContextChanged then
+        AirdropTrajectorySyncService:HandleTeamContextChanged(false)
     end
 
     if addonEnabled and CoreShared:IsAreaActive() then

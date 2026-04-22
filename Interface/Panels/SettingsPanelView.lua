@@ -236,6 +236,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.leaderMode.label, snapshot.leaderModeInteractable == true)
     end
 
+    if controls.phaseTeamAlert then
+        controls.phaseTeamAlert:SetChecked(snapshot.phaseTeamAlertEnabled == true)
+        controls.phaseTeamAlert:SetEnabled(snapshot.phaseTeamAlertInteractable == true)
+        SetTextEnabled(controls.phaseTeamAlert.label, snapshot.phaseTeamAlertInteractable == true)
+    end
+
     if controls.soundAlert then
         controls.soundAlert:SetChecked(snapshot.soundAlertEnabled == true)
         controls.soundAlert:SetEnabled(snapshot.soundAlertInteractable == true)

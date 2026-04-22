@@ -51,6 +51,9 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.Reset then
         PhaseTeamAlertCoordinator:Reset();
     end
+    if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.Reset then
+        AirdropTrajectoryAlertCoordinator:Reset();
+    end
 
     if TeamSharedSyncStore and TeamSharedSyncStore.Reset then
         TeamSharedSyncStore:Reset();
@@ -63,6 +66,12 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     end
     if TeamSharedSyncListener then
         TeamSharedSyncListener.isInitialized = false;
+    end
+    if AirdropTrajectoryService and AirdropTrajectoryService.Reset then
+        AirdropTrajectoryService:Reset();
+    end
+    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.Reset then
+        AirdropTrajectorySyncService:Reset();
     end
 
     if CrateTrackerZK and CrateTrackerZK.phaseTimerTicker then
@@ -113,6 +122,7 @@ function RuntimeResetManager:ClearPersistentData()
     if CRATETRACKERZK_DB then
         CRATETRACKERZK_DB.expansionData = {};
         CRATETRACKERZK_DB.mapData = nil;
+        CRATETRACKERZK_DB.trajectoryData = nil;
         if Data and Data.SCHEMA_VERSION then
             CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION;
         end

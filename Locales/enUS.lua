@@ -25,6 +25,7 @@ localeData["TimeRemaining"] = "[%s]War Supplies airdrop in: %s!!!";
 localeData["AutoTeamReportMessage"] = "Current[%s]War Supplies airdrop in: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Acquired the latest shared airdrop info for the current phase in [%s].";
 localeData["PhaseTeamAlertMessage"] = "Current %s phase changed: %s ➡ %s";
+localeData["TrajectoryPredictionMatched"] = "[%s] Matched airdrop trajectory, predicted drop coordinates: %.1f, %.1f";
 localeData["UnknownPhaseValue"] = "unknown";
 
 -- Phase Detection Alerts
@@ -56,6 +57,8 @@ localeData["SettingsAddonToggle"] = "Addon Toggle";
 localeData["SettingsLeaderMode"] = "Leader Mode";
 localeData["SettingsLeaderModeTooltip"] = "When enabled, visible airdrop notifications and auto reports in raids prefer raid warning; if you do not have permission, they fall back to normal raid chat.";
 localeData["SettingsTeamNotify"] = "Team Notifications";
+localeData["SettingsPhaseTeamAlert"] = "Phase Change Report";
+localeData["SettingsPhaseTeamAlertTooltip"] = "When enabled, phase change messages are sent to team chat.";
 localeData["SettingsSoundAlert"] = "Sound Reminder";
 localeData["SettingsAutoReport"] = "Auto Notify";
 localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
@@ -91,6 +94,7 @@ Usage Guide
    Message Settings: controls manual and automatic message sending behavior
    Leader Mode: when enabled, visible airdrop notifications and auto reports in raids prefer raid warning; without permission they fall back to normal raid chat
    Team Notifications: when enabled, messages are sent to party or raid chat
+   Phase Change Report: when enabled, sends the phase change message first; if the current phase shared cache is acquired afterward, it then sends the cache acquired and remaining time messages in order
    Sound Alert: when enabled, a sound plays when an airdrop is detected
    Auto Notify: when enabled, automatically sends the nearest airdrop countdown at the configured interval
    Report Interval (sec): sets the interval for automatic countdown messages
