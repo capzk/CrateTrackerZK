@@ -21,6 +21,9 @@ function RuntimeResetManager:EnsureSavedVariables()
     if type(CRATETRACKERZK_DB) ~= "table" then
         CRATETRACKERZK_DB = {};
     end
+    if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
+        CRATETRACKERZK_TRAJECTORY_DB = {};
+    end
 end
 
 function RuntimeResetManager:ResetSharedRuntimeState()
@@ -125,6 +128,11 @@ function RuntimeResetManager:ClearPersistentData()
         CRATETRACKERZK_DB.trajectoryData = nil;
         if Data and Data.SCHEMA_VERSION then
             CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION;
+        end
+    end
+    if type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
+        for k in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
+            CRATETRACKERZK_TRAJECTORY_DB[k] = nil;
         end
     end
 

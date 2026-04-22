@@ -9,10 +9,24 @@ AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE = 0.018
 AirdropTrajectoryStore.MIN_DIRECTION_DOT = 0.94
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 12
 
+local function EnsureTrajectoryPersistentState()
+    if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
+        CRATETRACKERZK_TRAJECTORY_DB = {}
+    end
+    if type(CRATETRACKERZK_TRAJECTORY_DB.maps) ~= "table" then
+        CRATETRACKERZK_TRAJECTORY_DB.maps = {}
+    end
+    return CRATETRACKERZK_TRAJECTORY_DB
+end
+
 local function EnsurePersistentBucket()
+    return EnsureTrajectoryPersistentState().maps
+end
+
+local function GetLegacyPersistentBucket()
     local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or {}
     if type(db.trajectoryData) ~= "table" then
-        db.trajectoryData = {}
+        return nil
     end
     return db.trajectoryData
 end
@@ -428,6 +442,13 @@ function AirdropTrajectoryStore:Initialize()
     self.routesByMap = {}
 
     local persistentBucket = EnsurePersistentBucket()
+    local shouldImportLegacy = next(persistentBucket) == nil
+    local legacyBucket = shouldImportLegacy and GetLegacyPersistentBucket() or nil
+    if shouldImportLegacy and type(legacyBucket) == "table" then
+        for rawMapID, savedMapData in pairs(legacyBucket) do
+            persistentBucket[rawMapID] = savedMapData
+        end
+    end
     for rawMapID, savedMapData in pairs(persistentBucket) do
         local mapID = tonumber(rawMapID)
         local savedRoutes = type(savedMapData) == "table" and savedMapData.routes or nil

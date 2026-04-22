@@ -25,6 +25,9 @@ local function EnsureSavedVariables()
     if type(CRATETRACKERZK_DB) ~= "table" then
         CRATETRACKERZK_DB = {}
     end
+    if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
+        CRATETRACKERZK_TRAJECTORY_DB = {}
+    end
 end
 
 function AddonLifecycle:OnLogin()

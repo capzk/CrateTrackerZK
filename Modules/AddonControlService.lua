@@ -225,6 +225,11 @@ function AddonControlService:ClearDataAndReinitialize()
                 CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION
             end
         end
+        if type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
+            for key in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
+                CRATETRACKERZK_TRAJECTORY_DB[key] = nil
+            end
+        end
         if CRATETRACKERZK_UI_DB then
             for key in pairs(CRATETRACKERZK_UI_DB) do
                 CRATETRACKERZK_UI_DB[key] = nil
