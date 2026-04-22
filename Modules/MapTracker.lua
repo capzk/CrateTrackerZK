@@ -155,6 +155,17 @@ function MapTracker:UpdateCurrentMapState(currentMapID, targetMapData, currentTi
     ApplyMapChange(self, currentMapID, targetMapData);
 end
 
+function MapTracker:ClearCurrentMapState(currentMapID)
+    local oldMapId = self.lastDetectedMapId;
+    local oldGameMapID = self.lastDetectedGameMapID;
+    self.lastDetectedMapId = nil;
+    self.lastDetectedGameMapID = currentMapID;
+    return {
+        oldMapId = oldMapId,
+        oldGameMapID = oldGameMapID
+    };
+end
+
 MapTracker:Initialize();
 
 return MapTracker;

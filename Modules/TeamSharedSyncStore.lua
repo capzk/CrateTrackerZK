@@ -4,7 +4,7 @@
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
 
 TeamSharedSyncStore.FEATURE_ENABLED = true
-TeamSharedSyncStore.RECORD_TTL = 18000
+TeamSharedSyncStore.RECORD_TTL = 10800
 TeamSharedSyncStore.MAX_PHASE_RECORDS_PER_MAP = 8
 TeamSharedSyncStore.MAX_FUTURE_TIMESTAMP_OFFSET = 120
 

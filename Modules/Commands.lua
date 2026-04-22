@@ -9,6 +9,7 @@ local MapTracker = BuildEnv("MapTracker");
 local Data = BuildEnv("Data");
 local NotificationOutputService = BuildEnv("NotificationOutputService");
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore");
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService");
 local Commands = BuildEnv('Commands');
 
 Commands.isInitialized = false;
@@ -115,12 +116,12 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
     local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
         and AirdropTrajectoryStore:GetRouteQualityLabel(route)
         or "unknown";
-    local startX = (tonumber(route.startX) or 0) * 100;
-    local startY = (tonumber(route.startY) or 0) * 100;
-    local endX = (tonumber(route.endX) or 0) * 100;
-    local endY = (tonumber(route.endY) or 0) * 100;
+    local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
+    local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
+    local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
+    local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
     return string.format(
-        "%s#%d 起点 %.1f, %.1f -> 终点 %.1f, %.1f | 状态 %s | 样本 %d | 记录 %d | 更新 %d",
+        "%s#%d 起点 %d, %d -> 终点 %d, %d | 状态 %s | 样本 %d | 记录 %d | 更新 %d",
         prefix,
         tonumber(routeIndex) or 0,
         startX,
@@ -141,12 +142,12 @@ local function BuildTrajectoryExportLine(route)
     local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
         and AirdropTrajectoryStore:GetRouteQualityLabel(route)
         or "unknown";
-    local startX = (tonumber(route.startX) or 0) * 100;
-    local startY = (tonumber(route.startY) or 0) * 100;
-    local endX = (tonumber(route.endX) or 0) * 100;
-    local endY = (tonumber(route.endY) or 0) * 100;
+    local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
+    local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
+    local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
+    local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
     return string.format(
-        "CTK_TRAJECTORY|mapID=%d|start=%.1f,%.1f|end=%.1f,%.1f|startConfirmed=%s|endConfirmed=%s|quality=%s|samples=%d|count=%d|updated=%d",
+        "CTK_TRAJECTORY|mapID=%d|start=%d,%d|end=%d,%d|startConfirmed=%s|endConfirmed=%s|quality=%s|samples=%d|count=%d|updated=%d",
         tonumber(route.mapID) or 0,
         startX,
         startY,
@@ -164,6 +165,38 @@ end
 function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨迹命令：/ctk traj debug [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj export [all]");
+    SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
+end
+
+function Commands:HandleTrajectoryTraceCommand(args)
+    local action = NormalizeCommandToken(args[3]);
+    if not AirdropTrajectoryService
+        or not AirdropTrajectoryService.SetTraceDebugEnabled
+        or not AirdropTrajectoryService.IsTraceDebugEnabled then
+        SendLocalDebugMessage("轨迹调试链路未初始化。");
+        return true;
+    end
+
+    if action == "status" or action == "" then
+        local enabled = AirdropTrajectoryService:IsTraceDebugEnabled() == true;
+        SendLocalDebugMessage(string.format("轨迹点链调试：%s", enabled and "已开启" or "已关闭"));
+        return true;
+    end
+
+    if action == "on" then
+        AirdropTrajectoryService:SetTraceDebugEnabled(true);
+        SendLocalDebugMessage("轨迹点链调试已开启：终点确认后将输出本次空投轨迹点链。");
+        return true;
+    end
+
+    if action == "off" then
+        AirdropTrajectoryService:SetTraceDebugEnabled(false);
+        SendLocalDebugMessage("轨迹点链调试已关闭。");
+        return true;
+    end
+
+    SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
+    return true;
 end
 
 function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
@@ -244,6 +277,9 @@ function Commands:HandleTrajectoryCommand(args)
     if mode == "" or mode == "help" then
         self:PrintTrajectoryHelp();
         return true;
+    end
+    if mode == "trace" then
+        return self:HandleTrajectoryTraceCommand(args);
     end
     if mode ~= "debug" and mode ~= "export" then
         self:PrintTrajectoryHelp();

@@ -3,6 +3,7 @@
 local AddonLifecycle = BuildEnv("CrateTrackerZKAddonLifecycle")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local Analytics = BuildEnv("CrateTrackerZKAnalytics")
+local AddonRuntimeCoordinator = BuildEnv("AddonRuntimeCoordinator")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local RuntimeResetManager = BuildEnv("RuntimeResetManager")
@@ -36,87 +37,9 @@ function AddonLifecycle:OnLogin()
     if Localization and Localization.Initialize and not Localization.isInitialized then
         Localization:Initialize()
     end
-
-    if Data then
-        Data:Initialize()
+    if AddonRuntimeCoordinator and AddonRuntimeCoordinator.BootstrapOnLogin then
+        return AddonRuntimeCoordinator:BootstrapOnLogin()
     end
-    if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize then
-        AirdropTrajectoryStore:Initialize()
-    end
-
-    ResetRuntimeState()
-
-    if Analytics and Analytics.RecordSessionState then
-        Analytics:RecordSessionState()
-    end
-
-    if Notification then Notification:Initialize() end
-    if Commands then Commands:Initialize() end
-
-    if not CoreShared:IsAddonEnabled() then
-        if Area then
-            Area.detectionPaused = true
-        end
-        TickerController:PauseAllDetections(CrateTrackerZK)
-        if TickerController and TickerController.StopTeamSharedWarmupTicker then
-            TickerController:StopTeamSharedWarmupTicker(CrateTrackerZK)
-        end
-        if CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
-            CrateTrackerZK:CreateFloatingButton()
-        end
-        Logger:Warn("Core", "状态", "插件处于关闭状态，已跳过初始化")
-        return
-    end
-
-    if MainPanel then MainPanel:CreateMainFrame() end
-    if CrateTrackerZK.CreateFloatingButton then
-        CrateTrackerZK:CreateFloatingButton()
-    end
-
-    local addonEnabled = CoreShared:IsAddonEnabled()
-    local currentMapID = addonEnabled and CoreShared:GetCurrentMapID() or nil
-    if Area then
-        if addonEnabled then
-            Area:CheckAndUpdateAreaValid(currentMapID)
-        else
-            Area.detectionPaused = true
-            Area.lastAreaValidState = nil
-            Area.lastAccessMode = nil
-        end
-    end
-
-    if TeamCommListener then TeamCommListener:Initialize() end
-    if TeamSharedSyncListener
-        and TeamSharedSyncListener.Initialize
-        and TeamSharedSyncListener.IsFeatureEnabled
-        and TeamSharedSyncListener:IsFeatureEnabled() == true then
-        TeamSharedSyncListener:Initialize()
-    end
-    if TeamSharedWarmupService and TeamSharedWarmupService.Initialize then
-        TeamSharedWarmupService:Initialize()
-    end
-    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.Initialize then
-        AirdropTrajectorySyncService:Initialize()
-    end
-    if ShoutDetector and ShoutDetector.Initialize then ShoutDetector:Initialize() end
-    if TimerManager then TimerManager:Initialize() end
-    if TickerController and TickerController.RefreshTeamSharedWarmupTicker then
-        TickerController:RefreshTeamSharedWarmupTicker(CrateTrackerZK)
-    end
-    if TeamSharedWarmupService and TeamSharedWarmupService.HandleTeamContextChanged then
-        TeamSharedWarmupService:HandleTeamContextChanged(false)
-    end
-    if AirdropTrajectorySyncService and AirdropTrajectorySyncService.HandleTeamContextChanged then
-        AirdropTrajectorySyncService:HandleTeamContextChanged(false)
-    end
-
-    if addonEnabled and CoreShared:IsAreaActive() then
-        TickerController:StartMapIconDetection(CrateTrackerZK, 1)
-        TickerController:StartCleanupTicker(CrateTrackerZK)
-        TickerController:StartAutoTeamReportTicker(CrateTrackerZK)
-        TickerController:RefreshPhaseTicker(CrateTrackerZK)
-    end
-
 end
 
 function AddonLifecycle:Reinitialize()

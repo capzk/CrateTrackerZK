@@ -14,6 +14,8 @@ local AppContext = BuildEnv("AppContext");
 local PhaseStateStore = BuildEnv("PhaseStateStore");
 local StateBuckets = BuildEnv("StateBuckets");
 local TimeStateStore = BuildEnv("TimeStateStore");
+local UnifiedDataDisplayResolver = BuildEnv("UnifiedDataDisplayResolver");
+local UnifiedPhaseDisplayService = BuildEnv("UnifiedPhaseDisplayService");
 
 if not Data then
     Data = BuildEnv('Data')
@@ -494,42 +496,10 @@ end
 -- 1. 优先采用未过期且与检测时间相近的临时时间；
 -- 2. 若当前位面存在同 objectGUID 的共享缓存记录，则采用共享缓存中的原始事件时间。
 function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID)
+    if UnifiedDataDisplayResolver and UnifiedDataDisplayResolver.SelectEventTimestamp then
+        return UnifiedDataDisplayResolver:SelectEventTimestamp(self, mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID);
+    end
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
-    local record = self:GetValidTemporaryTime(mapId);
-    if record then
-        if type(currentPhaseId) == "string"
-            and currentPhaseId ~= ""
-            and not CanUseTemporaryRecordForPhase(self, mapId, currentPhaseId, record) then
-            record = nil;
-        end
-    end
-
-    if record then
-        local delta = math.abs(fallback - record.timestamp);
-        if delta <= self.TEMPORARY_TIME_ADOPTION_WINDOW then
-            return record.timestamp, true;
-        end
-    end
-
-    if type(currentPhaseId) == "string"
-        and currentPhaseId ~= ""
-        and type(detectedObjectGUID) == "string"
-        and detectedObjectGUID ~= ""
-        and self.GetSharedPhaseTimeRecordInto then
-        self.selectEventTimestampSharedRecordBuffer = self.selectEventTimestampSharedRecordBuffer or {};
-        local sharedRecord = self:GetSharedPhaseTimeRecordInto(
-            mapId,
-            currentPhaseId,
-            self.selectEventTimestampSharedRecordBuffer
-        );
-        if sharedRecord
-            and type(sharedRecord.objectGUID) == "string"
-            and sharedRecord.objectGUID == detectedObjectGUID
-            and type(sharedRecord.timestamp) == "number" then
-            return sharedRecord.timestamp, true;
-        end
-    end
-    
     return fallback, false;
 end
 
@@ -576,42 +546,10 @@ function UnifiedDataManager:GetDisplayTime(mapId, currentTime)
 end
 
 function UnifiedDataManager:GetDisplayTimeInto(mapId, currentTime, outDisplayTime, persistentRecordBuffer)
-    if not self.isInitialized then
-        return nil;
+    if UnifiedDataDisplayResolver and UnifiedDataDisplayResolver.GetDisplayTimeInto then
+        return UnifiedDataDisplayResolver:GetDisplayTimeInto(self, mapId, currentTime, outDisplayTime, persistentRecordBuffer);
     end
-    if type(outDisplayTime) ~= "table" then
-        return nil;
-    end
-    
-    local scopedKey = GetTimeScopedKey(mapId);
-    local timeData = scopedKey and self.temporaryTimes[scopedKey] or nil;
-    local now = currentTime or Utils:GetCurrentTimestamp();
-
-    local tempRecord = nil;
-    local recordBuffer = persistentRecordBuffer or outDisplayTime.__ctkPersistentRecordBuffer or {};
-    local persistentRecord = self:GetPersistentTimeRecordInto(mapId, recordBuffer);
-    outDisplayTime.__ctkPersistentRecordBuffer = recordBuffer;
-    local currentPhaseID = self.GetCurrentPhase and self:GetCurrentPhase(mapId) or nil;
-    local sharedRecordBuffer = outDisplayTime.__ctkSharedRecordBuffer or {};
-    local sharedRecord = nil;
-    if type(currentPhaseID) == "string" and self.GetSharedPhaseTimeRecordInto then
-        sharedRecord = self:GetSharedPhaseTimeRecordInto(mapId, currentPhaseID, sharedRecordBuffer);
-    end
-    outDisplayTime.__ctkSharedRecordBuffer = sharedRecordBuffer;
-    ResetDisplayTime(outDisplayTime);
-
-    tempRecord = GetActiveTemporaryTimeRecord(self, timeData, now);
-
-    local isPlayerOnCurrentMap = IsPlayerCurrentlyOnTrackedMap(mapId);
-    if not isPlayerOnCurrentMap and self.ClearSharedDisplayPhaseGate then
-        self:ClearSharedDisplayPhaseGate(mapId);
-    end
-
-    if isPlayerOnCurrentMap and type(currentPhaseID) == "string" and currentPhaseID ~= "" then
-        return ResolvePhaseScopedDisplay(self, mapId, currentPhaseID, tempRecord, persistentRecord, sharedRecord, outDisplayTime);
-    end
-
-    return ResolveLocalDisplay(self, mapId, tempRecord, persistentRecord, outDisplayTime);
+    return nil;
 end
 
 -- 统一位面设置接口
@@ -669,37 +607,24 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
 end
 
 function UnifiedDataManager:GetObservedHistoricalPhase(mapId)
-    if type(mapId) ~= "number" then
-        return nil;
+    if UnifiedPhaseDisplayService and UnifiedPhaseDisplayService.GetObservedHistoricalPhase then
+        return UnifiedPhaseDisplayService:GetObservedHistoricalPhase(self, mapId);
     end
-    local historyStore = GetObservedPhaseHistoryStore();
-    local history = historyStore and historyStore[GetPhaseScopedKey(mapId)] or nil;
-    return type(history) == "table" and type(history.phaseId) == "string" and history.phaseId ~= "" and history.phaseId or nil;
+    return nil;
+end
+
+function UnifiedDataManager:GetObservedHistoricalPhaseRecordInto(mapId, outRecord)
+    if UnifiedPhaseDisplayService and UnifiedPhaseDisplayService.GetObservedHistoricalPhaseRecordInto then
+        return UnifiedPhaseDisplayService:GetObservedHistoricalPhaseRecordInto(self, mapId, outRecord);
+    end
+    return nil;
 end
 
 function UnifiedDataManager:PersistObservedHistoricalPhase(mapId, phaseId, observedAt)
-    if type(mapId) ~= "number" then
-        return false;
+    if UnifiedPhaseDisplayService and UnifiedPhaseDisplayService.PersistObservedHistoricalPhase then
+        return UnifiedPhaseDisplayService:PersistObservedHistoricalPhase(self, mapId, phaseId, observedAt);
     end
-
-    local historyStore = GetObservedPhaseHistoryStore();
-    if type(historyStore) ~= "table" then
-        return false;
-    end
-
-    local scopedKey = GetPhaseScopedKey(mapId);
-    if type(phaseId) ~= "string" or phaseId == "" then
-        historyStore[scopedKey] = nil;
-        return true;
-    end
-
-    historyStore[scopedKey] = {
-        mapId = mapId,
-        expansionID = ResolveMapExpansionID(mapId),
-        phaseId = phaseId,
-        observedAt = tonumber(observedAt) or Utils:GetCurrentTimestamp(),
-    };
-    return true;
+    return false;
 end
 
 function UnifiedDataManager:PersistConfirmedAirdropState(mapId, state)
@@ -751,6 +676,17 @@ function UnifiedDataManager:GetCurrentPhase(mapId)
     return nil;
 end
 
+function UnifiedDataManager:GetCurrentPhaseInfoInto(mapId, outInfo)
+    if not self.isInitialized or type(outInfo) ~= "table" then
+        return nil;
+    end
+
+    if PhaseStateStore and PhaseStateStore.GetCurrentInfoInto then
+        return PhaseStateStore:GetCurrentInfoInto(self, mapId, outInfo, Utils:GetCurrentTimestamp(), ResolveMapExpansionID(mapId));
+    end
+    return nil;
+end
+
 -- 获取持久化位面
 function UnifiedDataManager:GetPersistentPhase(mapId)
     if not self.isInitialized then
@@ -772,48 +708,10 @@ function UnifiedDataManager:ComparePhases(mapId)
 end
 
 function UnifiedDataManager:ComparePhasesInto(mapId, outResult)
-    if not self.isInitialized then
-        return nil;
+    if UnifiedPhaseDisplayService and UnifiedPhaseDisplayService.ComparePhasesInto then
+        return UnifiedPhaseDisplayService:ComparePhasesInto(self, mapId, outResult);
     end
-    if type(outResult) ~= "table" then
-        return nil;
-    end
-    
-    local currentPhase = self:GetCurrentPhase(mapId);
-    local persistentPhase = self:GetPersistentPhase(mapId);
-    local historicalPhase = self.GetObservedHistoricalPhase and self:GetObservedHistoricalPhase(mapId) or nil;
-    local baselinePhase = persistentPhase;
-    local baselineSource = "persistent";
-    if (type(baselinePhase) ~= "string" or baselinePhase == "")
-        and type(historicalPhase) == "string"
-        and historicalPhase ~= "" then
-        baselinePhase = historicalPhase;
-        baselineSource = "historical";
-    end
-    
-    outResult.match = false;
-    outResult.current = currentPhase;
-    outResult.persistent = persistentPhase;
-    outResult.historical = historicalPhase;
-    outResult.baseline = baselinePhase;
-    outResult.baselineSource = baselineSource;
-    outResult.status = "unknown";
-    
-    if not currentPhase and not baselinePhase then
-        outResult.status = "no_data";
-    elseif not currentPhase then
-        outResult.status = "no_current";
-    elseif not baselinePhase then
-        outResult.status = "no_persistent";
-    elseif currentPhase == baselinePhase then
-        outResult.match = true;
-        outResult.status = "match";
-    else
-        outResult.match = false;
-        outResult.status = "mismatch";
-    end
-    
-    return outResult;
+    return nil;
 end
 
 -- 获取位面显示信息
@@ -826,66 +724,10 @@ function UnifiedDataManager:GetPhaseDisplayInfo(mapId)
 end
 
 function UnifiedDataManager:GetPhaseDisplayInfoInto(mapId, outInfo, comparisonBuffer)
-    if not self.isInitialized then
-        return nil;
+    if UnifiedPhaseDisplayService and UnifiedPhaseDisplayService.GetPhaseDisplayInfoInto then
+        return UnifiedPhaseDisplayService:GetPhaseDisplayInfoInto(self, mapId, outInfo, comparisonBuffer);
     end
-    if type(outInfo) ~= "table" then
-        return nil;
-    end
-    
-    local comparison = self:ComparePhasesInto(mapId, comparisonBuffer or outInfo.__ctkComparisonBuffer or {});
-    outInfo.__ctkComparisonBuffer = comparisonBuffer or outInfo.__ctkComparisonBuffer or comparison;
-    if not comparison then
-        return nil;
-    end
-    outInfo.color = outInfo.color or {};
-    outInfo.phaseId = comparison.current or comparison.baseline or "未知";
-    outInfo.status = "未知";
-    outInfo.tooltip = "";
-    outInfo.compareStatus = comparison.status;
-    outInfo.currentPhaseID = comparison.current;
-    outInfo.persistentPhaseID = comparison.persistent;
-    outInfo.historicalPhaseID = comparison.historical;
-    outInfo.baselinePhaseID = comparison.baseline;
-    outInfo.baselineSource = comparison.baselineSource;
-    PopulatePhaseColor(outInfo.color, 1, 1, 1);
-    local hasSharedDisplayActive = self.IsSharedDisplayActive and self:IsSharedDisplayActive(mapId) == true;
-    local baselineLabel = comparison.baselineSource == "historical" and "历史位面" or "持久化位面";
-    
-    if comparison.status == "match" then
-        PopulatePhaseColor(outInfo.color, 0, 1, 0);
-        outInfo.status = "匹配";
-        outInfo.tooltip = string.format("当前位面：%s\n%s：%s\n状态：匹配", comparison.current, baselineLabel, comparison.baseline);
-    elseif comparison.status == "mismatch" then
-        if hasSharedDisplayActive then
-            PopulatePhaseColor(outInfo.color, 0.60, 1.00, 0.60);
-            outInfo.status = "共享缓存";
-            outInfo.tooltip = string.format(
-                "当前位面：%s\n%s：%s\n状态：已命中当前位面的共享缓存",
-                comparison.current,
-                baselineLabel,
-                comparison.baseline
-            );
-        else
-            PopulatePhaseColor(outInfo.color, 1, 0, 0);
-            outInfo.status = "不匹配";
-            outInfo.tooltip = string.format("当前位面：%s\n%s：%s\n状态：不匹配", comparison.current, baselineLabel, comparison.baseline);
-        end
-    elseif comparison.status == "no_data" then
-        outInfo.status = "无数据";
-        outInfo.tooltip = "无位面数据";
-    elseif comparison.status == "no_current" then
-        outInfo.status = "无当前位面";
-        outInfo.tooltip = string.format("%s：%s\n当前位面：未检测到", baselineLabel, comparison.baseline);
-        outInfo.phaseId = comparison.baseline;
-    elseif comparison.status == "no_persistent" then
-        PopulatePhaseColor(outInfo.color, 0, 1, 0);
-        outInfo.status = comparison.baselineSource == "historical" and "无持久化位面" or "无持久化位面";
-        outInfo.tooltip = string.format("当前位面：%s\n%s：无", comparison.current, baselineLabel);
-        outInfo.phaseId = comparison.current;
-    end
-    
-    return outInfo;
+    return nil;
 end
 
 -- 获取剩余时间

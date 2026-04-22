@@ -6,9 +6,11 @@ local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local Data = BuildEnv("Data")
 local IconDetector = BuildEnv("IconDetector")
+local SharedSyncSchedulerHelpers = BuildEnv("SharedSyncSchedulerHelpers")
 local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
 local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
+local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 
 TeamSharedWarmupService.FEATURE_ENABLED = true
 TeamSharedWarmupService.BROADCAST_INTERVAL = 540
@@ -35,54 +37,38 @@ TeamSharedWarmupService.pendingFollowupBroadcast = TeamSharedWarmupService.pendi
 TeamSharedWarmupService.lastTeamContextKey = TeamSharedWarmupService.lastTeamContextKey or nil
 
 local function ClearArray(buffer)
-    if type(buffer) ~= "table" then
-        return {}
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ClearArray then
+        return SharedSyncSchedulerHelpers:ClearArray(buffer)
     end
-    for index = #buffer, 1, -1 do
-        buffer[index] = nil
-    end
-    return buffer
+    return {}
 end
 
 local function ClearMap(buffer)
-    if type(buffer) ~= "table" then
-        return {}
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ClearMap then
+        return SharedSyncSchedulerHelpers:ClearMap(buffer)
     end
-    for key in pairs(buffer) do
-        buffer[key] = nil
-    end
-    return buffer
+    return {}
 end
 
 local function BuildRequestResponseKey(sender, requestID)
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.BuildRequestKey then
+        return SharedSyncSchedulerHelpers:BuildRequestKey(sender, requestID)
+    end
     return tostring(sender or "unknown") .. ":" .. tostring(requestID or "unknown")
 end
 
 local function NormalizeJitterDelay(minDelay, maxDelay)
-    local resolvedMin = tonumber(minDelay) or 0
-    local resolvedMax = tonumber(maxDelay) or resolvedMin
-    if resolvedMax < resolvedMin then
-        resolvedMax = resolvedMin
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.NormalizeJitterDelay then
+        return SharedSyncSchedulerHelpers:NormalizeJitterDelay(minDelay, maxDelay)
     end
-    if resolvedMin < 0 then
-        resolvedMin = 0
-    end
-    if resolvedMax <= resolvedMin then
-        return resolvedMin
-    end
-    return resolvedMin + (math.random() * (resolvedMax - resolvedMin))
+    return 0
 end
 
 local function GetTeamContextKey()
-    local resolved = TeamSharedSyncChannelService
-        and TeamSharedSyncChannelService.GetResolvedChannelInfo
-        and TeamSharedSyncChannelService:GetResolvedChannelInfo()
-        or nil
-    local distribution = resolved and resolved.distribution or nil
-    if type(distribution) ~= "string" or distribution == "" then
-        return nil
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.GetTeamContextKey then
+        return SharedSyncSchedulerHelpers:GetTeamContextKey(TeamSharedSyncChannelService)
     end
-    return distribution
+    return nil
 end
 
 local function BuildCandidateKey(expansionID, mapID, phaseID)
@@ -199,10 +185,12 @@ function TeamSharedWarmupService:Initialize()
 end
 
 function TeamSharedWarmupService:CancelPendingBroadcast()
-    if self.broadcastTimer and self.broadcastTimer.Cancel then
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.CancelOwnedTimer then
+        SharedSyncSchedulerHelpers:CancelOwnedTimer(self, "broadcastTimer")
+    elseif self.broadcastTimer and self.broadcastTimer.Cancel then
         self.broadcastTimer:Cancel()
+        self.broadcastTimer = nil
     end
-    self.broadcastTimer = nil
     self.broadcastIndex = 0
     self.pendingFollowupBroadcast = false
     self.broadcastQueue = ClearArray(self.broadcastQueue)
@@ -210,10 +198,12 @@ function TeamSharedWarmupService:CancelPendingBroadcast()
 end
 
 function TeamSharedWarmupService:CancelPendingResponse()
-    if self.pendingResponseTimer and self.pendingResponseTimer.Cancel then
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.CancelOwnedTimer then
+        SharedSyncSchedulerHelpers:CancelOwnedTimer(self, "pendingResponseTimer")
+    elseif self.pendingResponseTimer and self.pendingResponseTimer.Cancel then
         self.pendingResponseTimer:Cancel()
+        self.pendingResponseTimer = nil
     end
-    self.pendingResponseTimer = nil
     return true
 end
 
@@ -314,20 +304,13 @@ function TeamSharedWarmupService:ScheduleResponseBroadcast(delaySeconds)
         self.pendingFollowupBroadcast = true
         return true
     end
-    if not C_Timer or not C_Timer.NewTimer then
-        return self:StartBroadcastRound()
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ScheduleOwnedTimer then
+        return SharedSyncSchedulerHelpers:ScheduleOwnedTimer(self, "pendingResponseTimer", delaySeconds, function()
+            self:StartBroadcastRound()
+        end)
     end
 
-    local delay = tonumber(delaySeconds) or 0
-    if delay < 0 then
-        delay = 0
-    end
-
-    self.pendingResponseTimer = C_Timer.NewTimer(delay, function()
-        self.pendingResponseTimer = nil
-        self:StartBroadcastRound()
-    end)
-    return true
+    return self:StartBroadcastRound()
 end
 
 function TeamSharedWarmupService:HandleSyncRequest(syncState, sender)
@@ -378,9 +361,9 @@ function TeamSharedWarmupService:CollectPersistentCandidates(candidateByKey, cur
     for _, mapData in ipairs(maps) do
         if mapData and type(mapData.expansionID) == "string" and type(mapData.mapID) == "number" then
             ClearMap(stateBuffer)
-            local persistentState = Data
-                and Data.GetPersistentAirdropStateInto
-                and Data:GetPersistentAirdropStateInto(mapData.id, stateBuffer)
+            local persistentState = UnifiedDataManager
+                and UnifiedDataManager.GetPersistentAirdropStateInto
+                and UnifiedDataManager:GetPersistentAirdropStateInto(mapData.id, stateBuffer)
                 or nil
             local timestamp = tonumber(persistentState and (persistentState.currentAirdropTimestamp or persistentState.lastRefresh))
             local objectGUID = persistentState and persistentState.currentAirdropObjectGUID or nil
@@ -477,21 +460,13 @@ function TeamSharedWarmupService:BuildBroadcastQueue(currentTime)
 end
 
 function TeamSharedWarmupService:ScheduleNextSend(delaySeconds)
-    if not C_Timer or not C_Timer.NewTimer then
-        self:CancelPendingBroadcast()
-        return false
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ScheduleOwnedTimer then
+        return SharedSyncSchedulerHelpers:ScheduleOwnedTimer(self, "broadcastTimer", delaySeconds, function()
+            self:SendNextRecord()
+        end)
     end
-
-    local delay = tonumber(delaySeconds) or 0
-    if delay < 0 then
-        delay = 0
-    end
-
-    self.broadcastTimer = C_Timer.NewTimer(delay, function()
-        self.broadcastTimer = nil
-        self:SendNextRecord()
-    end)
-    return true
+    self:CancelPendingBroadcast()
+    return false
 end
 
 function TeamSharedWarmupService:SendNextRecord()

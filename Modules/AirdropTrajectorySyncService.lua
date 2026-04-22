@@ -2,6 +2,7 @@
 
 local AirdropTrajectorySyncService = BuildEnv("AirdropTrajectorySyncService")
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
+local SharedSyncSchedulerHelpers = BuildEnv("SharedSyncSchedulerHelpers")
 local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
 local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
@@ -15,54 +16,38 @@ AirdropTrajectorySyncService.RESPONSE_JITTER_MAX = 1.10
 AirdropTrajectorySyncService.REQUEST_STATE_TTL = 60
 
 local function ClearArray(buffer)
-    if type(buffer) ~= "table" then
-        return {}
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ClearArray then
+        return SharedSyncSchedulerHelpers:ClearArray(buffer)
     end
-    for index = #buffer, 1, -1 do
-        buffer[index] = nil
-    end
-    return buffer
+    return {}
 end
 
 local function ClearMap(buffer)
-    if type(buffer) ~= "table" then
-        return {}
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ClearMap then
+        return SharedSyncSchedulerHelpers:ClearMap(buffer)
     end
-    for key in pairs(buffer) do
-        buffer[key] = nil
-    end
-    return buffer
+    return {}
 end
 
 local function BuildHandledRequestKey(sender, requestID)
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.BuildRequestKey then
+        return SharedSyncSchedulerHelpers:BuildRequestKey(sender, requestID)
+    end
     return tostring(sender or "unknown") .. ":" .. tostring(requestID or "unknown")
 end
 
 local function NormalizeJitterDelay(minDelay, maxDelay)
-    local resolvedMin = tonumber(minDelay) or 0
-    local resolvedMax = tonumber(maxDelay) or resolvedMin
-    if resolvedMax < resolvedMin then
-        resolvedMax = resolvedMin
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.NormalizeJitterDelay then
+        return SharedSyncSchedulerHelpers:NormalizeJitterDelay(minDelay, maxDelay)
     end
-    if resolvedMin < 0 then
-        resolvedMin = 0
-    end
-    if resolvedMax <= resolvedMin then
-        return resolvedMin
-    end
-    return resolvedMin + (math.random() * (resolvedMax - resolvedMin))
+    return 0
 end
 
 local function GetTeamContextKey()
-    local resolved = TeamSharedSyncChannelService
-        and TeamSharedSyncChannelService.GetResolvedChannelInfo
-        and TeamSharedSyncChannelService:GetResolvedChannelInfo()
-        or nil
-    local distribution = resolved and resolved.distribution or nil
-    if type(distribution) ~= "string" or distribution == "" then
-        return nil
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.GetTeamContextKey then
+        return SharedSyncSchedulerHelpers:GetTeamContextKey(TeamSharedSyncChannelService)
     end
-    return distribution
+    return nil
 end
 
 function AirdropTrajectorySyncService:IsFeatureEnabled()
@@ -81,10 +66,12 @@ function AirdropTrajectorySyncService:Initialize()
 end
 
 function AirdropTrajectorySyncService:Reset()
-    if self.broadcastTimer and self.broadcastTimer.Cancel then
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.CancelOwnedTimer then
+        SharedSyncSchedulerHelpers:CancelOwnedTimer(self, "broadcastTimer")
+    elseif self.broadcastTimer and self.broadcastTimer.Cancel then
         self.broadcastTimer:Cancel()
+        self.broadcastTimer = nil
     end
-    self.broadcastTimer = nil
     self.broadcastQueue = ClearArray(self.broadcastQueue)
     self.handledRequestKeys = ClearMap(self.handledRequestKeys)
     self.requestSequence = 0
@@ -179,19 +166,12 @@ function AirdropTrajectorySyncService:ProcessNextBroadcast()
     end
 
     if #self.broadcastQueue > 0 then
-        local delay = tonumber(self.SEND_INTERVAL) or 0.15
-        if C_Timer and C_Timer.NewTimer then
-            self.broadcastTimer = C_Timer.NewTimer(delay, function()
+        if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ScheduleOwnedTimer then
+            return SharedSyncSchedulerHelpers:ScheduleOwnedTimer(self, "broadcastTimer", self.SEND_INTERVAL, function()
                 self:ProcessNextBroadcast()
             end)
-        elseif C_Timer and C_Timer.After then
-            self.broadcastTimer = {}
-            C_Timer.After(delay, function()
-                self:ProcessNextBroadcast()
-            end)
-        else
-            self:ProcessNextBroadcast()
         end
+        self:ProcessNextBroadcast()
         return true
     end
 
@@ -212,7 +192,7 @@ function AirdropTrajectorySyncService:QueueFullBroadcast(delaySeconds, force)
     end
 
     local routes = {}
-    routes = AirdropTrajectoryStore and AirdropTrajectoryStore.AppendRoutesTo and AirdropTrajectoryStore:AppendRoutesTo(routes) or routes
+    routes = AirdropTrajectoryStore and AirdropTrajectoryStore.AppendShareableRoutesTo and AirdropTrajectoryStore:AppendShareableRoutesTo(routes) or routes
     if #routes == 0 then
         return false
     end
@@ -222,7 +202,9 @@ function AirdropTrajectorySyncService:QueueFullBroadcast(delaySeconds, force)
         self.broadcastQueue[#self.broadcastQueue + 1] = route
     end
 
-    if self.broadcastTimer and self.broadcastTimer.Cancel then
+    if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.CancelOwnedTimer then
+        SharedSyncSchedulerHelpers:CancelOwnedTimer(self, "broadcastTimer")
+    elseif self.broadcastTimer and self.broadcastTimer.Cancel then
         self.broadcastTimer:Cancel()
         self.broadcastTimer = nil
     end
@@ -231,18 +213,10 @@ function AirdropTrajectorySyncService:QueueFullBroadcast(delaySeconds, force)
     if delay < 0 then
         delay = 0
     end
-    if delay > 0 and C_Timer and C_Timer.NewTimer then
-        self.broadcastTimer = C_Timer.NewTimer(delay, function()
+    if delay > 0 and SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.ScheduleOwnedTimer then
+        return SharedSyncSchedulerHelpers:ScheduleOwnedTimer(self, "broadcastTimer", delay, function()
             self:ProcessNextBroadcast()
         end)
-        return true
-    end
-    if delay > 0 and C_Timer and C_Timer.After then
-        self.broadcastTimer = {}
-        C_Timer.After(delay, function()
-            self:ProcessNextBroadcast()
-        end)
-        return true
     end
     return self:ProcessNextBroadcast()
 end
@@ -252,6 +226,11 @@ function AirdropTrajectorySyncService:BroadcastRoute(routeState)
         return false
     end
     if type(routeState) ~= "table" then
+        return false
+    end
+    if AirdropTrajectoryStore
+        and AirdropTrajectoryStore.IsShareEligible
+        and AirdropTrajectoryStore:IsShareEligible(routeState) ~= true then
         return false
     end
     if TeamSharedSyncListener and TeamSharedSyncListener.SendTrajectoryRoute then
@@ -268,7 +247,9 @@ function AirdropTrajectorySyncService:HandleTeamContextChanged(forceRequest)
     self.lastTeamChannelReady = canSync
     if canSync ~= true then
         self.lastTeamContextKey = nil
-        if self.broadcastTimer and self.broadcastTimer.Cancel then
+        if SharedSyncSchedulerHelpers and SharedSyncSchedulerHelpers.CancelOwnedTimer then
+            SharedSyncSchedulerHelpers:CancelOwnedTimer(self, "broadcastTimer")
+        elseif self.broadcastTimer and self.broadcastTimer.Cancel then
             self.broadcastTimer:Cancel()
             self.broadcastTimer = nil
         end
@@ -322,6 +303,12 @@ end
 
 function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
     if type(syncState) ~= "table" then
+        return false
+    end
+
+    if AirdropTrajectoryStore
+        and AirdropTrajectoryStore.IsShareEligible
+        and AirdropTrajectoryStore:IsShareEligible(syncState) ~= true then
         return false
     end
 

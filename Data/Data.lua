@@ -242,25 +242,6 @@ local function migrateLegacyHiddenState(uiDB)
     return movedCount;
 end
 
-local function CapturePreservedTrajectoryData()
-    if type(CRATETRACKERZK_DB) ~= "table" or type(CRATETRACKERZK_DB.trajectoryData) ~= "table" then
-        return nil;
-    end
-    return CRATETRACKERZK_DB.trajectoryData;
-end
-
-local function RestorePreservedTrajectoryData(preservedTrajectoryData)
-    if type(preservedTrajectoryData) ~= "table" then
-        return;
-    end
-    if type(CRATETRACKERZK_DB) ~= "table" then
-        return;
-    end
-    if type(CRATETRACKERZK_DB.trajectoryData) ~= "table" then
-        CRATETRACKERZK_DB.trajectoryData = preservedTrajectoryData;
-    end
-end
-
 function Data:TryMigrateSchema(oldVersion)
     local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil;
     local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or nil;
@@ -320,7 +301,6 @@ end
 
 function Data:ResetDatabaseIfNeeded(forceReset)
     ensureDB(false);
-    local preservedTrajectoryData = forceReset ~= true and CapturePreservedTrajectoryData() or nil;
     local currentVersion = tonumber(CRATETRACKERZK_DB.schemaVersion) or 0;
     local shouldUpgrade = currentVersion ~= self.SCHEMA_VERSION;
     if forceReset == true then
@@ -348,7 +328,6 @@ function Data:ResetDatabaseIfNeeded(forceReset)
                 schemaVersion = self.SCHEMA_VERSION,
                 expansionData = {},
             };
-            RestorePreservedTrajectoryData(preservedTrajectoryData);
             if type(CRATETRACKERZK_UI_DB) == "table" then
                 CRATETRACKERZK_UI_DB.expansionUIData = {};
                 CRATETRACKERZK_UI_DB.hiddenMaps = nil;
@@ -366,7 +345,6 @@ function Data:ResetDatabaseIfNeeded(forceReset)
         end
     end
     ensureDB(true);
-    RestorePreservedTrajectoryData(preservedTrajectoryData);
     CRATETRACKERZK_DB.schemaVersion = self.SCHEMA_VERSION;
 end
 

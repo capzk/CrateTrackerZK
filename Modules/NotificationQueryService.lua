@@ -36,8 +36,13 @@ function NotificationQueryService:BuildPhaseTeamAlertMessage(mapName, previousPh
 end
 
 function NotificationQueryService:BuildTrajectoryPredictionMessage(mapName, x, y)
-    local format = (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %.1f, %.1f"
-    return string.format(format, mapName or "", tonumber(x) or 0, tonumber(y) or 0)
+    local format = (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %d, %d"
+    return string.format(
+        format,
+        mapName or "",
+        math.floor((tonumber(x) or 0) + 0.5),
+        math.floor((tonumber(y) or 0) + 0.5)
+    )
 end
 
 function NotificationQueryService:GetNearestAirdropInfo()

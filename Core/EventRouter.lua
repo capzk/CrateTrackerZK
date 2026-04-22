@@ -6,6 +6,7 @@ local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local AddonLifecycle = BuildEnv("CrateTrackerZKAddonLifecycle")
 local HiddenSyncDispatcher = BuildEnv("HiddenSyncDispatcher")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
+local Utils = BuildEnv("Utils")
 
 local MONSTER_CHAT_EVENTS = {
     CHAT_MSG_MONSTER_SAY = true,
@@ -24,6 +25,9 @@ local function HandleZoneChanged()
         local currentMapID = CoreShared:GetCurrentMapID()
         if Area then
             Area:CheckAndUpdateAreaValid(currentMapID)
+        end
+        if TimerManager and TimerManager.HandleMapContextChanged then
+            TimerManager:HandleMapContextChanged(currentMapID)
         end
         if TeamCommListener and TeamCommListener.RegisterAddonPrefix then
             TeamCommListener:RegisterAddonPrefix()
@@ -91,6 +95,9 @@ local function HandleMouseoverUnitChanged()
 end
 
 local function HandlePlayerLogout()
+    if AirdropTrajectoryService and AirdropTrajectoryService.FlushActiveObservations then
+        AirdropTrajectoryService:FlushActiveObservations(Utils and Utils.GetCurrentTimestamp and Utils:GetCurrentTimestamp() or nil)
+    end
     if Phase and Phase.Reset then
         Phase:Reset()
     end

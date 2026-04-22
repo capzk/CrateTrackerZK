@@ -1,21 +1,66 @@
 -- AirdropTrajectoryStore.lua - 空投运行轨迹持久化存储与去重合并
 
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
+local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
 local AppContext = BuildEnv("AppContext")
 
-AirdropTrajectoryStore.COORDINATE_SCALE = 10000
+AirdropTrajectoryStore.COORDINATE_SCALE = 100
 AirdropTrajectoryStore.MIN_ROUTE_LENGTH = 0.02
+AirdropTrajectoryStore.PARTIAL_MIN_ROUTE_LENGTH = 0.015
 AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE = 0.018
 AirdropTrajectoryStore.MIN_DIRECTION_DOT = 0.94
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 12
+AirdropTrajectoryStore.MIN_SHARED_ROUTE_SAMPLE_COUNT = 8
+AirdropTrajectoryStore.DB_SCHEMA_VERSION = 1
+
+local function HasStoredRoutes(bucket)
+    if type(bucket) ~= "table" then
+        return false
+    end
+    for _, savedMapData in pairs(bucket) do
+        if type(savedMapData) == "table"
+            and type(savedMapData.routes) == "table"
+            and next(savedMapData.routes) ~= nil then
+            return true
+        end
+    end
+    return false
+end
 
 local function EnsureTrajectoryPersistentState()
     if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
         CRATETRACKERZK_TRAJECTORY_DB = {}
     end
+    if type(CRATETRACKERZK_TRAJECTORY_DB.meta) ~= "table" then
+        CRATETRACKERZK_TRAJECTORY_DB.meta = {}
+    end
+    CRATETRACKERZK_TRAJECTORY_DB.schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION
+    CRATETRACKERZK_TRAJECTORY_DB.meta.storageKind = "independent"
     if type(CRATETRACKERZK_TRAJECTORY_DB.maps) ~= "table" then
         CRATETRACKERZK_TRAJECTORY_DB.maps = {}
     end
+
+    local legacyRootMaps = {}
+    for rawKey, value in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
+        local mapID = tonumber(rawKey)
+        if mapID
+            and type(value) == "table"
+            and type(value.routes) == "table" then
+            legacyRootMaps[#legacyRootMaps + 1] = {
+                mapID = mapID,
+                rawKey = rawKey,
+                value = value,
+            }
+        end
+    end
+
+    for _, entry in ipairs(legacyRootMaps) do
+        if type(CRATETRACKERZK_TRAJECTORY_DB.maps[entry.mapID]) ~= "table" then
+            CRATETRACKERZK_TRAJECTORY_DB.maps[entry.mapID] = entry.value
+        end
+        CRATETRACKERZK_TRAJECTORY_DB[entry.rawKey] = nil
+    end
+
     return CRATETRACKERZK_TRAJECTORY_DB
 end
 
@@ -29,6 +74,28 @@ local function GetLegacyPersistentBucket()
         return nil
     end
     return db.trajectoryData
+end
+
+local function ClearLegacyPersistentBucket()
+    local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil
+    if type(db) ~= "table" then
+        return false
+    end
+    db.trajectoryData = nil
+    return true
+end
+
+local function ResetIndependentPersistentState()
+    CRATETRACKERZK_TRAJECTORY_DB = {
+        schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION,
+        meta = {
+            storageKind = "independent",
+            legacyImportCompleted = true,
+            lastResetAt = Utils:GetCurrentTimestamp(),
+        },
+        maps = {},
+    }
+    return CRATETRACKERZK_TRAJECTORY_DB
 end
 
 local function NormalizeCoordinate(value)
@@ -55,49 +122,31 @@ local function QuantizeCoordinate(value)
 end
 
 local function ComputeRouteVector(route)
-    if type(route) ~= "table" then
-        return 0, 0, 0
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ComputeRouteVector then
+        return AirdropTrajectoryGeometryService:ComputeRouteVector(route)
     end
-    local dx = (route.endX or 0) - (route.startX or 0)
-    local dy = (route.endY or 0) - (route.startY or 0)
-    local length = math.sqrt((dx * dx) + (dy * dy))
-    return dx, dy, length
+    return 0, 0, 0
 end
 
 local function BuildProjectionContext(route)
-    local dx, dy, length = ComputeRouteVector(route)
-    if type(length) ~= "number" or length <= 0 then
-        return nil
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.BuildProjectionContext then
+        return AirdropTrajectoryGeometryService:BuildProjectionContext(route)
     end
-    return {
-        startX = route.startX,
-        startY = route.startY,
-        unitX = dx / length,
-        unitY = dy / length,
-        length = length,
-    }
+    return nil
 end
 
 local function ProjectPoint(context, x, y)
-    if type(context) ~= "table" then
-        return nil
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ProjectPoint then
+        return AirdropTrajectoryGeometryService:ProjectPoint(context, x, y)
     end
-    return ((x - context.startX) * context.unitX) + ((y - context.startY) * context.unitY)
+    return nil
 end
 
 local function DistancePointToLine(context, x, y)
-    if type(context) ~= "table" then
-        return math.huge, nil
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.DistancePointToLine then
+        return AirdropTrajectoryGeometryService:DistancePointToLine(context, x, y)
     end
-    local projection = ProjectPoint(context, x, y)
-    if type(projection) ~= "number" then
-        return math.huge, nil
-    end
-    local closestX = context.startX + (projection * context.unitX)
-    local closestY = context.startY + (projection * context.unitY)
-    local dx = x - closestX
-    local dy = y - closestY
-    return math.sqrt((dx * dx) + (dy * dy)), projection
+    return math.huge, nil
 end
 
 local function BuildRouteKey(route)
@@ -131,6 +180,8 @@ local function CopyRouteInto(outRoute, route)
     outRoute.createdAt = route.createdAt
     outRoute.updatedAt = route.updatedAt
     outRoute.source = route.source
+    outRoute.lastEventObjectGUID = route.lastEventObjectGUID
+    outRoute.lastEventStartedAt = route.lastEventStartedAt
     outRoute.startConfirmed = route.startConfirmed == true
     outRoute.endConfirmed = route.endConfirmed == true
     return outRoute
@@ -173,6 +224,15 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         createdAt = createdAt,
         updatedAt = updatedAt,
         source = source == "local" and "local" or "shared",
+        lastEventObjectGUID = type(routeState.lastEventObjectGUID) == "string"
+            and routeState.lastEventObjectGUID ~= ""
+            and routeState.lastEventObjectGUID
+            or (type(routeState.eventObjectGUID) == "string" and routeState.eventObjectGUID ~= "" and routeState.eventObjectGUID or nil),
+        lastEventStartedAt = math.floor(
+            tonumber(routeState.lastEventStartedAt)
+                or tonumber(routeState.eventStartedAt)
+                or createdAt
+        ),
         startConfirmed = routeState.startConfirmed == true,
         endConfirmed = routeState.endConfirmed == true,
     }
@@ -197,7 +257,15 @@ local function IsRouteRecordValid(route)
         return false
     end
     local _, _, length = ComputeRouteVector(route)
-    return type(length) == "number" and length >= (AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02)
+    if type(length) ~= "number" then
+        return false
+    end
+
+    local minimumLength = AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02
+    if route.startConfirmed == true or route.endConfirmed == true then
+        minimumLength = math.min(minimumLength, AirdropTrajectoryStore.PARTIAL_MIN_ROUTE_LENGTH or 0.015)
+    end
+    return length >= minimumLength
 end
 
 local function SelectReferenceRoute(existing, candidate)
@@ -333,10 +401,29 @@ local function MergeRoutes(existing, candidate)
         tonumber(candidate.updatedAt) or 0
     )
     merged.source = ((existing.source == "local") or (candidate.source == "local")) and "local" or "shared"
+    merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
+    merged.lastEventStartedAt = math.max(
+        tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
+        tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
+    )
     merged.routeKey = BuildRouteKey(merged)
     if type(merged.routeKey) ~= "string" or merged.routeKey == "" or IsRouteRecordValid(merged) ~= true then
         return CreateRouteRecord(existing)
     end
+    return merged
+end
+
+local function MergeSameEventRoute(existing, candidate)
+    local merged = MergeRoutes(existing, candidate)
+    merged.observationCount = math.max(
+        tonumber(existing.observationCount) or 1,
+        tonumber(candidate.observationCount) or 1
+    )
+    merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
+    merged.lastEventStartedAt = math.max(
+        tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
+        tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
+    )
     return merged
 end
 
@@ -358,6 +445,57 @@ local function HasRouteChanged(existing, candidate)
         or existing.sampleCount ~= candidate.sampleCount
         or existing.updatedAt ~= candidate.updatedAt
         or existing.source ~= candidate.source
+        or existing.lastEventObjectGUID ~= candidate.lastEventObjectGUID
+        or existing.lastEventStartedAt ~= candidate.lastEventStartedAt
+end
+
+local function IsDuplicateRouteArtifact(existing, candidate)
+    if type(existing) ~= "table" or type(candidate) ~= "table" then
+        return false
+    end
+
+    if existing.routeKey ~= candidate.routeKey then
+        return false
+    end
+
+    local existingUpdatedAt = tonumber(existing.updatedAt)
+    local candidateUpdatedAt = tonumber(candidate.updatedAt)
+    if type(existingUpdatedAt) ~= "number" or type(candidateUpdatedAt) ~= "number" then
+        return false
+    end
+
+    return existingUpdatedAt == candidateUpdatedAt
+end
+
+local function MergeDuplicateArtifact(existing, candidate)
+    local merged = CreateRouteRecord(existing)
+    if type(merged) ~= "table" then
+        return CreateRouteRecord(candidate)
+    end
+
+    merged.startConfirmed = existing.startConfirmed == true or candidate.startConfirmed == true
+    merged.endConfirmed = existing.endConfirmed == true or candidate.endConfirmed == true
+    merged.sampleCount = math.max(tonumber(existing.sampleCount) or 0, tonumber(candidate.sampleCount) or 0)
+    merged.observationCount = math.max(tonumber(existing.observationCount) or 1, tonumber(candidate.observationCount) or 1)
+    merged.createdAt = math.min(
+        tonumber(existing.createdAt) or tonumber(existing.updatedAt) or Utils:GetCurrentTimestamp(),
+        tonumber(candidate.createdAt) or tonumber(candidate.updatedAt) or Utils:GetCurrentTimestamp()
+    )
+    merged.updatedAt = math.max(
+        tonumber(existing.updatedAt) or 0,
+        tonumber(candidate.updatedAt) or 0
+    )
+    if merged.source ~= "local" and candidate.source == "local" then
+        merged.source = "local"
+    end
+    if type(candidate.lastEventObjectGUID) == "string" and candidate.lastEventObjectGUID ~= "" then
+        merged.lastEventObjectGUID = candidate.lastEventObjectGUID
+    end
+    merged.lastEventStartedAt = math.max(
+        tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
+        tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
+    )
+    return merged
 end
 
 local function EnsureMapBucket(self, mapID)
@@ -385,6 +523,7 @@ local function SaveMapBucket(self, mapID)
     for routeKey, route in pairs(runtimeBucket) do
         if type(routeKey) == "string" and type(route) == "table" then
             savedRoutes[routeKey] = {
+                mapID = mapID,
                 startX = route.startX,
                 startY = route.startY,
                 endX = route.endX,
@@ -394,6 +533,8 @@ local function SaveMapBucket(self, mapID)
                 createdAt = route.createdAt,
                 updatedAt = route.updatedAt,
                 source = route.source,
+                lastEventObjectGUID = route.lastEventObjectGUID,
+                lastEventStartedAt = route.lastEventStartedAt,
                 startConfirmed = route.startConfirmed == true,
                 endConfirmed = route.endConfirmed == true,
             }
@@ -438,29 +579,154 @@ local function PruneMapBucket(self, mapID)
     end
 end
 
-function AirdropTrajectoryStore:Initialize()
-    self.routesByMap = {}
-
-    local persistentBucket = EnsurePersistentBucket()
-    local shouldImportLegacy = next(persistentBucket) == nil
-    local legacyBucket = shouldImportLegacy and GetLegacyPersistentBucket() or nil
-    if shouldImportLegacy and type(legacyBucket) == "table" then
-        for rawMapID, savedMapData in pairs(legacyBucket) do
-            persistentBucket[rawMapID] = savedMapData
-        end
+local function LoadPersistentRoutesIntoRuntime(self, sourceBucket)
+    if type(sourceBucket) ~= "table" then
+        return 0
     end
-    for rawMapID, savedMapData in pairs(persistentBucket) do
+
+    local loadedCount = 0
+    for rawMapID, savedMapData in pairs(sourceBucket) do
         local mapID = tonumber(rawMapID)
         local savedRoutes = type(savedMapData) == "table" and savedMapData.routes or nil
         if mapID and type(savedRoutes) == "table" then
             local runtimeBucket = EnsureMapBucket(self, mapID)
             for _, savedRoute in pairs(savedRoutes) do
-                local normalized = NormalizeRouteRecord(savedRoute, savedRoute and savedRoute.source, savedRoute and savedRoute.updatedAt)
+                local routeState = savedRoute
+                if type(savedRoute) == "table" and type(savedRoute.mapID) ~= "number" then
+                    routeState = {}
+                    for key, value in pairs(savedRoute) do
+                        routeState[key] = value
+                    end
+                    routeState.mapID = mapID
+                end
+                local normalized = NormalizeRouteRecord(routeState, savedRoute and savedRoute.source, savedRoute and savedRoute.updatedAt)
                 if IsRouteRecordValid(normalized) == true then
                     runtimeBucket[normalized.routeKey] = normalized
+                    loadedCount = loadedCount + 1
                 end
             end
             PruneMapBucket(self, mapID)
+        end
+    end
+    return loadedCount
+end
+
+local function CanonicalizeMapBucket(self, mapID)
+    local runtimeBucket = self.routesByMap and self.routesByMap[mapID] or nil
+    if type(runtimeBucket) ~= "table" then
+        return 0
+    end
+
+    local routes = {}
+    for _, route in pairs(runtimeBucket) do
+        if type(route) == "table" then
+            routes[#routes + 1] = CreateRouteRecord(route)
+        end
+    end
+    if #routes <= 1 then
+        return 0
+    end
+
+    table.sort(routes, function(left, right)
+        local leftUpdatedAt = tonumber(left and left.updatedAt) or 0
+        local rightUpdatedAt = tonumber(right and right.updatedAt) or 0
+        if leftUpdatedAt == rightUpdatedAt then
+            local leftSamples = tonumber(left and left.sampleCount) or 0
+            local rightSamples = tonumber(right and right.sampleCount) or 0
+            if leftSamples == rightSamples then
+                return (left.routeKey or "") < (right.routeKey or "")
+            end
+            return leftSamples > rightSamples
+        end
+        return leftUpdatedAt > rightUpdatedAt
+    end)
+
+    local canonicalBucket = {}
+    local mergedCount = 0
+    for _, route in ipairs(routes) do
+        local matchedKey = nil
+        local matchedRoute = nil
+        for routeKey, existingRoute in pairs(canonicalBucket) do
+            if IsSimilarRoute(existingRoute, route) == true then
+                matchedKey = routeKey
+                matchedRoute = existingRoute
+                break
+            end
+        end
+
+        if not matchedRoute then
+            canonicalBucket[route.routeKey] = route
+        else
+            local merged = IsDuplicateRouteArtifact(matchedRoute, route) == true
+                and MergeDuplicateArtifact(matchedRoute, route)
+                or MergeRoutes(matchedRoute, route)
+            canonicalBucket[matchedKey] = nil
+            canonicalBucket[merged.routeKey] = merged
+            mergedCount = mergedCount + 1
+        end
+    end
+
+    self.routesByMap[mapID] = canonicalBucket
+    PruneMapBucket(self, mapID)
+    SaveMapBucket(self, mapID)
+    return mergedCount
+end
+
+local function ImportLegacyBucketIntoIndependentStore(self, legacyBucket, currentTime)
+    if type(legacyBucket) ~= "table" then
+        return 0
+    end
+
+    local importedCount = 0
+    for rawMapID, savedMapData in pairs(legacyBucket) do
+        local mapID = tonumber(rawMapID)
+        local savedRoutes = type(savedMapData) == "table" and savedMapData.routes or nil
+        if mapID and type(savedRoutes) == "table" then
+            for _, savedRoute in pairs(savedRoutes) do
+                local routeState = savedRoute
+                if type(savedRoute) == "table" and type(savedRoute.mapID) ~= "number" then
+                    routeState = {}
+                    for key, value in pairs(savedRoute) do
+                        routeState[key] = value
+                    end
+                    routeState.mapID = mapID
+                end
+                local changed = self:UpsertRoute(mapID, routeState, savedRoute and savedRoute.source, currentTime)
+                if changed == true then
+                    importedCount = importedCount + 1
+                end
+            end
+        end
+    end
+    return importedCount
+end
+
+function AirdropTrajectoryStore:Initialize()
+    self.routesByMap = {}
+
+    local trajectoryState = EnsureTrajectoryPersistentState()
+    local persistentBucket = trajectoryState.maps or {}
+    LoadPersistentRoutesIntoRuntime(self, persistentBucket)
+    for rawMapID in pairs(persistentBucket) do
+        local mapID = tonumber(rawMapID)
+        if mapID then
+            CanonicalizeMapBucket(self, mapID)
+        end
+    end
+
+    local meta = trajectoryState.meta or {}
+    if meta.legacyImportCompleted ~= true then
+        local legacyBucket = GetLegacyPersistentBucket()
+        local importedCount = 0
+        if HasStoredRoutes(persistentBucket) ~= true and type(legacyBucket) == "table" then
+            importedCount = ImportLegacyBucketIntoIndependentStore(self, legacyBucket, Utils:GetCurrentTimestamp())
+        end
+        meta.legacyImportCompleted = true
+        meta.legacyImportedAt = Utils:GetCurrentTimestamp()
+        meta.legacyImportedRouteCount = importedCount
+        trajectoryState.meta = meta
+        if importedCount > 0 or HasStoredRoutes(persistentBucket) == true then
+            ClearLegacyPersistentBucket()
         end
     end
 
@@ -484,7 +750,32 @@ function AirdropTrajectoryStore:GetRouteQualityLabel(route)
     return "partial"
 end
 
+function AirdropTrajectoryStore:IsShareEligible(route)
+    if IsRouteRecordValid(route) ~= true then
+        return false
+    end
+    if type(route) ~= "table" or route.endConfirmed ~= true then
+        return false
+    end
+    return (tonumber(route.sampleCount) or 0) >= (self.MIN_SHARED_ROUTE_SAMPLE_COUNT or 8)
+end
+
 function AirdropTrajectoryStore:Reset()
+    self.routesByMap = {}
+    return true
+end
+
+function AirdropTrajectoryStore:IsUsingIndependentPersistentStore()
+    local trajectoryState = EnsureTrajectoryPersistentState()
+    return type(trajectoryState) == "table"
+        and type(trajectoryState.maps) == "table"
+        and type(trajectoryState.meta) == "table"
+        and trajectoryState.meta.storageKind == "independent"
+end
+
+function AirdropTrajectoryStore:ClearPersistentData()
+    ResetIndependentPersistentState()
+    ClearLegacyPersistentBucket()
     self.routesByMap = {}
     return true
 end
@@ -533,6 +824,19 @@ function AirdropTrajectoryStore:AppendRoutesTo(outRoutes)
     return outRoutes
 end
 
+function AirdropTrajectoryStore:AppendShareableRoutesTo(outRoutes)
+    if type(outRoutes) ~= "table" then
+        outRoutes = {}
+    end
+
+    for _, route in ipairs(self:AppendRoutesTo({})) do
+        if self:IsShareEligible(route) == true then
+            outRoutes[#outRoutes + 1] = route
+        end
+    end
+    return outRoutes
+end
+
 function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTime)
     local normalized = NormalizeRouteRecord(routeState, source, currentTime)
     if IsRouteRecordValid(normalized) ~= true then
@@ -543,16 +847,31 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
     local runtimeBucket = EnsureMapBucket(self, resolvedMapID)
     local matchedKey = nil
     local matchedRoute = nil
+    local sameEventMatched = false
+
     for routeKey, route in pairs(runtimeBucket) do
         if IsSimilarRoute(route, normalized) == true then
-            matchedKey = routeKey
-            matchedRoute = route
-            break
+            local isSameEvent = type(normalized.lastEventObjectGUID) == "string"
+                and normalized.lastEventObjectGUID ~= ""
+                and type(route.lastEventObjectGUID) == "string"
+                and route.lastEventObjectGUID == normalized.lastEventObjectGUID
+            if isSameEvent then
+                matchedKey = routeKey
+                matchedRoute = route
+                sameEventMatched = true
+                break
+            end
+            if not matchedRoute then
+                matchedKey = routeKey
+                matchedRoute = route
+            end
         end
     end
 
     if matchedRoute then
-        local merged = MergeRoutes(matchedRoute, normalized)
+        local merged = sameEventMatched == true
+            and MergeSameEventRoute(matchedRoute, normalized)
+            or MergeRoutes(matchedRoute, normalized)
         if HasRouteChanged(matchedRoute, merged) ~= true then
             return false, matchedRoute
         end

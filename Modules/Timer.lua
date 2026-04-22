@@ -106,6 +106,15 @@ local function ActivateMapSwitchGuard(owner, targetMapData, currentTime)
     return true
 end
 
+local function ClearDetectionState(owner, mapId)
+    if not owner or type(mapId) ~= "number" then
+        return false
+    end
+    owner.detectionState = owner.detectionState or {}
+    owner.detectionState[mapId] = nil
+    return true
+end
+
 local function IsMapSwitchGuardActive(owner, targetMapData, currentTime)
     if not owner or not targetMapData or targetMapData.id == nil then
         return false
@@ -138,6 +147,47 @@ function TimerManager:UpdateUI()
     end
 end
 
+function TimerManager:HandleMapContextChanged(currentMapID, targetMapData, currentTime)
+    self.detectionState = self.detectionState or {}
+
+    local playerMapID = currentMapID;
+    if not playerMapID and C_Map and C_Map.GetBestMapForUnit then
+        playerMapID = C_Map.GetBestMapForUnit("player");
+    end
+    if not playerMapID or not MapTracker or not MapTracker.GetTargetMapData then
+        return nil, targetMapData;
+    end
+
+    local now = currentTime or getCurrentTimestamp();
+    local resolvedTargetMapData = targetMapData or MapTracker:GetTargetMapData(playerMapID);
+    if not resolvedTargetMapData then
+        local clearedState = MapTracker.ClearCurrentMapState and MapTracker:ClearCurrentMapState(playerMapID) or nil;
+        local oldMapId = clearedState and clearedState.oldMapId or nil;
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch and oldMapId then
+            AirdropTrajectoryService:HandleMapSwitch(oldMapId, now);
+        end
+        ClearDetectionState(self, oldMapId);
+        self.mapSwitchGuardState = nil;
+        return nil, nil;
+    end
+
+    local mapChangeState = MapTracker.OnMapChanged and MapTracker:OnMapChanged(playerMapID, resolvedTargetMapData, now) or nil;
+    if mapChangeState and mapChangeState.configMapChanged then
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch then
+            AirdropTrajectoryService:HandleMapSwitch(mapChangeState.oldMapId, now);
+        end
+        ClearDetectionState(self, mapChangeState.oldMapId);
+        ClearDetectionState(self, resolvedTargetMapData.id);
+        ActivateMapSwitchGuard(self, resolvedTargetMapData, now);
+    end
+
+    return mapChangeState, resolvedTargetMapData;
+end
+
+function TimerManager:IsMapSwitchGuardActiveFor(targetMapData, currentTime)
+    return IsMapSwitchGuardActive(self, targetMapData, currentTime or getCurrentTimestamp()) == true;
+end
+
 
 -- 检查同地图同一空投事件是否仍在自动通知窗口内
 local function ShouldSendNotification(eventTimestamp, currentTime)
@@ -156,6 +206,8 @@ local function ShouldSendNotification(eventTimestamp, currentTime)
 end
 
 function TimerManager:DetectMapIcons(currentMapID)
+    self.detectionState = self.detectionState or {}
+
     if Area and Area.IsActive and not Area:IsActive() then
         return false;
     end
@@ -178,11 +230,10 @@ function TimerManager:DetectMapIcons(currentMapID)
     
     local currentTime = getCurrentTimestamp();
     
-    local targetMapData = MapTracker:GetTargetMapData(playerMapID);
+    local mapChangeState = nil;
+    local targetMapData = nil;
+    mapChangeState, targetMapData = self:HandleMapContextChanged(playerMapID, nil, currentTime);
     if not targetMapData then
-        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch and MapTracker.lastDetectedMapId then
-            AirdropTrajectoryService:HandleMapSwitch(MapTracker.lastDetectedMapId, currentTime);
-        end
         return false;
     end
 
@@ -198,22 +249,7 @@ function TimerManager:DetectMapIcons(currentMapID)
 
     local mapDisplayName = Data:GetMapDisplayName(targetMapData);
     local mapNotificationKey = targetMapData.id;
-    local mapChangeState = nil;
-    if MapTracker.OnMapChanged then
-        mapChangeState = MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
-    elseif MapTracker.UpdateCurrentMapState then
-        MapTracker:UpdateCurrentMapState(playerMapID, targetMapData, currentTime);
-    else
-        MapTracker:OnMapChanged(playerMapID, targetMapData, currentTime);
-    end
-
-    if mapChangeState and mapChangeState.configMapChanged then
-        if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch then
-            AirdropTrajectoryService:HandleMapSwitch(mapChangeState.oldMapId, currentTime);
-        end
-        ActivateMapSwitchGuard(self, targetMapData, currentTime);
-    end
-    if IsMapSwitchGuardActive(self, targetMapData, currentTime) then
+    if self:IsMapSwitchGuardActiveFor(targetMapData, currentTime) then
         return false;
     end
     

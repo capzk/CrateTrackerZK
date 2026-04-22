@@ -105,6 +105,44 @@ function PhaseStateStore:GetCurrent(manager, mapId, currentTime, expansionID)
     return nil
 end
 
+function PhaseStateStore:GetCurrentInfoInto(manager, mapId, outInfo, currentTime, expansionID)
+    if type(outInfo) ~= "table" then
+        return nil
+    end
+
+    outInfo.phaseId = nil
+    outInfo.source = nil
+    outInfo.detectTime = nil
+    outInfo.isTemporary = nil
+
+    local scopedKey = BuildScopedMapKey(mapId, expansionID)
+    local tempPhase = manager.temporaryPhases and manager.temporaryPhases[scopedKey]
+    if tempPhase and tempPhase.phaseId then
+        local now = currentTime or Utils:GetCurrentTimestamp()
+        if now - tempPhase.detectTime <= manager.TEMPORARY_PHASE_EXPIRE then
+            outInfo.phaseId = tempPhase.phaseId
+            outInfo.source = tempPhase.source
+            outInfo.detectTime = tempPhase.detectTime
+            outInfo.isTemporary = true
+            return outInfo
+        end
+        tempPhase.phaseId = nil
+        tempPhase.source = nil
+        tempPhase.detectTime = nil
+    end
+
+    local persistentPhase = manager.persistentPhases and manager.persistentPhases[scopedKey]
+    if persistentPhase and persistentPhase.phaseId then
+        outInfo.phaseId = persistentPhase.phaseId
+        outInfo.source = persistentPhase.source
+        outInfo.detectTime = persistentPhase.detectTime
+        outInfo.isTemporary = false
+        return outInfo
+    end
+
+    return nil
+end
+
 function PhaseStateStore:GetPersistent(manager, mapId, expansionID)
     local scopedKey = BuildScopedMapKey(mapId, expansionID)
     local persistentPhase = manager.persistentPhases and manager.persistentPhases[scopedKey]

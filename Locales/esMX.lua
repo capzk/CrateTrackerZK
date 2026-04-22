@@ -25,7 +25,8 @@ localeData["TimeRemaining"] = "[%s]Suministros de guerra en: %s!!!";
 localeData["AutoTeamReportMessage"] = "Actual[%s]Suministros de guerra en: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Se obtuvo la informacion compartida mas reciente del lanzamiento de suministros para la fase actual en [%s].";
 localeData["PhaseTeamAlertMessage"] = "La fase actual en %s cambio: %s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "[%s] Se ha reconocido la trayectoria del lanzamiento. Coordenadas previstas del punto de caida: %.1f, %.1f";
+localeData["TrajectoryPredictionMatched"] = "[%s] Se ha reconocido la trayectoria del lanzamiento. Coordenadas previstas del punto de caida: %d, %d";
+localeData["TrajectoryPredictionWaypointSet"] = "[%s] Se ha marcado en tu mapa el punto previsto de caida: %d, %d";
 localeData["UnknownPhaseValue"] = "desconocida";
 
 -- Phase Detection Alerts

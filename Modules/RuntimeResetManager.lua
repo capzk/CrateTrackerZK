@@ -2,6 +2,7 @@
 
 local RuntimeResetManager = BuildEnv("RuntimeResetManager");
 local CrateTrackerZK = BuildEnv("CrateTrackerZK");
+local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore");
 
 local function ResetMapPhaseState()
     if not Data or not Data.maps then
@@ -125,12 +126,13 @@ function RuntimeResetManager:ClearPersistentData()
     if CRATETRACKERZK_DB then
         CRATETRACKERZK_DB.expansionData = {};
         CRATETRACKERZK_DB.mapData = nil;
-        CRATETRACKERZK_DB.trajectoryData = nil;
         if Data and Data.SCHEMA_VERSION then
             CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION;
         end
     end
-    if type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
+    if AirdropTrajectoryStore and AirdropTrajectoryStore.ClearPersistentData then
+        AirdropTrajectoryStore:ClearPersistentData();
+    elseif type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
         for k in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
             CRATETRACKERZK_TRAJECTORY_DB[k] = nil;
         end

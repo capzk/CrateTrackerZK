@@ -12,6 +12,7 @@ local PhaseTeamAlertCoordinator = BuildEnv("PhaseTeamAlertCoordinator");
 
 Phase.lastReportedMapPhaseKey = nil;
 Phase.phaseCache = {};  -- 位面ID缓存，使用 版本+mapID 作为key
+Phase.sessionStartedAt = 0;
 
 local function GetExpansionAwareCacheKey(expansionID, mapID)
     return tostring(expansionID or "default") .. ":" .. tostring(mapID);
@@ -68,6 +69,7 @@ end
 function Phase:Reset()
     self.lastReportedMapPhaseKey = nil;
     self.phaseCache = {};
+    self.sessionStartedAt = Utils and Utils.GetCurrentTimestamp and Utils:GetCurrentTimestamp() or 0;
 end
 
 function Phase:GetLayerFromNPC()
@@ -115,11 +117,28 @@ function Phase:UpdatePhaseInfo(currentMapID)
         local shouldUpdate = false;
         local currentPhaseID = nil;
         local uiNeedsRefresh = false;
-        local previousPhaseID = UnifiedDataManager and UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
-        local historicalPhaseID = UnifiedDataManager
-            and UnifiedDataManager.GetObservedHistoricalPhase
-            and UnifiedDataManager:GetObservedHistoricalPhase(targetMapData.id)
+        self.currentPhaseInfoBuffer = self.currentPhaseInfoBuffer or {};
+        self.historicalPhaseRecordBuffer = self.historicalPhaseRecordBuffer or {};
+        local previousPhaseInfo = UnifiedDataManager
+            and UnifiedDataManager.GetCurrentPhaseInfoInto
+            and UnifiedDataManager:GetCurrentPhaseInfoInto(targetMapData.id, self.currentPhaseInfoBuffer)
             or nil;
+        local previousPhaseID = previousPhaseInfo and previousPhaseInfo.phaseId or nil;
+        local previousPhaseCanTriggerChange = previousPhaseInfo
+            and previousPhaseInfo.isTemporary == true
+            and previousPhaseInfo.source == UnifiedDataManager.PhaseSource.PHASE_DETECTION
+            and type(previousPhaseID) == "string"
+            and previousPhaseID ~= "";
+        local historicalPhaseRecord = UnifiedDataManager
+            and UnifiedDataManager.GetObservedHistoricalPhaseRecordInto
+            and UnifiedDataManager:GetObservedHistoricalPhaseRecordInto(targetMapData.id, self.historicalPhaseRecordBuffer)
+            or nil;
+        local historicalPhaseID = historicalPhaseRecord and historicalPhaseRecord.phaseId or nil;
+        local historicalPhaseCanTriggerChange = historicalPhaseRecord
+            and type(historicalPhaseID) == "string"
+            and historicalPhaseID ~= ""
+            and type(historicalPhaseRecord.observedAt) == "number"
+            and historicalPhaseRecord.observedAt >= (self.sessionStartedAt or 0);
         
         if detectedPhaseID then
             if cachedPhaseID ~= detectedPhaseID then
@@ -140,7 +159,7 @@ function Phase:UpdatePhaseInfo(currentMapID)
             end
             -- 保留旧版 currentPhaseID 回写，兼容仍读取 mapData 的链路
             targetMapData.currentPhaseID = currentPhaseID;
-            if previousPhaseID ~= currentPhaseID then
+            if previousPhaseCanTriggerChange and previousPhaseID ~= currentPhaseID then
                 if UnifiedDataManager and UnifiedDataManager.MarkSharedDisplayPhaseTransition then
                     UnifiedDataManager:MarkSharedDisplayPhaseTransition(
                         targetMapData.id,
@@ -161,11 +180,11 @@ function Phase:UpdatePhaseInfo(currentMapID)
                 if lastReportedKey ~= mapPhaseKey then
                     local mapName = Data:GetMapDisplayName(targetMapData);
                     local changedBaselinePhaseID = ResolveChangedBaselinePhase(
-                        previousPhaseID,
-                        historicalPhaseID,
+                        previousPhaseCanTriggerChange and previousPhaseID or nil,
+                        historicalPhaseCanTriggerChange and historicalPhaseID or nil,
                         currentPhaseID
                     );
-                    local isPhaseChanged = (cachedPhaseID ~= nil) or (changedBaselinePhaseID ~= nil);
+                    local isPhaseChanged = changedBaselinePhaseID ~= nil;
                     local messageKey = isPhaseChanged and "InstanceChangedTo" or "PhaseDetectedFirstTime";
                     Logger:Info("Phase", "位面", string.format(L[messageKey], mapName, currentPhaseID));
                     if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.HandleLocalPhaseDetected then

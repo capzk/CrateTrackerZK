@@ -11,6 +11,7 @@ local MainPanel = BuildEnv("MainPanel")
 local SettingsPanel = BuildEnv("CrateTrackerZKSettingsPanel")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
+local AddonRuntimeCoordinator = BuildEnv("AddonRuntimeCoordinator")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local MapTracker = BuildEnv("MapTracker")
 local Phase = BuildEnv("Phase")
@@ -107,11 +108,11 @@ local function InitializeShoutDetector()
 end
 
 local function RefreshTrackedMapRuntime()
-    if Data and Data.Initialize then
-        Data:Initialize()
-    end
     if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize then
         AirdropTrajectoryStore:Initialize()
+    end
+    if Data and Data.Initialize then
+        Data:Initialize()
     end
 
     if UnifiedDataManager then
@@ -197,6 +198,10 @@ function AddonControlService:ReinitializeAddon()
 end
 
 function AddonControlService:ClearDataAndReinitialize()
+    if AddonRuntimeCoordinator and AddonRuntimeCoordinator.ClearDataAndReinitialize then
+        return AddonRuntimeCoordinator:ClearDataAndReinitialize()
+    end
+
     if RuntimeResetManager and RuntimeResetManager.PrepareUIForClear then
         RuntimeResetManager:PrepareUIForClear()
     end
@@ -220,12 +225,13 @@ function AddonControlService:ClearDataAndReinitialize()
         if CRATETRACKERZK_DB then
             CRATETRACKERZK_DB.expansionData = {}
             CRATETRACKERZK_DB.mapData = nil
-            CRATETRACKERZK_DB.trajectoryData = nil
             if Data and Data.SCHEMA_VERSION then
                 CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION
             end
         end
-        if type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
+        if AirdropTrajectoryStore and AirdropTrajectoryStore.ClearPersistentData then
+            AirdropTrajectoryStore:ClearPersistentData()
+        elseif type(CRATETRACKERZK_TRAJECTORY_DB) == "table" then
             for key in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
                 CRATETRACKERZK_TRAJECTORY_DB[key] = nil
             end
@@ -260,6 +266,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
     self:SetAddonEnabledFlag(shouldEnable)
 
     if shouldEnable then
+        if AddonRuntimeCoordinator and AddonRuntimeCoordinator.EnableAddon then
+            return AddonRuntimeCoordinator:EnableAddon()
+        end
         if TimerManager and TimerManager.Initialize and not TimerManager.isInitialized then
             TimerManager:Initialize()
         end
@@ -290,6 +299,9 @@ function AddonControlService:ApplyAddonEnabled(enabled)
             MainPanel:StartUpdateTimer()
         end
     else
+        if AddonRuntimeCoordinator and AddonRuntimeCoordinator.DisableAddon then
+            return AddonRuntimeCoordinator:DisableAddon()
+        end
         if Area then
             Area.detectionPaused = true
         end
@@ -318,6 +330,9 @@ function AddonControlService:SetMapTracked(expansionID, mapID, tracked)
     local changed = Data:SetMapTracked(expansionID, mapID, tracked == true)
     if not changed then
         return false
+    end
+    if AddonRuntimeCoordinator and AddonRuntimeCoordinator.RefreshTrackedMapRuntime then
+        return AddonRuntimeCoordinator:RefreshTrackedMapRuntime()
     end
     return RefreshTrackedMapRuntime()
 end

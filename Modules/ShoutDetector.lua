@@ -20,6 +20,7 @@ if not Area then Area = BuildEnv("Area") end
 if not Logger then Logger = BuildEnv("Logger") end
 if not UnifiedDataManager then UnifiedDataManager = BuildEnv("UnifiedDataManager") end
 if not TimerManager then TimerManager = BuildEnv("TimerManager") end
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 
 ShoutDetector.isInitialized = false;
@@ -58,13 +59,20 @@ local function OnShoutDetected(message)
     if not targetMapData or not Data then
         return;
     end
+    local currentTime = Utils:GetCurrentTimestamp();
+    if TimerManager and TimerManager.HandleMapContextChanged then
+        local _, refreshedTargetMapData = TimerManager:HandleMapContextChanged(currentMapID, targetMapData, currentTime);
+        targetMapData = refreshedTargetMapData or targetMapData;
+    end
+    if TimerManager and TimerManager.IsMapSwitchGuardActiveFor and TimerManager:IsMapSwitchGuardActiveFor(targetMapData, currentTime) then
+        return;
+    end
     if IsMapHidden(targetMapData) then
         return;
     end
 
     local mapName = Data:GetMapDisplayName(targetMapData);
     local mapNotificationKey = targetMapData.id;
-    local currentTime = Utils:GetCurrentTimestamp();
     if Notification and Notification.RecordShout then
         Notification:RecordShout(mapNotificationKey);
     end
@@ -84,6 +92,9 @@ local function OnShoutDetected(message)
     if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
         local currentPhaseId = UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
         UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE, currentPhaseId);
+    end
+    if AirdropTrajectoryService and AirdropTrajectoryService.HandleAirdropShout then
+        AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
         UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {
