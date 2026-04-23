@@ -9,6 +9,7 @@ end
 
 local TeamCommListener = BuildEnv('TeamCommListener');
 
+local HiddenSyncAuditService = BuildEnv("HiddenSyncAuditService");
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport");
 local TeamCommMapCache = BuildEnv("TeamCommMapCache");
 local TeamCommMessageService = BuildEnv("TeamCommMessageService");
@@ -230,23 +231,74 @@ function TeamCommListener:Initialize()
 end
 
 function TeamCommListener:SendConfirmedSync(syncState, chatType)
-    if self:CanEnableHiddenSync() ~= true then
+    local canEnable = self:CanEnableHiddenSync() == true
+    if canEnable ~= true then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "send",
+                status = "blocked",
+                note = "hidden_sync_disabled",
+                messageType = syncState and self.ADDON_MESSAGE_TYPE_AIRDROP or nil,
+                mapID = syncState and syncState.mapID or nil,
+                objectGUID = syncState and syncState.objectGUID or nil,
+            })
+        end
         return false
     end
-    if self:RegisterAddonPrefix() ~= true then
+    local prefixReady = self:RegisterAddonPrefix() == true
+    if prefixReady ~= true then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "send",
+                status = "blocked",
+                note = "prefix_not_ready",
+                messageType = syncState and self.ADDON_MESSAGE_TYPE_AIRDROP or nil,
+                mapID = syncState and syncState.mapID or nil,
+                objectGUID = syncState and syncState.objectGUID or nil,
+            })
+        end
         return false
     end
 
     local distribution = HiddenSyncTransport and HiddenSyncTransport.ResolveDistribution and HiddenSyncTransport:ResolveDistribution(chatType) or nil
     local payload = self:BuildAirdropPayload(syncState)
     if not distribution or type(payload) ~= "string" or payload == "" then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "send",
+                status = "failed",
+                note = "payload_or_distribution_invalid",
+                messageType = self.ADDON_MESSAGE_TYPE_AIRDROP,
+                distribution = distribution,
+                mapID = syncState and syncState.mapID or nil,
+                objectGUID = syncState and syncState.objectGUID or nil,
+                payload = payload,
+            })
+        end
         return false
     end
 
-    return HiddenSyncTransport
+    local sent = HiddenSyncTransport
         and HiddenSyncTransport.SendAddonPayload
         and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
         or false
+    if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+        HiddenSyncAuditService:Record({
+            protocol = "CTKZK_SYNC",
+            direction = "send",
+            status = sent == true and "sent" or "failed",
+            prefix = self.ADDON_PREFIX,
+            messageType = self.ADDON_MESSAGE_TYPE_AIRDROP,
+            distribution = distribution,
+            mapID = syncState and syncState.mapID or nil,
+            objectGUID = syncState and syncState.objectGUID or nil,
+            payload = payload,
+        })
+    end
+    return sent
 end
 
 function TeamCommListener:SendPhaseAlertClaim(syncState, chatType)
@@ -263,10 +315,25 @@ function TeamCommListener:SendPhaseAlertClaim(syncState, chatType)
         return false
     end
 
-    return HiddenSyncTransport
+    local sent = HiddenSyncTransport
         and HiddenSyncTransport.SendAddonPayload
         and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
         or false
+    if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+        HiddenSyncAuditService:Record({
+            protocol = "CTKZK_SYNC",
+            direction = "send",
+            status = sent == true and "sent" or "failed",
+            prefix = self.ADDON_PREFIX,
+            messageType = self.ADDON_MESSAGE_TYPE_PHASE_CLAIM,
+            distribution = distribution,
+            expansionID = syncState and syncState.expansionID or nil,
+            mapID = syncState and syncState.mapID or nil,
+            phaseID = syncState and syncState.phaseID or nil,
+            payload = payload,
+        })
+    end
+    return sent
 end
 
 function TeamCommListener:SendPhaseAlertAck(syncState, chatType)
@@ -283,14 +350,41 @@ function TeamCommListener:SendPhaseAlertAck(syncState, chatType)
         return false
     end
 
-    return HiddenSyncTransport
+    local sent = HiddenSyncTransport
         and HiddenSyncTransport.SendAddonPayload
         and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
         or false
+    if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+        HiddenSyncAuditService:Record({
+            protocol = "CTKZK_SYNC",
+            direction = "send",
+            status = sent == true and "sent" or "failed",
+            prefix = self.ADDON_PREFIX,
+            messageType = self.ADDON_MESSAGE_TYPE_PHASE_ACK,
+            distribution = distribution,
+            expansionID = syncState and syncState.expansionID or nil,
+            mapID = syncState and syncState.mapID or nil,
+            phaseID = syncState and syncState.phaseID or nil,
+            payload = payload,
+        })
+    end
+    return sent
 end
 
 function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sender)
     if self.CanReceiveHiddenSync and self:CanReceiveHiddenSync() ~= true then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "recv",
+                status = "blocked",
+                prefix = prefix,
+                chatType = chatType,
+                sender = sender,
+                payload = payload,
+                note = "receive_gate_closed",
+            })
+        end
         return false;
     end
     if not self.isInitialized then
@@ -299,19 +393,60 @@ function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sen
     if not HiddenSyncTransport
         or not HiddenSyncTransport.IsSupportedTeamChatType
         or HiddenSyncTransport:IsSupportedTeamChatType(chatType) ~= true then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "recv",
+                status = "ignored",
+                prefix = prefix,
+                chatType = chatType,
+                sender = sender,
+                payload = payload,
+                note = "unsupported_chat_type",
+            })
+        end
         return false;
     end
 
     self.syncStateBuffer = self.syncStateBuffer or {};
     local syncState = self:ParseAddonPayloadInto(prefix, payload, self.syncStateBuffer);
     if not syncState then
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "recv",
+                status = "ignored",
+                prefix = prefix,
+                chatType = chatType,
+                sender = sender,
+                payload = payload,
+                note = "parse_failed",
+            })
+        end
         return false;
     end
 
+    local processed = false
     if TeamCommMessageService and TeamCommMessageService.ProcessSync then
-        return TeamCommMessageService:ProcessSync(self, syncState, chatType, sender);
+        processed = TeamCommMessageService:ProcessSync(self, syncState, chatType, sender) == true;
     end
-    return false;
+    if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+        HiddenSyncAuditService:Record({
+            protocol = "CTKZK_SYNC",
+            direction = "recv",
+            status = processed == true and "processed" or "ignored",
+            prefix = prefix,
+            messageType = syncState.messageType,
+            chatType = chatType,
+            sender = sender,
+            expansionID = syncState.expansionID,
+            mapID = syncState.mapID,
+            phaseID = syncState.phaseID,
+            objectGUID = syncState.objectGUID,
+            payload = payload,
+        })
+    end
+    return processed == true;
 end
 
 return TeamCommListener;

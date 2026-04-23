@@ -17,6 +17,10 @@ ExpansionConfig.expansions = {
         airdropPlaneVignetteIDs = {
             3689,
         },
+        airdropCrateVignetteIDs = {
+            2967,
+            6066,
+        },
         airdropCrates = {
             {
                 code = "WarSupplyCrate",
@@ -42,6 +46,10 @@ ExpansionConfig.expansions = {
         interval = 1100,
         airdropPlaneVignetteIDs = {
             3689,
+        },
+        airdropCrateVignetteIDs = {
+            2967,
+            6066,
         },
         airdropCrates = {
             {
@@ -536,6 +544,49 @@ function ExpansionConfig:IsAirdropPlaneVignetteID(vignetteID)
     if not lookup then
         self:GetTrackedAirdropPlaneVignetteIDs()
         lookup = cache and cache.vignetteLookup or nil
+    end
+    return type(lookup) == "table" and lookup[vignetteID] == true or false
+end
+
+function ExpansionConfig:GetTrackedAirdropCrateVignetteIDs()
+    local _, trackedCache = GetTrackedSelectionCache()
+    if trackedCache and trackedCache.crateVignetteIDs then
+        return trackedCache.crateVignetteIDs
+    end
+
+    local trackedExpansionIDs = self:GetTrackedExpansionIDs()
+    local result = {}
+    local seen = {}
+
+    for _, expansionID in ipairs(trackedExpansionIDs) do
+        local expansion = self.expansions and self.expansions[expansionID]
+        if expansion and type(expansion.airdropCrateVignetteIDs) == "table" then
+            for _, vignetteID in ipairs(expansion.airdropCrateVignetteIDs) do
+                if type(vignetteID) == "number" and not seen[vignetteID] then
+                    seen[vignetteID] = true
+                    result[#result + 1] = vignetteID
+                end
+            end
+        end
+    end
+
+    if trackedCache then
+        trackedCache.crateVignetteIDs = result
+        trackedCache.crateVignetteLookup = seen
+    end
+    return result
+end
+
+function ExpansionConfig:IsAirdropCrateVignetteID(vignetteID)
+    if type(vignetteID) ~= "number" then
+        return false
+    end
+
+    local _, cache = GetTrackedSelectionCache()
+    local lookup = cache and cache.crateVignetteLookup or nil
+    if not lookup then
+        self:GetTrackedAirdropCrateVignetteIDs()
+        lookup = cache and cache.crateVignetteLookup or nil
     end
     return type(lookup) == "table" and lookup[vignetteID] == true or false
 end

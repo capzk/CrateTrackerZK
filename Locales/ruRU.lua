@@ -27,8 +27,8 @@ localeData["TimeRemaining"] = "[%s]До воздушного десанта во
 localeData["AutoTeamReportMessage"] = "На[%s]до сброса военных припасов осталось: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Получена актуальная общая информация о сбросе для текущей фазы в [%s].";
 localeData["PhaseTeamAlertMessage"] = "Фаза на %s изменилась: %s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "[%s] Маршрут сброса распознан, предполагаемые координаты падения: %d, %d";
-localeData["TrajectoryPredictionWaypointSet"] = "[%s] Предполагаемая точка падения отмечена на вашей карте: %d, %d";
+localeData["TrajectoryPredictionMatched"] = "[%s] Маршрут сброса распознан, предполагаемые координаты падения: %s, %s";
+localeData["TrajectoryPredictionWaypointSet"] = "[%s] Предполагаемая точка падения отмечена на вашей карте: %s, %s";
 localeData["UnknownPhaseValue"] = "неизвестно";
 
 -- Phase Detection Alerts

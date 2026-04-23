@@ -13,16 +13,6 @@ local function ComputeDistance(x1, y1, x2, y2)
     return 0
 end
 
-local function GetRuntimeNow()
-    if type(GetTime) == "function" then
-        local ok, value = pcall(GetTime)
-        if ok and type(value) == "number" then
-            return value
-        end
-    end
-    return Utils:GetCurrentTimestamp()
-end
-
 local function ComputeRouteVector(route)
     if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ComputeRouteVector then
         return AirdropTrajectoryGeometryService:ComputeRouteVector(route)
@@ -44,34 +34,23 @@ local function DistancePointToLine(context, x, y)
     return math.huge, nil
 end
 
-local function EvaluateRouteMatch(service, route, positionX, positionY, motionDX, motionDY)
+local function EvaluateRouteMatch(service, route, observationLine)
     if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.EvaluateRouteMatch then
-        return AirdropTrajectoryGeometryService:EvaluateRouteMatch(route, positionX, positionY, motionDX, motionDY, {
-            projectionMargin = service.MATCH_PROJECTION_MARGIN or 0.08,
-            distanceTolerance = service.MATCH_DISTANCE_TOLERANCE or 0.015,
-            minDirectionDot = service.MATCH_MIN_DIRECTION_DOT or 0.92,
-            minDirectionDistance = service.MATCH_DIRECTION_MIN_DISTANCE or 0.0035,
-        })
+        return AirdropTrajectoryGeometryService:EvaluateRouteMatch(
+            route,
+            observationLine.endX,
+            observationLine.endY,
+            observationLine.dx,
+            observationLine.dy,
+            {
+                projectionMargin = service.MATCH_PROJECTION_MARGIN or 0.08,
+                distanceTolerance = service.MATCH_DISTANCE_TOLERANCE or 0.015,
+                minDirectionDot = service.MATCH_MIN_DIRECTION_DOT or 0.92,
+                minDirectionDistance = service.MATCH_DIRECTION_MIN_DISTANCE or 0.0035,
+            }
+        )
     end
     return nil
-end
-
-local function ResolveAdaptiveMatchThreshold(baseValue, floorValue, ratioValue, route)
-    local resolvedBase = math.max(1, math.floor(tonumber(baseValue) or 1))
-    local resolvedFloor = math.max(1, math.floor(tonumber(floorValue) or 1))
-    local sampleCount = type(route) == "table" and tonumber(route.sampleCount) or nil
-    if type(sampleCount) ~= "number" or sampleCount <= 0 then
-        return resolvedBase
-    end
-
-    local ratioThreshold = math.floor((sampleCount * (tonumber(ratioValue) or 0.35)) + 0.5)
-    if ratioThreshold < resolvedFloor then
-        ratioThreshold = resolvedFloor
-    end
-    if ratioThreshold > resolvedBase then
-        ratioThreshold = resolvedBase
-    end
-    return ratioThreshold
 end
 
 local function ResolveObservationStart(state)
@@ -86,7 +65,41 @@ local function ResolveObservationStart(state)
     return startX, startY
 end
 
-local function EnrichPredictionCandidate(state, matched)
+local function ResolveObservationLine(state, fallbackX, fallbackY)
+    if type(state) ~= "table" then
+        return nil
+    end
+
+    local startX, startY = ResolveObservationStart(state)
+    if type(startX) ~= "number" or type(startY) ~= "number" then
+        return nil
+    end
+
+    local endX = tonumber(state.cruiseEndX) or tonumber(state.lastX) or tonumber(fallbackX)
+    local endY = tonumber(state.cruiseEndY) or tonumber(state.lastY) or tonumber(fallbackY)
+    if type(endX) ~= "number" or type(endY) ~= "number" then
+        return nil
+    end
+
+    local dx = endX - startX
+    local dy = endY - startY
+    local length = ComputeDistance(startX, startY, endX, endY)
+    if type(length) ~= "number" or length <= 0 then
+        return nil
+    end
+
+    return {
+        startX = startX,
+        startY = startY,
+        endX = endX,
+        endY = endY,
+        dx = dx,
+        dy = dy,
+        length = length,
+    }
+end
+
+local function EnrichPredictionCandidate(state, matched, observationLine)
     if type(state) ~= "table" or type(matched) ~= "table" or type(matched.route) ~= "table" then
         return nil
     end
@@ -104,6 +117,7 @@ local function EnrichPredictionCandidate(state, matched)
         and AirdropTrajectoryStore:GetPredictionConfidence(matched.route)
         or 0
     matched.verifiedPredictionCount = tonumber(matched.route.verifiedPredictionCount) or 0
+    matched.observationLength = type(observationLine) == "table" and tonumber(observationLine.length) or 0
     return matched
 end
 
@@ -347,17 +361,13 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     if state.movingStarted ~= true then
         return false
     end
+    if state.startConfirmed ~= true then
+        return false
+    end
 
-    local runtimeNow = GetRuntimeNow()
-    local motionRecordedAt = tonumber(state.motionRecordedAtRealtime) or tonumber(state.motionRecordedAt)
-    local recentMotionAge = type(motionRecordedAt) == "number" and (runtimeNow - motionRecordedAt) or math.huge
-    if type(state.motionDX) ~= "number"
-        or type(state.motionDY) ~= "number"
-        or recentMotionAge > (service.MATCH_RECENT_MOTION_WINDOW or 0.6) then
-        if type(state.uniqueMatchState) == "table"
-            and (runtimeNow - (tonumber(state.uniqueMatchState.lastMatchedAt) or 0)) > (service.MATCH_GAP_GRACE or 3) then
-            state.uniqueMatchState = nil
-        end
+    local observationLine = ResolveObservationLine(state, positionX, positionY)
+    if type(observationLine) ~= "table" then
+        state.uniqueMatchState = nil
         return false
     end
 
@@ -369,9 +379,9 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
             and AirdropTrajectoryStore:IsPredictionReady(route) == true
         local routeKey = type(route) == "table" and route.routeKey or nil
         if predictionReady == true and type(routeKey) == "string" and routeKey ~= "" then
-            local matched = EvaluateRouteMatch(service, route, positionX, positionY, state.motionDX, state.motionDY)
+            local matched = EvaluateRouteMatch(service, route, observationLine)
             if matched and type(matched.routeLength) == "number" then
-                matched = EnrichPredictionCandidate(state, matched)
+                matched = EnrichPredictionCandidate(state, matched, observationLine)
                 if ShouldRejectByStartDistance(service, state, matched) ~= true then
                     completeMatches[#completeMatches + 1] = matched
                 end
@@ -382,10 +392,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     local currentMatches = SortPredictionCandidates(completeMatches)
 
     if #currentMatches == 0 then
-        if type(state.uniqueMatchState) == "table"
-            and (runtimeNow - (tonumber(state.uniqueMatchState.lastMatchedAt) or 0)) > (service.MATCH_GAP_GRACE or 3) then
-            state.uniqueMatchState = nil
-        end
+        state.uniqueMatchState = nil
         return false
     end
 
@@ -396,7 +403,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     end
 
     local isSelectionAmbiguous = IsCandidateSelectionAmbiguous(service, currentMatches)
-    if IsCandidatePredictionAmbiguous(service, candidate, routes, positionX, positionY) then
+    if IsCandidatePredictionAmbiguous(service, candidate, routes, observationLine.endX, observationLine.endY) then
         return false
     end
 
@@ -409,18 +416,12 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
 
     local shouldResetUniqueState = type(uniqueState) ~= "table"
         or uniqueState.routeKey ~= route.routeKey
-        or type(uniqueState.lastMatchedAt) ~= "number"
-        or (runtimeNow - uniqueState.lastMatchedAt) > (service.MATCH_GAP_GRACE or 3)
     if shouldResetUniqueState then
         uniqueState = {
             routeKey = route.routeKey,
             route = route,
             routeLength = candidate.routeLength,
-            accumulatedDuration = 0,
             matchedSamples = 1,
-            minProjection = candidate.projection,
-            maxProjection = candidate.projection,
-            lastMatchedAt = runtimeNow,
         }
         state.uniqueMatchState = uniqueState
     else
@@ -428,50 +429,26 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
             state.uniqueMatchState = nil
             return false
         end
-        local deltaTime = runtimeNow - uniqueState.lastMatchedAt
-        if deltaTime > 0 and deltaTime <= (service.MATCH_GAP_GRACE or 3) then
-            uniqueState.accumulatedDuration = (tonumber(uniqueState.accumulatedDuration) or 0) + deltaTime
-        end
-        uniqueState.lastMatchedAt = runtimeNow
         uniqueState.matchedSamples = (tonumber(uniqueState.matchedSamples) or 0) + 1
         uniqueState.route = route
         uniqueState.routeLength = candidate.routeLength
-        if type(uniqueState.minProjection) ~= "number" or candidate.projection < uniqueState.minProjection then
-            uniqueState.minProjection = candidate.projection
-        end
-        if type(uniqueState.maxProjection) ~= "number" or candidate.projection > uniqueState.maxProjection then
-            uniqueState.maxProjection = candidate.projection
-        end
     end
 
-    local matchedDuration = tonumber(uniqueState.accumulatedDuration) or 0
     local matchedSamples = tonumber(uniqueState.matchedSamples) or 0
-    local progressSpan = (tonumber(uniqueState.maxProjection) or 0) - (tonumber(uniqueState.minProjection) or 0)
     local routeLength = tonumber(uniqueState.routeLength) or 0
-    local requiredDuration = ResolveAdaptiveMatchThreshold(
-        service.MATCH_CONFIRM_DURATION or 20,
-        service.MATCH_CONFIRM_DURATION_FLOOR or 5,
-        service.MATCH_CONFIRM_DURATION_RATIO or 0.35,
-        route
-    )
-    local requiredSamples = ResolveAdaptiveMatchThreshold(
-        service.MATCH_MIN_SAMPLES or 20,
-        service.MATCH_MIN_SAMPLES_FLOOR or 5,
-        service.MATCH_MIN_SAMPLES_RATIO or 0.35,
-        route
-    )
+    local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CONFIRM_STABLE_SAMPLES) or 2))
     local minProgress = math.max(
         tonumber(service.MATCH_MIN_PROGRESS_ABSOLUTE) or 0.05,
         routeLength * (tonumber(service.MATCH_MIN_PROGRESS_RATIO) or 0.20)
     )
 
-    if matchedDuration < requiredDuration then
-        return false
-    end
     if matchedSamples < requiredSamples then
         return false
     end
-    if progressSpan < minProgress then
+    if (tonumber(observationLine.length) or 0) < minProgress then
+        return false
+    end
+    if (tonumber(candidate.projection) or 0) < minProgress then
         return false
     end
 

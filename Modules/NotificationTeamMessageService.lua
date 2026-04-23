@@ -7,8 +7,16 @@ local NotificationTeamMessageService = BuildEnv("NotificationTeamMessageService"
 local Data = BuildEnv("Data")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local NotificationQueryService = BuildEnv("NotificationQueryService")
+local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local Utils = BuildEnv("Utils")
+
+local function FormatCoordinatePercent(value)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.FormatCoordinatePercent then
+        return AirdropTrajectoryGeometryService:FormatCoordinatePercent(value)
+    end
+    return string.format("%.1f", (tonumber(value) or 0) * 100)
+end
 
 local function ResolveStandardVisibleChatType(notification)
     if type(notification) ~= "table"
@@ -191,17 +199,19 @@ function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(noti
         mapData = Data:GetMap(mapId)
     end
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
+    local endXText = FormatCoordinatePercent(endX)
+    local endYText = FormatCoordinatePercent(endY)
     local message = NotificationQueryService and NotificationQueryService.BuildTrajectoryPredictionMessage
         and NotificationQueryService:BuildTrajectoryPredictionMessage(
             mapName,
-            math.floor(((tonumber(endX) or 0) * 100) + 0.5),
-            math.floor(((tonumber(endY) or 0) * 100) + 0.5)
+            endXText,
+            endYText
         )
         or string.format(
-            (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %d, %d",
+            (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %s, %s",
             mapName,
-            math.floor(((tonumber(endX) or 0) * 100) + 0.5),
-            math.floor(((tonumber(endY) or 0) * 100) + 0.5)
+            endXText,
+            endYText
         )
 
     local sent = NotificationOutputService

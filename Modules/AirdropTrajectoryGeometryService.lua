@@ -8,6 +8,23 @@ function AirdropTrajectoryGeometryService:ComputeDistance(x1, y1, x2, y2)
     return math.sqrt((dx * dx) + (dy * dy))
 end
 
+function AirdropTrajectoryGeometryService:FormatCoordinatePercent(value)
+    local numberValue = tonumber(value)
+    if type(numberValue) ~= "number" then
+        return "0.0"
+    end
+    return string.format("%.1f", numberValue * 100)
+end
+
+function AirdropTrajectoryGeometryService:FormatQuantizedCoordinatePercent(value, scale)
+    local numberValue = tonumber(value)
+    local resolvedScale = tonumber(scale) or 1000
+    if type(numberValue) ~= "number" or resolvedScale <= 0 then
+        return "0.0"
+    end
+    return string.format("%.1f", (numberValue * 100) / resolvedScale)
+end
+
 function AirdropTrajectoryGeometryService:ComputeRouteVector(route)
     if type(route) ~= "table" then
         return 0, 0, 0
@@ -54,7 +71,7 @@ function AirdropTrajectoryGeometryService:DistancePointToLine(context, x, y)
     return math.sqrt((dx * dx) + (dy * dy)), projection
 end
 
-function AirdropTrajectoryGeometryService:EvaluateRouteMatch(route, positionX, positionY, motionDX, motionDY, options)
+function AirdropTrajectoryGeometryService:EvaluateRouteMatch(route, positionX, positionY, directionDX, directionDY, options)
     options = type(options) == "table" and options or {}
 
     local dx, dy, length = self:ComputeRouteVector(route)
@@ -79,12 +96,12 @@ function AirdropTrajectoryGeometryService:EvaluateRouteMatch(route, positionX, p
         return nil
     end
 
-    local motionLength = self:ComputeDistance(0, 0, motionDX or 0, motionDY or 0)
-    if motionLength < (tonumber(options.minDirectionDistance) or 0.0035) then
+    local directionLength = self:ComputeDistance(0, 0, directionDX or 0, directionDY or 0)
+    if directionLength < (tonumber(options.minDirectionDistance) or 0.0035) then
         return nil
     end
 
-    local directionDot = (((motionDX or 0) * unitX) + ((motionDY or 0) * unitY)) / motionLength
+    local directionDot = (((directionDX or 0) * unitX) + ((directionDY or 0) * unitY)) / directionLength
     if directionDot < (tonumber(options.minDirectionDot) or 0.92) then
         return nil
     end

@@ -41,6 +41,7 @@ function TimerManager:Initialize()
     self.detectionState = self.detectionState or {};
     self.persistentStateBuffer = self.persistentStateBuffer or {};
     self.iconDetectionBuffer = self.iconDetectionBuffer or {};
+    self.crateDetectionBuffer = self.crateDetectionBuffer or {};
     self.CONFIRM_TIME = 2;          -- 初筛防抖
     self.MIN_STABLE_TIME = 5;       -- 最短稳定存活时间（秒），达标后才广播/持久化
     self.MAP_SWITCH_GUARD_TIME = 2; -- 配置地图切换后短暂延迟检测，作为地图归属过滤的兜底
@@ -63,6 +64,11 @@ end
 local function AcquireIconDetectionBuffer(owner)
     owner.iconDetectionBuffer = owner.iconDetectionBuffer or {};
     return owner.iconDetectionBuffer;
+end
+
+local function AcquireCrateDetectionBuffer(owner)
+    owner.crateDetectionBuffer = owner.crateDetectionBuffer or {};
+    return owner.crateDetectionBuffer;
 end
 
 local function getCurrentTimestamp()
@@ -262,6 +268,16 @@ function TimerManager:DetectMapIcons(currentMapID)
     local iconResult = IconDetector.DetectIconInto
         and IconDetector:DetectIconInto(playerMapID, targetMapData.mapID, AcquireIconDetectionBuffer(self))
         or IconDetector:DetectIcon(playerMapID, targetMapData.mapID);
+    local crateIconResult = IconDetector.DetectCrateIconInto
+        and IconDetector:DetectCrateIconInto(playerMapID, targetMapData.mapID, AcquireCrateDetectionBuffer(self))
+        or nil;
+    local trajectoryFinalizedByCrate = false;
+    if crateIconResult
+        and crateIconResult.detected
+        and AirdropTrajectoryService
+        and AirdropTrajectoryService.HandleDetectedCrate then
+        trajectoryFinalizedByCrate = AirdropTrajectoryService:HandleDetectedCrate(targetMapData, crateIconResult, currentTime) == true;
+    end
     if not iconResult or not iconResult.detected then
         -- 图标消失，清除检测状态
         self.detectionState[targetMapData.id] = nil;
@@ -287,7 +303,9 @@ function TimerManager:DetectMapIcons(currentMapID)
         return false;
     end
 
-    if AirdropTrajectoryService and AirdropTrajectoryService.HandleDetectedIcon then
+    if trajectoryFinalizedByCrate ~= true
+        and AirdropTrajectoryService
+        and AirdropTrajectoryService.HandleDetectedIcon then
         AirdropTrajectoryService:HandleDetectedIcon(targetMapData, iconResult, currentTime);
     end
     

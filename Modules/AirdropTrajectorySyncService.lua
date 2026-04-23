@@ -306,9 +306,29 @@ function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
         return false
     end
 
+    local incomingRoute = {
+        mapID = tonumber(syncState.mapID),
+        startX = syncState.startX,
+        startY = syncState.startY,
+        endX = syncState.endX,
+        endY = syncState.endY,
+        sampleCount = syncState.sampleCount,
+        observationCount = tonumber(syncState.observationCount) or 1,
+        createdAt = syncState.timestamp,
+        updatedAt = syncState.timestamp,
+        source = "shared",
+        startSource = type(syncState.startSource) == "string" and syncState.startSource or nil,
+        endSource = type(syncState.endSource) == "string" and syncState.endSource or nil,
+        startConfirmed = syncState.startConfirmed == true,
+        endConfirmed = syncState.endConfirmed == true,
+        verificationCount = tonumber(syncState.verificationCount) or 0,
+        verifiedPredictionCount = tonumber(syncState.verifiedPredictionCount) or 0,
+        sender = sender,
+    }
+
     if AirdropTrajectoryStore
         and AirdropTrajectoryStore.IsShareEligible
-        and AirdropTrajectoryStore:IsShareEligible(syncState) ~= true then
+        and AirdropTrajectoryStore:IsShareEligible(incomingRoute) ~= true then
         return false
     end
 
@@ -316,25 +336,7 @@ function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
         and AirdropTrajectoryStore.UpsertRoute
         and AirdropTrajectoryStore:UpsertRoute(
             tonumber(syncState.mapID),
-            {
-                mapID = tonumber(syncState.mapID),
-                startX = syncState.startX,
-                startY = syncState.startY,
-                endX = syncState.endX,
-                endY = syncState.endY,
-                sampleCount = syncState.sampleCount,
-                observationCount = tonumber(syncState.observationCount) or 1,
-                createdAt = syncState.timestamp,
-                updatedAt = syncState.timestamp,
-                source = "shared",
-                startSource = "npc_shout",
-                startConfirmed = syncState.startConfirmed == true,
-                endConfirmed = syncState.endConfirmed == true,
-                verificationCount = tonumber(syncState.verificationCount) or 0,
-                verifiedPredictionCount = tonumber(syncState.verifiedPredictionCount) or 0,
-                confidenceScore = tonumber(syncState.confidenceScore) or 0,
-                sender = sender,
-            },
+            incomingRoute,
             "shared",
             Utils:GetCurrentTimestamp()
         )

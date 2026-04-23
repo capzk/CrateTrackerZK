@@ -54,6 +54,7 @@
     <!-- 功能模块 -->
     <Script file="Modules/UIRefreshCoordinator.lua"/>
     <Script file="Modules/HiddenSyncTransport.lua"/>
+    <Script file="Modules/HiddenSyncAuditService.lua"/>
     <Script file="Modules/NotificationDispatchService.lua"/>
     <Script file="Modules/NotificationTeamMessageService.lua"/>
     <Script file="Modules/NotificationSettingsStore.lua"/>

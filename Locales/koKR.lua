@@ -26,8 +26,8 @@ localeData["TimeRemaining"] = "[%s]전쟁 보급품 공중 투하: %s!!!";
 localeData["AutoTeamReportMessage"] = "현재[%s]전쟁 보급품 보유량: %s!!";
 localeData["SharedPhaseSyncApplied"] = "[%s] 현재 위상의 최신 공중 보급 공유 정보를 가져왔습니다.";
 localeData["PhaseTeamAlertMessage"] = "%s 현재 위상 변경: %s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "[%s] 공중 보급 경로를 일치시켰습니다. 예상 낙하지점 좌표: %d, %d";
-localeData["TrajectoryPredictionWaypointSet"] = "[%s] 예상 낙하지점을 내 지도에 표시했습니다: %d, %d";
+localeData["TrajectoryPredictionMatched"] = "[%s] 공중 보급 경로를 일치시켰습니다. 예상 낙하지점 좌표: %s, %s";
+localeData["TrajectoryPredictionWaypointSet"] = "[%s] 예상 낙하지점을 내 지도에 표시했습니다: %s, %s";
 localeData["UnknownPhaseValue"] = "알 수 없음";
 
 -- Phase Detection Alerts

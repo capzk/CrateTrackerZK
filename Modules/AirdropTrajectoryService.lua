@@ -3,6 +3,7 @@
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 local AirdropTrajectoryMatchingService = BuildEnv("AirdropTrajectoryMatchingService")
 local AirdropTrajectorySamplingService = BuildEnv("AirdropTrajectorySamplingService")
+local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
@@ -10,17 +11,18 @@ local Data = BuildEnv("Data")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local L = CrateTrackerZK and CrateTrackerZK.L or {}
 
+local function FormatCoordinatePercent(value)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.FormatCoordinatePercent then
+        return AirdropTrajectoryGeometryService:FormatCoordinatePercent(value)
+    end
+    return string.format("%.1f", (tonumber(value) or 0) * 100)
+end
+
 AirdropTrajectoryService.MIN_SAMPLE_DELTA = 0.0025
 AirdropTrajectoryService.MIN_OBSERVATION_DISTANCE = 0.025
 AirdropTrajectoryService.MATCH_DISTANCE_TOLERANCE = 0.015
 AirdropTrajectoryService.MATCH_PROJECTION_MARGIN = 0.08
-AirdropTrajectoryService.MATCH_CONFIRM_DURATION = 12
-AirdropTrajectoryService.MATCH_CONFIRM_DURATION_FLOOR = 4
-AirdropTrajectoryService.MATCH_CONFIRM_DURATION_RATIO = 0.18
-AirdropTrajectoryService.MATCH_MIN_SAMPLES = 12
-AirdropTrajectoryService.MATCH_MIN_SAMPLES_FLOOR = 4
-AirdropTrajectoryService.MATCH_MIN_SAMPLES_RATIO = 0.18
-AirdropTrajectoryService.MATCH_GAP_GRACE = 3
+AirdropTrajectoryService.MATCH_CONFIRM_STABLE_SAMPLES = 2
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_ABSOLUTE = 0.05
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_RATIO = 0.20
 AirdropTrajectoryService.MATCH_START_DISTANCE_TOLERANCE = 0.08
@@ -28,7 +30,6 @@ AirdropTrajectoryService.MATCH_AMBIGUITY_DISTANCE_MARGIN = 0.004
 AirdropTrajectoryService.MATCH_AMBIGUITY_START_MARGIN = 0.015
 AirdropTrajectoryService.MATCH_MIN_DIRECTION_DOT = 0.92
 AirdropTrajectoryService.MATCH_DIRECTION_MIN_DISTANCE = 0.0035
-AirdropTrajectoryService.MATCH_RECENT_MOTION_WINDOW = 1.25
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_START_TOLERANCE = 0.03
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_DIRECTION_DOT = 0.985
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_LINE_TOLERANCE = 0.02
@@ -37,9 +38,8 @@ AirdropTrajectoryService.MATCH_ROUTE_FAMILY_SEPARATION_MIN = 0.012
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_DISTANCE_MARGIN = 0.003
 AirdropTrajectoryService.STATIONARY_TOLERANCE = 0.006
 AirdropTrajectoryService.MOVE_CONFIRM_DISTANCE = 0.0045
-AirdropTrajectoryService.END_PHASE_RADIUS = 0.015
-AirdropTrajectoryService.END_PHASE_WINDOW_SAMPLES = 5
-AirdropTrajectoryService.END_PHASE_MIN_SAMPLES = 4
+AirdropTrajectoryService.CRUISE_LINE_TOLERANCE = 0.012
+AirdropTrajectoryService.CRUISE_PROGRESS_MARGIN = 0.0035
 AirdropTrajectoryService.MISSING_FINALIZE_DELAY = 2.2
 AirdropTrajectoryService.PARTIAL_MIN_OBSERVATION_DISTANCE = 0.015
 AirdropTrajectoryService.PREDICTION_VERIFICATION_TOLERANCE = 0.015
@@ -53,9 +53,9 @@ local function BuildPredictionMessage(targetMapData, route)
     end
 
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
-    local endX = math.floor(((route.endX or 0) * 100) + 0.5)
-    local endY = math.floor(((route.endY or 0) * 100) + 0.5)
-    local format = (L and L["TrajectoryPredictionMatched"]) or "【%s】已匹配空投轨迹，预测落点坐标：%d, %d"
+    local endX = FormatCoordinatePercent(route.endX or 0)
+    local endY = FormatCoordinatePercent(route.endY or 0)
+    local format = (L and L["TrajectoryPredictionMatched"]) or "【%s】已匹配空投轨迹，预测落点坐标：%s, %s"
     return string.format(format, mapName, endX, endY)
 end
 
@@ -65,9 +65,9 @@ local function BuildWaypointMarkedMessage(targetMapData, route)
     end
 
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
-    local endX = math.floor(((route.endX or 0) * 100) + 0.5)
-    local endY = math.floor(((route.endY or 0) * 100) + 0.5)
-    local format = (L and L["TrajectoryPredictionWaypointSet"]) or "【%s】已在地图上标记预测落点：%d, %d"
+    local endX = FormatCoordinatePercent(route.endX or 0)
+    local endY = FormatCoordinatePercent(route.endY or 0)
+    local format = (L and L["TrajectoryPredictionWaypointSet"]) or "【%s】已在地图上标记预测落点：%s, %s"
     return string.format(format, mapName, endX, endY)
 end
 
@@ -269,6 +269,13 @@ end
 function AirdropTrajectoryService:HandleDetectedIcon(targetMapData, iconResult, currentTime)
     if AirdropTrajectorySamplingService and AirdropTrajectorySamplingService.HandleDetectedIcon then
         return AirdropTrajectorySamplingService:HandleDetectedIcon(self, targetMapData, iconResult, currentTime)
+    end
+    return false
+end
+
+function AirdropTrajectoryService:HandleDetectedCrate(targetMapData, iconResult, currentTime)
+    if AirdropTrajectorySamplingService and AirdropTrajectorySamplingService.HandleDetectedCrate then
+        return AirdropTrajectorySamplingService:HandleDetectedCrate(self, targetMapData, iconResult, currentTime)
     end
     return false
 end

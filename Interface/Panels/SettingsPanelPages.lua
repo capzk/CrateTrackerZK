@@ -2,6 +2,15 @@ local SettingsPanelPages = BuildEnv("CrateTrackerZKSettingsPanelPages")
 local SettingsPanelActions = BuildEnv("CrateTrackerZKSettingsPanelActions")
 local SettingsPanelFactory = BuildEnv("CrateTrackerZKSettingsPanelFactory")
 
+local function ReanchorCheckbox(checkbox, anchor, offsetX, offsetY)
+    if not checkbox or not anchor then
+        return checkbox
+    end
+    checkbox:ClearAllPoints()
+    checkbox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", offsetX or 0, offsetY or -14)
+    return checkbox
+end
+
 local function CreateMapGroupFrame(parent, lt, onRefresh)
     local group = CreateFrame("Frame", nil, parent)
     group:SetSize(520, 40)
@@ -229,17 +238,9 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
             "开启后，检测到当前地图位面发生变化时，会发送“当前某地图位面发生变化”到小队或团队频道。"
         )
     )
+    ReanchorCheckbox(controls.phaseTeamAlert, controls.teamNotification, 26, -14)
 
-    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.phaseTeamAlert, lt("SettingsSoundAlert", "声音提醒"), function(enabled)
-        if SettingsPanelActions and SettingsPanelActions.SetSoundAlertEnabled then
-            SettingsPanelActions:SetSoundAlertEnabled(enabled)
-        end
-        if onRefresh then
-            onRefresh()
-        end
-    end)
-
-    controls.autoReport = SettingsPanelFactory:CreateCheckbox(page, controls.soundAlert, lt("SettingsAutoReport", "自动通知"), function(enabled)
+    controls.autoReport = SettingsPanelFactory:CreateCheckbox(page, controls.phaseTeamAlert, lt("SettingsAutoReport", "自动通知"), function(enabled)
         if SettingsPanelActions and SettingsPanelActions.SetAutoTeamReportEnabled then
             SettingsPanelActions:SetAutoTeamReportEnabled(enabled)
         end
@@ -255,9 +256,19 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         onApplyInterval
     )
 
+    controls.soundAlert = SettingsPanelFactory:CreateCheckbox(page, controls.intervalLabel, lt("SettingsSoundAlert", "声音提醒"), function(enabled)
+        if SettingsPanelActions and SettingsPanelActions.SetSoundAlertEnabled then
+            SettingsPanelActions:SetSoundAlertEnabled(enabled)
+        end
+        if onRefresh then
+            onRefresh()
+        end
+    end)
+    ReanchorCheckbox(controls.soundAlert, controls.intervalLabel, -52, -14)
+
     controls.trajectoryPredictionTest = SettingsPanelFactory:CreateCheckbox(
         page,
-        controls.intervalLabel,
+        controls.soundAlert,
         lt("SettingsTrajectoryPredictionTest", "测试：轨迹预测通报与标记"),
         function(enabled)
             if SettingsPanelActions and SettingsPanelActions.SetTrajectoryPredictionTestEnabled then

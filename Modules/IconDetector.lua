@@ -16,12 +16,26 @@ if not Utils then
     Utils = BuildEnv('Utils')
 end
 
-local function IsTargetAirdropVignetteID(vignetteID)
+local ResolveVignettePosition
+
+local function IsTargetAirdropPlaneVignetteID(vignetteID)
     if type(vignetteID) ~= "number" then
         return false;
     end
 
     if Data and Data.IsAirdropPlaneVignetteID and Data:IsAirdropPlaneVignetteID(vignetteID) then
+        return true;
+    end
+
+    return false;
+end
+
+local function IsTargetAirdropCrateVignetteID(vignetteID)
+    if type(vignetteID) ~= "number" then
+        return false;
+    end
+
+    if Data and Data.IsAirdropCrateVignetteID and Data:IsAirdropCrateVignetteID(vignetteID) then
         return true;
     end
 
@@ -58,8 +72,34 @@ local function ResetDetectionResult(outResult)
     outResult.phaseID = nil;
     outResult.vignetteGUID = nil;
     outResult.vignetteID = nil;
+    outResult.iconType = nil;
     outResult.positionX = nil;
     outResult.positionY = nil;
+    return outResult;
+end
+
+local function PopulateDetectionResult(outResult, vignetteGUID, vignetteInfo, currentMapID, trackedMapID, iconType)
+    if type(outResult) ~= "table" or type(vignetteInfo) ~= "table" then
+        return ResetDetectionResult(outResult or {});
+    end
+
+    local objectGUID = vignetteInfo.objectGUID;
+    local spawnUID = nil;
+    if objectGUID then
+        spawnUID = ExtractSpawnUID(objectGUID);
+    end
+
+    local phaseID = ExtractPhaseID(objectGUID);
+    local positionX, positionY = ResolveVignettePosition(vignetteGUID, currentMapID, trackedMapID);
+    outResult.detected = true;
+    outResult.objectGUID = objectGUID;
+    outResult.spawnUID = spawnUID;
+    outResult.phaseID = phaseID;
+    outResult.vignetteGUID = vignetteGUID;
+    outResult.vignetteID = vignetteInfo.vignetteID;
+    outResult.iconType = iconType;
+    outResult.positionX = positionX;
+    outResult.positionY = positionY;
     return outResult;
 end
 
@@ -144,7 +184,7 @@ local function IsVignetteOnMapHierarchy(vignetteGUID, currentMapID, trackedMapID
     return false;
 end
 
-local function ResolveVignettePosition(vignetteGUID, currentMapID, trackedMapID)
+ResolveVignettePosition = function(vignetteGUID, currentMapID, trackedMapID)
     if not C_VignetteInfo or not C_VignetteInfo.GetVignettePosition then
         return nil, nil;
     end
@@ -188,30 +228,42 @@ function IconDetector:DetectIconInto(currentMapID, trackedMapID, outResult)
     for _, vignetteGUID in ipairs(vignettes) do
         local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID);
         if vignetteInfo then
-            if IsTargetAirdropVignetteID(vignetteInfo.vignetteID)
+            if IsTargetAirdropPlaneVignetteID(vignetteInfo.vignetteID)
                 and IsVignetteOnMapHierarchy(vignetteGUID, currentMapID, trackedMapID) then
-                local objectGUID = vignetteInfo.objectGUID;
-                local spawnUID = nil;
-                
-                if objectGUID then
-                    spawnUID = ExtractSpawnUID(objectGUID);
-                end
-                
-                local phaseID = ExtractPhaseID(objectGUID);
-                local positionX, positionY = ResolveVignettePosition(vignetteGUID, currentMapID, trackedMapID);
-                outResult.detected = true;
-                outResult.objectGUID = objectGUID;
-                outResult.spawnUID = spawnUID;
-                outResult.phaseID = phaseID;
-                outResult.vignetteGUID = vignetteGUID;
-                outResult.vignetteID = vignetteInfo.vignetteID;
-                outResult.positionX = positionX;
-                outResult.positionY = positionY;
-                return outResult;
+                return PopulateDetectionResult(outResult, vignetteGUID, vignetteInfo, currentMapID, trackedMapID, "plane");
             end
         end
     end
     
+    return ResetDetectionResult(outResult);
+end
+
+function IconDetector:DetectCrateIconInto(currentMapID, trackedMapID, outResult)
+    if type(trackedMapID) == "table" and outResult == nil then
+        outResult = trackedMapID;
+        trackedMapID = nil;
+    end
+
+    outResult = type(outResult) == "table" and outResult or {};
+    if not C_VignetteInfo or not C_VignetteInfo.GetVignettes or not C_VignetteInfo.GetVignetteInfo then
+        return ResetDetectionResult(outResult);
+    end
+
+    local vignettes = C_VignetteInfo.GetVignettes();
+    if not vignettes then
+        return ResetDetectionResult(outResult);
+    end
+
+    for _, vignetteGUID in ipairs(vignettes) do
+        local vignetteInfo = C_VignetteInfo.GetVignetteInfo(vignetteGUID);
+        if vignetteInfo then
+            if IsTargetAirdropCrateVignetteID(vignetteInfo.vignetteID)
+                and IsVignetteOnMapHierarchy(vignetteGUID, currentMapID, trackedMapID) then
+                return PopulateDetectionResult(outResult, vignetteGUID, vignetteInfo, currentMapID, trackedMapID, "crate");
+            end
+        end
+    end
+
     return ResetDetectionResult(outResult);
 end
 

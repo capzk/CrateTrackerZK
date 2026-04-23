@@ -7,9 +7,11 @@ local MainPanel = BuildEnv("MainPanel");
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared");
 local MapTracker = BuildEnv("MapTracker");
 local Data = BuildEnv("Data");
+local HiddenSyncAuditService = BuildEnv("HiddenSyncAuditService");
 local NotificationOutputService = BuildEnv("NotificationOutputService");
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore");
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService");
+local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService");
 local Commands = BuildEnv('Commands');
 
 Commands.isInitialized = false;
@@ -105,6 +107,13 @@ local function GetCurrentTrackedMapData()
     return nil;
 end
 
+local function FormatCoordinatePercent(value)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.FormatCoordinatePercent then
+        return AirdropTrajectoryGeometryService:FormatCoordinatePercent(value);
+    end
+    return string.format("%.1f", (tonumber(value) or 0) * 100);
+end
+
 local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
     if type(route) ~= "table" then
         return nil;
@@ -121,12 +130,12 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
         or 0;
     local verificationCount = math.max(0, math.floor(tonumber(route.verificationCount) or 0));
     local verifiedPredictionCount = math.max(0, math.floor(tonumber(route.verifiedPredictionCount) or 0));
-    local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
-    local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
-    local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
-    local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
+    local startX = FormatCoordinatePercent(route.startX);
+    local startY = FormatCoordinatePercent(route.startY);
+    local endX = FormatCoordinatePercent(route.endX);
+    local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "%s#%d 起点 %d, %d -> 终点 %d, %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | 更新 %d",
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | 更新 %d",
         prefix,
         tonumber(routeIndex) or 0,
         startX,
@@ -155,12 +164,12 @@ local function BuildTrajectoryExportLine(route)
         or 0;
     local verificationCount = math.max(0, math.floor(tonumber(route.verificationCount) or 0));
     local verifiedPredictionCount = math.max(0, math.floor(tonumber(route.verifiedPredictionCount) or 0));
-    local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
-    local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
-    local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
-    local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
+    local startX = FormatCoordinatePercent(route.startX);
+    local startY = FormatCoordinatePercent(route.startY);
+    local endX = FormatCoordinatePercent(route.endX);
+    local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "CTK_TRAJECTORY|mapID=%d|start=%d,%d|end=%d,%d|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|updated=%d",
+        "CTK_TRAJECTORY|mapID=%d|start=%s,%s|end=%s,%s|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|updated=%d",
         tonumber(route.mapID) or 0,
         startX,
         startY,
@@ -178,10 +187,119 @@ local function BuildTrajectoryExportLine(route)
     );
 end
 
+local function FormatAuditTime(timestamp)
+    local value = tonumber(timestamp)
+    if type(value) ~= "number" then
+        return "--:--:--"
+    end
+    return date("%H:%M:%S", value)
+end
+
+local function BuildSyncAuditSummary(entries)
+    local totalCount = #(entries or {})
+    local sendCount = 0
+    local recvCount = 0
+    local processedCount = 0
+    local failedCount = 0
+
+    for _, entry in ipairs(entries or {}) do
+        if entry.direction == "send" then
+            sendCount = sendCount + 1
+        elseif entry.direction == "recv" then
+            recvCount = recvCount + 1
+        end
+
+        if entry.status == "processed" or entry.status == "sent" then
+            processedCount = processedCount + 1
+        elseif entry.status == "failed" or entry.status == "blocked" then
+            failedCount = failedCount + 1
+        end
+    end
+
+    return string.format(
+        "隐藏同步审计：共 %d 条 | 发送 %d | 接收 %d | 成功 %d | 失败/阻断 %d",
+        totalCount,
+        sendCount,
+        recvCount,
+        processedCount,
+        failedCount
+    )
+end
+
+local function BuildSyncAuditLine(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    local parts = {
+        string.format("[%s]", FormatAuditTime(entry.recordedAt)),
+        tostring(entry.protocol or "unknown"),
+        tostring(entry.direction or "unknown"),
+        tostring(entry.status or "unknown"),
+    }
+
+    if type(entry.messageType) == "string" and entry.messageType ~= "" then
+        parts[#parts + 1] = "type=" .. entry.messageType
+    end
+    if type(entry.sender) == "string" and entry.sender ~= "" then
+        parts[#parts + 1] = "sender=" .. entry.sender
+    end
+    if type(entry.distribution) == "string" and entry.distribution ~= "" then
+        parts[#parts + 1] = "dist=" .. entry.distribution
+    end
+    if type(entry.chatType) == "string" and entry.chatType ~= "" then
+        parts[#parts + 1] = "chat=" .. entry.chatType
+    end
+    if type(entry.expansionID) == "string" and entry.expansionID ~= "" then
+        parts[#parts + 1] = "exp=" .. entry.expansionID
+    end
+    if type(entry.mapID) == "number" then
+        parts[#parts + 1] = "map=" .. tostring(entry.mapID)
+    end
+    if type(entry.phaseID) == "string" and entry.phaseID ~= "" then
+        parts[#parts + 1] = "phase=" .. entry.phaseID
+    end
+    if type(entry.requestID) == "string" and entry.requestID ~= "" then
+        parts[#parts + 1] = "request=" .. entry.requestID
+    end
+    if type(entry.routeKey) == "string" and entry.routeKey ~= "" then
+        parts[#parts + 1] = "route=" .. entry.routeKey
+    end
+    if type(entry.sampleCount) == "number" then
+        parts[#parts + 1] = "samples=" .. tostring(math.floor(entry.sampleCount))
+    end
+    if type(entry.observationCount) == "number" then
+        parts[#parts + 1] = "obs=" .. tostring(math.floor(entry.observationCount))
+    end
+    if type(entry.verifiedPredictionCount) == "number" or type(entry.verificationCount) == "number" then
+        parts[#parts + 1] = string.format(
+            "verified=%d/%d",
+            math.floor(tonumber(entry.verifiedPredictionCount) or 0),
+            math.floor(tonumber(entry.verificationCount) or 0)
+        )
+    end
+    if type(entry.confidenceScore) == "number" then
+        parts[#parts + 1] = "confidence=" .. tostring(math.floor(entry.confidenceScore))
+    end
+    if type(entry.note) == "string" and entry.note ~= "" then
+        parts[#parts + 1] = "note=" .. entry.note
+    end
+    if type(entry.payload) == "string" and entry.payload ~= "" then
+        parts[#parts + 1] = "payload=" .. entry.payload
+    end
+
+    return table.concat(parts, " | ")
+end
+
 function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨迹命令：/ctk traj debug [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj export [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
+end
+
+function Commands:PrintSyncHelp()
+    SendLocalDebugMessage("同步命令：/ctk sync audit");
+    SendLocalDebugMessage("同步命令：/ctk sync audit all");
 end
 
 function Commands:HandleTrajectoryTraceCommand(args)
@@ -309,11 +427,56 @@ function Commands:HandleTrajectoryCommand(args)
     return self:PrintTrajectoryRoutesForCurrentMap(exportMode);
 end
 
+function Commands:HandleSyncCommand(args)
+    local mode = NormalizeCommandToken(args[2]);
+    local scope = NormalizeCommandToken(args[3]);
+    if mode == "" or mode == "help" then
+        self:PrintSyncHelp();
+        return true;
+    end
+    if mode ~= "audit" then
+        self:PrintSyncHelp();
+        return true;
+    end
+
+    if not HiddenSyncAuditService or not HiddenSyncAuditService.GetRecentEntries then
+        SendLocalDebugMessage("隐藏同步审计模块未初始化。");
+        return true;
+    end
+
+    local entries = nil;
+    if scope == "all" then
+        entries = HiddenSyncAuditService.entries or {};
+    else
+        entries = HiddenSyncAuditService:GetRecentEntries(3600);
+    end
+
+    if #entries == 0 then
+        SendLocalDebugMessage(scope == "all" and "当前没有任何隐藏同步审计记录。" or "最近 1 小时内没有隐藏同步审计记录。");
+        return true;
+    end
+
+    SendLocalDebugMessage(scope == "all" and "隐藏同步审计（全部保留记录）：" or "隐藏同步审计（最近 1 小时）：");
+    SendLocalDebugMessage(BuildSyncAuditSummary(entries));
+    for _, entry in ipairs(entries) do
+        local line = BuildSyncAuditLine(entry);
+        if line then
+            SendLocalDebugMessage(line);
+        end
+    end
+    return true;
+end
+
 function Commands:HandleSlashCommand(msg)
     local args = SplitCommandArgs(msg);
     local primary = NormalizeCommandToken(args[1]);
     if primary == "traj" or primary == "trajectory" then
         if self:HandleTrajectoryCommand(args) == true then
+            return;
+        end
+    end
+    if primary == "sync" then
+        if self:HandleSyncCommand(args) == true then
             return;
         end
     end

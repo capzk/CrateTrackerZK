@@ -15,11 +15,27 @@ local function ComputeDistance(x1, y1, x2, y2)
     return 0
 end
 
+local function FormatCoordinatePercent(value)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.FormatCoordinatePercent then
+        return AirdropTrajectoryGeometryService:FormatCoordinatePercent(value)
+    end
+    return string.format("%.1f", (tonumber(value) or 0) * 100)
+end
+
+local function FormatQuantizedCoordinatePercent(value, scale)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.FormatQuantizedCoordinatePercent then
+        return AirdropTrajectoryGeometryService:FormatQuantizedCoordinatePercent(value, scale)
+    end
+    local resolvedScale = tonumber(scale) or 1000
+    return string.format("%.1f", ((tonumber(value) or 0) * 100) / resolvedScale)
+end
+
 local function IsCompleteReliableObservation(state)
     return type(state) == "table"
         and state.startConfirmed == true
         and state.endConfirmed == true
         and state.startSource == "npc_shout"
+        and state.endSource == "crate_vignette"
 end
 
 local function IsPredictionAccurate(service, state, routeRecord)
@@ -56,191 +72,35 @@ local function UpdateAnchorAverage(anchorX, anchorY, sampleCount, positionX, pos
     return anchorX, anchorY, sampleCount
 end
 
-local function GetRuntimeNow()
-    if type(GetTime) == "function" then
-        local ok, value = pcall(GetTime)
-        if ok and type(value) == "number" then
-            return value
-        end
-    end
-    return Utils:GetCurrentTimestamp()
-end
-
-local function ResetEndPhaseState(state)
+local function ResolveObservationStart(state)
     if type(state) ~= "table" then
-        return nil
-    end
-
-    state.endPhaseActive = false
-    state.endPhaseStartedAt = nil
-    state.endPhaseLastSeenAt = nil
-    state.endPhaseCenterX = nil
-    state.endPhaseCenterY = nil
-    state.endPhaseEntryX = nil
-    state.endPhaseEntryY = nil
-    state.endPhasePointCount = 0
-    return state
-end
-
-local function ResetEndPhaseWindow(state)
-    if type(state) ~= "table" then
-        return nil
-    end
-
-    state.endPhaseWindowPoints = {}
-    return ResetEndPhaseState(state)
-end
-
-local function AppendEndPhaseWindowPoint(service, state, currentTime, positionX, positionY)
-    if type(service) ~= "table" or type(state) ~= "table" then
-        return nil
-    end
-
-    state.endPhaseWindowPoints = type(state.endPhaseWindowPoints) == "table" and state.endPhaseWindowPoints or {}
-    state.endPhaseWindowPoints[#state.endPhaseWindowPoints + 1] = {
-        time = tonumber(currentTime) or Utils:GetCurrentTimestamp(),
-        x = tonumber(positionX),
-        y = tonumber(positionY),
-        qx = math.floor(((tonumber(positionX) or 0) * 100) + 0.5),
-        qy = math.floor(((tonumber(positionY) or 0) * 100) + 0.5),
-    }
-
-    local maxSamples = math.max(
-        tonumber(service.END_PHASE_WINDOW_SAMPLES) or 5,
-        tonumber(service.END_PHASE_MIN_SAMPLES) or 4
-    )
-    while #state.endPhaseWindowPoints > maxSamples do
-        table.remove(state.endPhaseWindowPoints, 1)
-    end
-
-    return state.endPhaseWindowPoints
-end
-
-local function ComputeWindowCenter(windowPoints)
-    if type(windowPoints) ~= "table" or #windowPoints == 0 then
         return nil, nil
     end
-
-    local sumX = 0
-    local sumY = 0
-    for _, point in ipairs(windowPoints) do
-        sumX = sumX + (tonumber(point.x) or 0)
-        sumY = sumY + (tonumber(point.y) or 0)
+    local startX = tonumber((state.startConfirmed == true and state.startX) or state.firstX)
+    local startY = tonumber((state.startConfirmed == true and state.startY) or state.firstY)
+    if type(startX) ~= "number" or type(startY) ~= "number" then
+        return nil, nil
     end
-
-    return sumX / #windowPoints, sumY / #windowPoints
+    return startX, startY
 end
 
-local function ComputeWindowMaxDistance(windowPoints, centerX, centerY)
-    if type(windowPoints) ~= "table" or #windowPoints == 0 then
-        return nil
-    end
-
-    local maxDistance = 0
-    for _, point in ipairs(windowPoints) do
-        local distance = ComputeDistance(point.x, point.y, centerX, centerY)
-        if distance > maxDistance then
-            maxDistance = distance
-        end
-    end
-    return maxDistance
-end
-
-local function FindRepeatedPhaseEntry(windowPoints)
-    if type(windowPoints) ~= "table" or #windowPoints < 2 then
-        return nil
-    end
-
-    for index = 1, (#windowPoints - 1) do
-        local currentPoint = windowPoints[index]
-        if type(currentPoint) == "table" then
-            for nextIndex = index + 1, #windowPoints do
-                local laterPoint = windowPoints[nextIndex]
-                if type(laterPoint) == "table"
-                    and currentPoint.qx == laterPoint.qx
-                    and currentPoint.qy == laterPoint.qy then
-                    return currentPoint
-                end
-            end
-        end
-    end
-
-    return nil
-end
-
-local function RefreshEndPhaseCandidate(service, state, currentTime, positionX, positionY)
-    if type(service) ~= "table" or type(state) ~= "table" then
+local function UpdateCruiseLineEndpoint(state, startX, startY, endX, endY)
+    if type(state) ~= "table"
+        or type(startX) ~= "number"
+        or type(startY) ~= "number"
+        or type(endX) ~= "number"
+        or type(endY) ~= "number" then
         return false
     end
 
-    local windowPoints = AppendEndPhaseWindowPoint(service, state, currentTime, positionX, positionY)
-    local minSamples = math.max(2, tonumber(service.END_PHASE_MIN_SAMPLES) or 4)
-    if type(windowPoints) ~= "table" or #windowPoints < minSamples then
-        ResetEndPhaseState(state)
+    local lineLength = ComputeDistance(startX, startY, endX, endY)
+    if type(lineLength) ~= "number" or lineLength <= 0 then
         return false
     end
 
-    local centerX, centerY = ComputeWindowCenter(windowPoints)
-    if type(centerX) ~= "number" or type(centerY) ~= "number" then
-        ResetEndPhaseState(state)
-        return false
-    end
-
-    local maxDistance = ComputeWindowMaxDistance(windowPoints, centerX, centerY)
-    local radius = tonumber(service.END_PHASE_RADIUS) or 0.015
-    if type(maxDistance) ~= "number" or maxDistance > radius then
-        ResetEndPhaseState(state)
-        return false
-    end
-
-    local repeatedEntryPoint = FindRepeatedPhaseEntry(windowPoints)
-    if type(repeatedEntryPoint) ~= "table" then
-        ResetEndPhaseState(state)
-        return false
-    end
-
-    if state.endPhaseActive ~= true then
-        state.endPhaseActive = true
-        state.endPhaseStartedAt = tonumber(windowPoints[1] and windowPoints[1].time) or tonumber(currentTime) or Utils:GetCurrentTimestamp()
-    end
-
-    state.endPhaseLastSeenAt = tonumber(currentTime) or Utils:GetCurrentTimestamp()
-    state.endPhaseCenterX = centerX
-    state.endPhaseCenterY = centerY
-    state.endPhaseEntryX = tonumber(repeatedEntryPoint.x)
-    state.endPhaseEntryY = tonumber(repeatedEntryPoint.y)
-    state.endPhasePointCount = #windowPoints
-    return true
-end
-
-local function ConfirmEndPhase(service, state)
-    if type(service) ~= "table" or type(state) ~= "table" then
-        return false
-    end
-    if state.endConfirmed == true or state.endPhaseActive ~= true then
-        return state.endConfirmed == true
-    end
-
-    local centerX = tonumber(state.endPhaseCenterX)
-    local centerY = tonumber(state.endPhaseCenterY)
-    local entryX = tonumber(state.endPhaseEntryX)
-    local entryY = tonumber(state.endPhaseEntryY)
-    local pointCount = tonumber(state.endPhasePointCount) or 0
-    if type(centerX) ~= "number"
-        or type(centerY) ~= "number"
-        or type(entryX) ~= "number"
-        or type(entryY) ~= "number" then
-        return false
-    end
-
-    local minSamples = math.max(2, tonumber(service.END_PHASE_MIN_SAMPLES) or 4)
-    if pointCount < minSamples then
-        return false
-    end
-
-    state.endConfirmed = true
-    state.endX = entryX
-    state.endY = entryY
+    state.cruiseEndX = endX
+    state.cruiseEndY = endY
+    state.cruiseLineLength = lineLength
     return true
 end
 
@@ -250,12 +110,12 @@ local function BuildTraceSummaryMessage(targetMapData, state)
     end
 
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
-    local startX = math.floor((((state.startConfirmed == true and state.startX) or state.firstX or 0) * 100) + 0.5)
-    local startY = math.floor((((state.startConfirmed == true and state.startY) or state.firstY or 0) * 100) + 0.5)
-    local endX = math.floor((((state.endConfirmed == true and state.endX) or state.lastX or 0) * 100) + 0.5)
-    local endY = math.floor((((state.endConfirmed == true and state.endY) or state.lastY or 0) * 100) + 0.5)
+    local startX = FormatCoordinatePercent((state.startConfirmed == true and state.startX) or state.firstX or 0)
+    local startY = FormatCoordinatePercent((state.startConfirmed == true and state.startY) or state.firstY or 0)
+    local endX = FormatCoordinatePercent((state.endConfirmed == true and state.endX) or state.lastX or 0)
+    local endY = FormatCoordinatePercent((state.endConfirmed == true and state.endY) or state.lastY or 0)
     return string.format(
-        "【%s】本次轨迹采样：起点 %d, %d -> 终点 %d, %d | 样本 %d | 点链 %d | start=%s | end=%s",
+        "【%s】本次轨迹采样：起点 %s, %s -> 终点 %s, %s | 样本 %d | 点链 %d | start=%s | end=%s",
         mapName,
         startX,
         startY,
@@ -288,10 +148,15 @@ local function EmitTraceDebugOutput(targetMapData, state)
     end
 
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+    local pointScale = AirdropTrajectoryStore and AirdropTrajectoryStore.COORDINATE_SCALE or 1000
     local chunkIndex = 1
     local chunk = {}
     for _, point in ipairs(sampledPoints) do
-        chunk[#chunk + 1] = string.format("%d,%d", tonumber(point.x) or 0, tonumber(point.y) or 0)
+        chunk[#chunk + 1] = string.format(
+            "%s,%s",
+            FormatQuantizedCoordinatePercent(point.x, pointScale),
+            FormatQuantizedCoordinatePercent(point.y, pointScale)
+        )
         if #chunk >= 8 then
             local line = string.format("【%s】轨迹点链(%d)：%s", mapName, chunkIndex, table.concat(chunk, " | "))
             if NotificationOutputService and NotificationOutputService.SendLocalMessage then
@@ -338,6 +203,7 @@ function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, 
         startAnchorY = positionY,
         startAnchorSamples = 1,
         startSource = nil,
+        endSource = nil,
         startConfirmed = false,
         movingStarted = false,
         lastX = positionX,
@@ -354,19 +220,11 @@ function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, 
         predictedRouteKey = nil,
         predictedEndX = nil,
         predictedEndY = nil,
-        motionDX = nil,
-        motionDY = nil,
-        motionRecordedAt = nil,
-        motionRecordedAtRealtime = nil,
         sampledPoints = {},
         lastRecordedPointKey = nil,
-        endPhaseWindowPoints = {},
-        endPhaseActive = false,
-        endPhaseStartedAt = nil,
-        endPhaseLastSeenAt = nil,
-        endPhaseCenterX = nil,
-        endPhaseCenterY = nil,
-        endPhasePointCount = 0,
+        cruiseEndX = nil,
+        cruiseEndY = nil,
+        cruiseLineLength = 0,
     }
 end
 
@@ -395,6 +253,13 @@ function AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, sh
     state.startAnchorY = startY
     state.startAnchorSamples = 1
     state.startSource = "npc_shout"
+    if state.movingStarted == true then
+        local cruiseEndX = tonumber(state.cruiseEndX) or tonumber(state.lastX)
+        local cruiseEndY = tonumber(state.cruiseEndY) or tonumber(state.lastY)
+        if type(cruiseEndX) == "number" and type(cruiseEndY) == "number" then
+            UpdateCruiseLineEndpoint(state, startX, startY, cruiseEndX, cruiseEndY)
+        end
+    end
     return true
 end
 
@@ -409,8 +274,9 @@ function AirdropTrajectorySamplingService:AppendObservedPoint(state, positionX, 
         return false
     end
 
-    local pointX = math.floor((x * 100) + 0.5)
-    local pointY = math.floor((y * 100) + 0.5)
+    local pointScale = AirdropTrajectoryStore and AirdropTrajectoryStore.COORDINATE_SCALE or 1000
+    local pointX = math.floor((x * pointScale) + 0.5)
+    local pointY = math.floor((y * pointScale) + 0.5)
     local pointKey = tostring(pointX) .. ":" .. tostring(pointY)
     if state.lastRecordedPointKey == pointKey then
         return false
@@ -426,17 +292,45 @@ function AirdropTrajectorySamplingService:AppendObservedPoint(state, positionX, 
 end
 
 function AirdropTrajectorySamplingService:FinalizeObservedEndpoints(service, state)
-    if type(service) ~= "table" or type(state) ~= "table" then
-        return false
-    end
-    return ConfirmEndPhase(service, state)
+    return type(service) == "table" and type(state) == "table" and state.endConfirmed == true
 end
 
-function AirdropTrajectorySamplingService:ConfirmEndOnDetectionLoss(state)
+function AirdropTrajectorySamplingService:HandleDetectedCrate(service, targetMapData, iconResult, currentTime)
+    if type(service) ~= "table"
+        or type(targetMapData) ~= "table"
+        or type(targetMapData.id) ~= "number"
+        or type(iconResult) ~= "table"
+        or iconResult.detected ~= true then
+        return false
+    end
+
+    local state = service.activeObservationByMap and service.activeObservationByMap[targetMapData.id] or nil
     if type(state) ~= "table" or state.movingStarted ~= true then
         return false
     end
-    return state.endConfirmed == true
+
+    local endX = tonumber(iconResult.positionX)
+    local endY = tonumber(iconResult.positionY)
+    if type(endX) ~= "number" or type(endY) ~= "number" then
+        return false
+    end
+
+    state.lastSeenAt = tonumber(currentTime) or Utils:GetCurrentTimestamp()
+    state.missingSince = nil
+    self:AppendObservedPoint(state, endX, endY)
+    state.endConfirmed = true
+    state.endX = endX
+    state.endY = endY
+    state.endSource = "crate_vignette"
+    self:FinalizeObservation(service, targetMapData.id, state.lastSeenAt)
+    return true
+end
+
+function AirdropTrajectorySamplingService:ConfirmEndOnDetectionLoss(service, state)
+    return type(service) == "table"
+        and type(state) == "table"
+        and state.movingStarted == true
+        and state.endConfirmed == true
 end
 
 function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMapId, currentTime)
@@ -461,16 +355,15 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
         return false
     end
 
-    local observedDistance = ComputeDistance(state.firstX, state.firstY, state.lastX, state.lastY)
-    local minimumObservationDistance = service.MIN_OBSERVATION_DISTANCE or 0.025
-    if observedDistance < minimumObservationDistance then
-        return false
-    end
-
     local startX = state.startConfirmed == true and state.startX or state.firstX
     local startY = state.startConfirmed == true and state.startY or state.firstY
     local endX = state.endConfirmed == true and state.endX or state.lastX
     local endY = state.endConfirmed == true and state.endY or state.lastY
+    local routeDistance = ComputeDistance(startX, startY, endX, endY)
+    local minimumObservationDistance = service.MIN_OBSERVATION_DISTANCE or 0.025
+    if routeDistance < minimumObservationDistance then
+        return false
+    end
 
     local routeChanged = false
     local routeRecord = nil
@@ -489,6 +382,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
                 updatedAt = finalizeTime,
                 source = "local",
                 startSource = state.startSource,
+                endSource = state.endSource,
                 eventObjectGUID = state.objectGUID,
                 eventStartedAt = state.firstSeenAt,
                 startConfirmed = state.startConfirmed == true,
@@ -542,18 +436,16 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
         return false
     end
 
-    if type(state.missingSince) ~= "number" then
-        state.missingSince = now
-        if state.movingStarted == true then
-            self:ConfirmEndOnDetectionLoss(state)
+    if state.movingStarted == true then
+        if state.endConfirmed == true then
             return self:FinalizeObservation(service, targetMapData.id, now)
         end
         return false
     end
 
-    if state.movingStarted == true then
-        self:ConfirmEndOnDetectionLoss(state)
-        return self:FinalizeObservation(service, targetMapData.id, now)
+    if type(state.missingSince) ~= "number" then
+        state.missingSince = now
+        return false
     end
 
     if (now - state.missingSince) < (service.MISSING_FINALIZE_DELAY or 2.2) then
@@ -640,16 +532,12 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
                 state.startX = state.startAnchorX
                 state.startY = state.startAnchorY
             end
-            state.motionDX = positionX - state.startAnchorX
-            state.motionDY = positionY - state.startAnchorY
-            state.motionRecordedAt = currentTime
-            state.motionRecordedAtRealtime = GetRuntimeNow()
             state.lastX = positionX
             state.lastY = positionY
             state.endX = positionX
             state.endY = positionY
             state.endConfirmed = false
-            ResetEndPhaseWindow(state)
+            UpdateCruiseLineEndpoint(state, state.startX, state.startY, positionX, positionY)
             state.uniqueMatchState = nil
             if state.sampleCount < 2 then
                 state.sampleCount = 2
@@ -660,13 +548,17 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
 
     local moveDistance = ComputeDistance(state.lastX, state.lastY, positionX, positionY)
     if moveDistance >= sampleDelta then
-        state.motionDX = positionX - state.lastX
-        state.motionDY = positionY - state.lastY
-        state.motionRecordedAt = currentTime
-        state.motionRecordedAtRealtime = GetRuntimeNow()
         state.lastX = positionX
         state.lastY = positionY
         state.sampleCount = (tonumber(state.sampleCount) or 1) + 1
+        local startX, startY = ResolveObservationStart(state)
+        local currentCruiseLength = tonumber(state.cruiseLineLength) or 0
+        if type(startX) == "number" and type(startY) == "number" then
+            local newLength = ComputeDistance(startX, startY, positionX, positionY)
+            if newLength > currentCruiseLength then
+                UpdateCruiseLineEndpoint(state, startX, startY, positionX, positionY)
+            end
+        end
     else
         state.lastX = positionX
         state.lastY = positionY
@@ -675,9 +567,6 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
     if state.endConfirmed ~= true then
         state.endX = state.lastX
         state.endY = state.lastY
-        if RefreshEndPhaseCandidate(service, state, currentTime, positionX, positionY) == true then
-            ConfirmEndPhase(service, state)
-        end
     end
 
     return service:TryMatchPrediction(targetMapData, state, iconResult)

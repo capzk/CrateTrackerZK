@@ -25,8 +25,8 @@ localeData["TimeRemaining"] = "【%s】距離戰爭補給空投還有：%s！！
 localeData["AutoTeamReportMessage"] = "當前【%s】距離戰爭補給空投還有：%s！！";
 localeData["SharedPhaseSyncApplied"] = "已取得【%s】當前位面的最新空投共享資訊。";
 localeData["PhaseTeamAlertMessage"] = "當前%s位面發生變化：%s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "【%s】已匹配空投軌跡，預測落點座標：%d, %d";
-localeData["TrajectoryPredictionWaypointSet"] = "【%s】已在地圖上標記預測落點：%d, %d";
+localeData["TrajectoryPredictionMatched"] = "【%s】已匹配空投軌跡，預測落點座標：%s, %s";
+localeData["TrajectoryPredictionWaypointSet"] = "【%s】已在地圖上標記預測落點：%s, %s";
 localeData["UnknownPhaseValue"] = "未知";
 
 -- 位面檢測提示

@@ -3,63 +3,38 @@
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
 local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
 local AppContext = BuildEnv("AppContext")
+local ClearLegacyPersistentBucket
 
-AirdropTrajectoryStore.COORDINATE_SCALE = 100
+AirdropTrajectoryStore.COORDINATE_SCALE = 1000
 AirdropTrajectoryStore.MIN_ROUTE_LENGTH = 0.02
-AirdropTrajectoryStore.PARTIAL_MIN_ROUTE_LENGTH = 0.015
 AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE = 0.018
 AirdropTrajectoryStore.MIN_DIRECTION_DOT = 0.94
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 12
-AirdropTrajectoryStore.DB_SCHEMA_VERSION = 1
-
-local function HasStoredRoutes(bucket)
-    if type(bucket) ~= "table" then
-        return false
-    end
-    for _, savedMapData in pairs(bucket) do
-        if type(savedMapData) == "table"
-            and type(savedMapData.routes) == "table"
-            and next(savedMapData.routes) ~= nil then
-            return true
-        end
-    end
-    return false
-end
+AirdropTrajectoryStore.DB_SCHEMA_VERSION = 2
 
 local function EnsureTrajectoryPersistentState()
-    if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
-        CRATETRACKERZK_TRAJECTORY_DB = {}
+    if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table"
+        or tonumber(CRATETRACKERZK_TRAJECTORY_DB.schemaVersion) ~= AirdropTrajectoryStore.DB_SCHEMA_VERSION then
+        CRATETRACKERZK_TRAJECTORY_DB = {
+            schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION,
+            meta = {
+                storageKind = "independent",
+                lastResetAt = Utils:GetCurrentTimestamp(),
+            },
+            maps = {},
+        }
     end
     if type(CRATETRACKERZK_TRAJECTORY_DB.meta) ~= "table" then
-        CRATETRACKERZK_TRAJECTORY_DB.meta = {}
+        CRATETRACKERZK_TRAJECTORY_DB.meta = {
+            storageKind = "independent",
+        }
     end
     CRATETRACKERZK_TRAJECTORY_DB.schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION
     CRATETRACKERZK_TRAJECTORY_DB.meta.storageKind = "independent"
     if type(CRATETRACKERZK_TRAJECTORY_DB.maps) ~= "table" then
         CRATETRACKERZK_TRAJECTORY_DB.maps = {}
     end
-
-    local legacyRootMaps = {}
-    for rawKey, value in pairs(CRATETRACKERZK_TRAJECTORY_DB) do
-        local mapID = tonumber(rawKey)
-        if mapID
-            and type(value) == "table"
-            and type(value.routes) == "table" then
-            legacyRootMaps[#legacyRootMaps + 1] = {
-                mapID = mapID,
-                rawKey = rawKey,
-                value = value,
-            }
-        end
-    end
-
-    for _, entry in ipairs(legacyRootMaps) do
-        if type(CRATETRACKERZK_TRAJECTORY_DB.maps[entry.mapID]) ~= "table" then
-            CRATETRACKERZK_TRAJECTORY_DB.maps[entry.mapID] = entry.value
-        end
-        CRATETRACKERZK_TRAJECTORY_DB[entry.rawKey] = nil
-    end
-
+    ClearLegacyPersistentBucket()
     return CRATETRACKERZK_TRAJECTORY_DB
 end
 
@@ -67,34 +42,12 @@ local function EnsurePersistentBucket()
     return EnsureTrajectoryPersistentState().maps
 end
 
-local function GetLegacyPersistentBucket()
-    local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or {}
-    if type(db.trajectoryData) ~= "table" then
-        return nil
-    end
-    return db.trajectoryData
-end
-
-local function ClearLegacyPersistentBucket()
+ClearLegacyPersistentBucket = function()
     local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil
-    if type(db) ~= "table" then
-        return false
+    if type(db) == "table" then
+        db.trajectoryData = nil
     end
-    db.trajectoryData = nil
     return true
-end
-
-local function ResetIndependentPersistentState()
-    CRATETRACKERZK_TRAJECTORY_DB = {
-        schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION,
-        meta = {
-            storageKind = "independent",
-            legacyImportCompleted = true,
-            lastResetAt = Utils:GetCurrentTimestamp(),
-        },
-        maps = {},
-    }
-    return CRATETRACKERZK_TRAJECTORY_DB
 end
 
 local function NormalizeCoordinate(value)
@@ -118,6 +71,15 @@ local function QuantizeCoordinate(value)
     end
     local scale = AirdropTrajectoryStore.COORDINATE_SCALE or 10000
     return math.floor((normalized * scale) + 0.5)
+end
+
+local function ComputeDistance(x1, y1, x2, y2)
+    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ComputeDistance then
+        return AirdropTrajectoryGeometryService:ComputeDistance(x1, y1, x2, y2)
+    end
+    local dx = (tonumber(x2) or 0) - (tonumber(x1) or 0)
+    local dy = (tonumber(y2) or 0) - (tonumber(y1) or 0)
+    return math.sqrt((dx * dx) + (dy * dy))
 end
 
 local function ComputeRouteVector(route)
@@ -180,6 +142,7 @@ local function CopyRouteInto(outRoute, route)
     outRoute.updatedAt = route.updatedAt
     outRoute.source = route.source
     outRoute.startSource = route.startSource
+    outRoute.endSource = route.endSource
     outRoute.lastEventObjectGUID = route.lastEventObjectGUID
     outRoute.lastEventStartedAt = route.lastEventStartedAt
     outRoute.startConfirmed = route.startConfirmed == true
@@ -195,6 +158,9 @@ local function CreateRouteRecord(route)
     local outRoute = {}
     return CopyRouteInto(outRoute, route)
 end
+
+local IsReliableRoute
+local FinalizeRouteReliability
 
 local function NormalizeRouteRecord(routeState, source, currentTime)
     if type(routeState) ~= "table" then
@@ -229,6 +195,7 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         updatedAt = updatedAt,
         source = source == "local" and "local" or "shared",
         startSource = type(routeState.startSource) == "string" and routeState.startSource or nil,
+        endSource = type(routeState.endSource) == "string" and routeState.endSource or nil,
         lastEventObjectGUID = type(routeState.lastEventObjectGUID) == "string"
             and routeState.lastEventObjectGUID ~= ""
             and routeState.lastEventObjectGUID
@@ -243,7 +210,6 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         verificationCount = math.max(0, math.floor(tonumber(routeState.verificationCount) or 0)),
         verifiedPredictionCount = math.max(0, math.floor(tonumber(routeState.verifiedPredictionCount) or 0)),
         lastPredictionVerified = routeState.lastPredictionVerified == true,
-        confidenceScore = math.max(0, math.floor(tonumber(routeState.confidenceScore) or 0)),
     }
     normalized.routeKey = BuildRouteKey(normalized)
     if type(normalized.routeKey) ~= "string" or normalized.routeKey == "" then
@@ -255,14 +221,15 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
     return FinalizeRouteReliability(normalized)
 end
 
-local function IsReliableRoute(route)
+IsReliableRoute = function(route)
     return type(route) == "table"
         and route.startConfirmed == true
         and route.endConfirmed == true
         and route.startSource == "npc_shout"
+        and route.endSource == "crate_vignette"
 end
 
-local function FinalizeRouteReliability(route)
+FinalizeRouteReliability = function(route)
     if type(route) ~= "table" then
         return nil
     end
@@ -319,11 +286,7 @@ local function IsRouteRecordValid(route)
         return false
     end
 
-    local minimumLength = AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02
-    if route.startConfirmed == true or route.endConfirmed == true then
-        minimumLength = math.min(minimumLength, AirdropTrajectoryStore.PARTIAL_MIN_ROUTE_LENGTH or 0.015)
-    end
-    return length >= minimumLength
+    return length >= (AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02)
 end
 
 local function SelectReferenceRoute(existing, candidate)
@@ -460,6 +423,7 @@ local function MergeRoutes(existing, candidate)
     )
     merged.source = ((existing.source == "local") or (candidate.source == "local")) and "local" or "shared"
     merged.startSource = candidate.startSource or existing.startSource
+    merged.endSource = candidate.endSource or existing.endSource
     merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
     merged.lastEventStartedAt = math.max(
         tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
@@ -504,6 +468,7 @@ local function HasRouteChanged(existing, candidate)
         or existing.endX ~= candidate.endX
         or existing.endY ~= candidate.endY
         or existing.startSource ~= candidate.startSource
+        or existing.endSource ~= candidate.endSource
         or (existing.startConfirmed == true) ~= (candidate.startConfirmed == true)
         or (existing.endConfirmed == true) ~= (candidate.endConfirmed == true)
         or existing.observationCount ~= candidate.observationCount
@@ -515,7 +480,6 @@ local function HasRouteChanged(existing, candidate)
         or (tonumber(existing.verificationCount) or 0) ~= (tonumber(candidate.verificationCount) or 0)
         or (tonumber(existing.verifiedPredictionCount) or 0) ~= (tonumber(candidate.verifiedPredictionCount) or 0)
         or (existing.lastPredictionVerified == true) ~= (candidate.lastPredictionVerified == true)
-        or (tonumber(existing.confidenceScore) or 0) ~= (tonumber(candidate.confidenceScore) or 0)
 end
 
 local function IsDuplicateRouteArtifact(existing, candidate)
@@ -558,6 +522,7 @@ local function MergeDuplicateArtifact(existing, candidate)
         merged.source = "local"
     end
     merged.startSource = candidate.startSource or existing.startSource
+    merged.endSource = candidate.endSource or existing.endSource
     if type(candidate.lastEventObjectGUID) == "string" and candidate.lastEventObjectGUID ~= "" then
         merged.lastEventObjectGUID = candidate.lastEventObjectGUID
     end
@@ -613,6 +578,7 @@ local function SaveMapBucket(self, mapID)
                 updatedAt = route.updatedAt,
                 source = route.source,
                 startSource = route.startSource,
+                endSource = route.endSource,
                 lastEventObjectGUID = route.lastEventObjectGUID,
                 lastEventStartedAt = route.lastEventStartedAt,
                 startConfirmed = route.startConfirmed == true,
@@ -620,7 +586,6 @@ local function SaveMapBucket(self, mapID)
                 verificationCount = route.verificationCount,
                 verifiedPredictionCount = route.verifiedPredictionCount,
                 lastPredictionVerified = route.lastPredictionVerified == true,
-                confidenceScore = route.confidenceScore,
             }
         end
     end
@@ -685,8 +650,7 @@ local function LoadPersistentRoutesIntoRuntime(self, sourceBucket)
                 end
                 local normalized = NormalizeRouteRecord(routeState, savedRoute and savedRoute.source, savedRoute and savedRoute.updatedAt)
                 if IsRouteRecordValid(normalized) == true
-                    and normalized.startConfirmed == true
-                    and normalized.endConfirmed == true then
+                    and IsReliableRoute(normalized) == true then
                     runtimeBucket[normalized.routeKey] = normalized
                     loadedCount = loadedCount + 1
                 end
@@ -733,7 +697,9 @@ local function CanonicalizeMapBucket(self, mapID)
         local matchedKey = nil
         local matchedRoute = nil
         for routeKey, existingRoute in pairs(canonicalBucket) do
-            if IsSimilarRoute(existingRoute, route) == true then
+            if IsSimilarRoute(existingRoute, route) == true
+                or IsLegacyShadowOfReliableRoute(existingRoute, route) == true
+                or IsLegacyShadowOfReliableRoute(route, existingRoute) == true then
                 matchedKey = routeKey
                 matchedRoute = existingRoute
                 break
@@ -743,9 +709,16 @@ local function CanonicalizeMapBucket(self, mapID)
         if not matchedRoute then
             canonicalBucket[route.routeKey] = route
         else
-            local merged = IsDuplicateRouteArtifact(matchedRoute, route) == true
-                and MergeDuplicateArtifact(matchedRoute, route)
-                or MergeRoutes(matchedRoute, route)
+            local merged = nil
+            if IsLegacyShadowOfReliableRoute(matchedRoute, route) == true then
+                merged = MergeReliableRouteWithLegacyShadow(matchedRoute, route)
+            elseif IsLegacyShadowOfReliableRoute(route, matchedRoute) == true then
+                merged = MergeReliableRouteWithLegacyShadow(route, matchedRoute)
+            else
+                merged = IsDuplicateRouteArtifact(matchedRoute, route) == true
+                    and MergeDuplicateArtifact(matchedRoute, route)
+                    or MergeRoutes(matchedRoute, route)
+            end
             canonicalBucket[matchedKey] = nil
             canonicalBucket[merged.routeKey] = merged
             mergedCount = mergedCount + 1
@@ -756,35 +729,6 @@ local function CanonicalizeMapBucket(self, mapID)
     PruneMapBucket(self, mapID)
     SaveMapBucket(self, mapID)
     return mergedCount
-end
-
-local function ImportLegacyBucketIntoIndependentStore(self, legacyBucket, currentTime)
-    if type(legacyBucket) ~= "table" then
-        return 0
-    end
-
-    local importedCount = 0
-    for rawMapID, savedMapData in pairs(legacyBucket) do
-        local mapID = tonumber(rawMapID)
-        local savedRoutes = type(savedMapData) == "table" and savedMapData.routes or nil
-        if mapID and type(savedRoutes) == "table" then
-            for _, savedRoute in pairs(savedRoutes) do
-                local routeState = savedRoute
-                if type(savedRoute) == "table" and type(savedRoute.mapID) ~= "number" then
-                    routeState = {}
-                    for key, value in pairs(savedRoute) do
-                        routeState[key] = value
-                    end
-                    routeState.mapID = mapID
-                end
-                local changed = self:UpsertRoute(mapID, routeState, savedRoute and savedRoute.source, currentTime)
-                if changed == true then
-                    importedCount = importedCount + 1
-                end
-            end
-        end
-    end
-    return importedCount
 end
 
 function AirdropTrajectoryStore:Initialize()
@@ -801,22 +745,6 @@ function AirdropTrajectoryStore:Initialize()
         end
     end
 
-    local meta = trajectoryState.meta or {}
-    if meta.legacyImportCompleted ~= true then
-        local legacyBucket = GetLegacyPersistentBucket()
-        local importedCount = 0
-        if HasStoredRoutes(persistentBucket) ~= true and type(legacyBucket) == "table" then
-            importedCount = ImportLegacyBucketIntoIndependentStore(self, legacyBucket, Utils:GetCurrentTimestamp())
-        end
-        meta.legacyImportCompleted = true
-        meta.legacyImportedAt = Utils:GetCurrentTimestamp()
-        meta.legacyImportedRouteCount = importedCount
-        trajectoryState.meta = meta
-        if importedCount > 0 or HasStoredRoutes(persistentBucket) == true then
-            ClearLegacyPersistentBucket()
-        end
-    end
-
     return true
 end
 
@@ -829,10 +757,7 @@ function AirdropTrajectoryStore:GetRouteQualityLabel(route)
         return "unknown"
     end
     if IsReliableRoute(route) ~= true then
-        if route.startConfirmed == true and route.endConfirmed == true then
-            return "legacy"
-        end
-        return "partial"
+        return "invalid"
     end
     if (tonumber(route.verifiedPredictionCount) or 0) > 0 then
         return "verified"
@@ -892,8 +817,8 @@ function AirdropTrajectoryStore:IsUsingIndependentPersistentStore()
 end
 
 function AirdropTrajectoryStore:ClearPersistentData()
-    ResetIndependentPersistentState()
-    ClearLegacyPersistentBucket()
+    CRATETRACKERZK_TRAJECTORY_DB = nil
+    EnsureTrajectoryPersistentState()
     self.routesByMap = {}
     return true
 end
@@ -959,8 +884,7 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
     local normalized = NormalizeRouteRecord(routeState, source, currentTime)
     if IsRouteRecordValid(normalized) ~= true
         or type(normalized) ~= "table"
-        or normalized.startConfirmed ~= true
-        or normalized.endConfirmed ~= true then
+        or IsReliableRoute(normalized) ~= true then
         return false, nil
     end
 
