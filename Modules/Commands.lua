@@ -116,12 +116,17 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
     local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
         and AirdropTrajectoryStore:GetRouteQualityLabel(route)
         or "unknown";
+    local confidence = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionConfidence
+        and AirdropTrajectoryStore:GetPredictionConfidence(route)
+        or 0;
+    local verificationCount = math.max(0, math.floor(tonumber(route.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(route.verifiedPredictionCount) or 0));
     local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
     local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
     local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
     local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
     return string.format(
-        "%s#%d 起点 %d, %d -> 终点 %d, %d | 状态 %s | 样本 %d | 记录 %d | 更新 %d",
+        "%s#%d 起点 %d, %d -> 终点 %d, %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | 更新 %d",
         prefix,
         tonumber(routeIndex) or 0,
         startX,
@@ -129,6 +134,9 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
         endX,
         endY,
         tostring(quality),
+        confidence,
+        verifiedPredictionCount,
+        verificationCount,
         math.floor(tonumber(route.sampleCount) or 0),
         math.floor(tonumber(route.observationCount) or 0),
         math.floor(tonumber(route.updatedAt) or 0)
@@ -142,12 +150,17 @@ local function BuildTrajectoryExportLine(route)
     local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
         and AirdropTrajectoryStore:GetRouteQualityLabel(route)
         or "unknown";
+    local confidence = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionConfidence
+        and AirdropTrajectoryStore:GetPredictionConfidence(route)
+        or 0;
+    local verificationCount = math.max(0, math.floor(tonumber(route.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(route.verifiedPredictionCount) or 0));
     local startX = math.floor(((tonumber(route.startX) or 0) * 100) + 0.5);
     local startY = math.floor(((tonumber(route.startY) or 0) * 100) + 0.5);
     local endX = math.floor(((tonumber(route.endX) or 0) * 100) + 0.5);
     local endY = math.floor(((tonumber(route.endY) or 0) * 100) + 0.5);
     return string.format(
-        "CTK_TRAJECTORY|mapID=%d|start=%d,%d|end=%d,%d|startConfirmed=%s|endConfirmed=%s|quality=%s|samples=%d|count=%d|updated=%d",
+        "CTK_TRAJECTORY|mapID=%d|start=%d,%d|end=%d,%d|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|updated=%d",
         tonumber(route.mapID) or 0,
         startX,
         startY,
@@ -156,6 +169,9 @@ local function BuildTrajectoryExportLine(route)
         tostring(route.startConfirmed == true),
         tostring(route.endConfirmed == true),
         tostring(quality),
+        confidence,
+        verifiedPredictionCount,
+        verificationCount,
         math.floor(tonumber(route.sampleCount) or 0),
         math.floor(tonumber(route.observationCount) or 0),
         math.floor(tonumber(route.updatedAt) or 0)

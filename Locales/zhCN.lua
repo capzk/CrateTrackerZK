@@ -63,6 +63,7 @@ localeData["SettingsPhaseTeamAlertTooltip"] = "开启后，会在团队频道发
 localeData["SettingsSoundAlert"] = "声音提醒";
 localeData["SettingsAutoReport"] = "自动通知";
 localeData["SettingsAutoReportInterval"] = "通知频率（秒）";
+localeData["SettingsTrajectoryPredictionTest"] = "轨迹预测（测试功能）";
 localeData["SettingsClearButton"] = "清除本地数据";
 localeData["SettingsToggleOn"] = "已开启";
 localeData["SettingsToggleOff"] = "已关闭";

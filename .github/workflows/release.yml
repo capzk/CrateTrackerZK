@@ -41,6 +41,15 @@ jobs:
         echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
         echo "Validated version: ${TAG_VERSION}"
 
+    - name: Install Lua Runtime
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y lua5.4
+
+    - name: Run Static Checks
+      shell: pwsh
+      run: ./tools/run_refactor_checks.ps1 -Root "."
+
     - name: Cleanup workspace
       run: |
         rm -rf "release_temp"

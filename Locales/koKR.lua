@@ -64,6 +64,7 @@ localeData["SettingsPhaseTeamAlertTooltip"] = "활성화하면 위상 변경 메
 localeData["SettingsSoundAlert"] = "사운드 리마인더";
 localeData["SettingsAutoReport"] = "자동 알림";
 localeData["SettingsAutoReportInterval"] = "알림 간격 (초)";
+localeData["SettingsTrajectoryPredictionTest"] = "궤적 예측 (테스트 기능)";
 localeData["SettingsClearButton"] = "로컬 데이터 삭제";
 localeData["SettingsToggleOn"] = "활성화";
 localeData["SettingsToggleOff"] = "비활성화";

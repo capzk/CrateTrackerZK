@@ -64,6 +64,7 @@ localeData["SettingsPhaseTeamAlertTooltip"] = "Cuando esta activado, los mensaje
 localeData["SettingsSoundAlert"] = "Alerta de sonido";
 localeData["SettingsAutoReport"] = "Notificar automaticamente";
 localeData["SettingsAutoReportInterval"] = "Intervalo de reporte (seg)";
+localeData["SettingsTrajectoryPredictionTest"] = "Prediccion de trayectoria (prueba)";
 localeData["SettingsClearButton"] = "Borrar datos locales";
 localeData["SettingsToggleOn"] = "Activado";
 localeData["SettingsToggleOff"] = "Desactivado";

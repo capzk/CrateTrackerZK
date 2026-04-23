@@ -21,11 +21,13 @@ if not Logger then Logger = BuildEnv("Logger") end
 if not UnifiedDataManager then UnifiedDataManager = BuildEnv("UnifiedDataManager") end
 if not TimerManager then TimerManager = BuildEnv("TimerManager") end
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
+local IconDetector = BuildEnv("IconDetector")
 local UIRefreshCoordinator = BuildEnv("UIRefreshCoordinator")
 
 ShoutDetector.isInitialized = false;
 ShoutDetector.compiledShouts = ShoutDetector.compiledShouts or {};
 ShoutDetector.compiledLocale = ShoutDetector.compiledLocale or nil;
+ShoutDetector.trajectoryShoutRetryTimers = ShoutDetector.trajectoryShoutRetryTimers or {};
 
 local function GetTrackedMap()
     if not C_Map or not C_Map.GetBestMapForUnit then
@@ -47,6 +49,66 @@ local function IsMapHidden(targetMapData)
         return Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID);
     end
     return false;
+end
+
+local function CaptureTrajectoryShoutIcon(currentMapID, targetMapData)
+    if not IconDetector
+        or not IconDetector.DetectIconInto
+        or type(targetMapData) ~= "table" then
+        return nil;
+    end
+
+    ShoutDetector.trajectoryShoutIconBuffer = ShoutDetector.trajectoryShoutIconBuffer or {};
+    local iconResult = IconDetector:DetectIconInto(currentMapID, targetMapData.mapID, ShoutDetector.trajectoryShoutIconBuffer);
+    if type(iconResult) ~= "table" or iconResult.detected ~= true then
+        return nil;
+    end
+    return iconResult;
+end
+
+local function CancelTrajectoryShoutRetry(mapRuntimeId)
+    if type(mapRuntimeId) ~= "number" then
+        return false;
+    end
+
+    local timer = ShoutDetector.trajectoryShoutRetryTimers and ShoutDetector.trajectoryShoutRetryTimers[mapRuntimeId] or nil;
+    if timer and timer.Cancel then
+        timer:Cancel();
+    end
+    if ShoutDetector.trajectoryShoutRetryTimers then
+        ShoutDetector.trajectoryShoutRetryTimers[mapRuntimeId] = nil;
+    end
+    return true;
+end
+
+local function ScheduleTrajectoryShoutRetry(targetMapData)
+    if type(targetMapData) ~= "table" or type(targetMapData.id) ~= "number" then
+        return false;
+    end
+    if not C_Timer or not C_Timer.NewTimer then
+        return false;
+    end
+
+    CancelTrajectoryShoutRetry(targetMapData.id);
+    ShoutDetector.trajectoryShoutRetryTimers[targetMapData.id] = C_Timer.NewTimer(1.0, function()
+        CancelTrajectoryShoutRetry(targetMapData.id);
+
+        local retryTargetMapData, retryCurrentMapID = GetTrackedMap();
+        if not retryTargetMapData
+            or type(retryTargetMapData.id) ~= "number"
+            or retryTargetMapData.id ~= targetMapData.id
+            or IsMapHidden(retryTargetMapData) then
+            return;
+        end
+
+        local retryIconResult = CaptureTrajectoryShoutIcon(retryCurrentMapID, retryTargetMapData);
+        if retryIconResult
+            and AirdropTrajectoryService
+            and AirdropTrajectoryService.HandleAirdropShout then
+            AirdropTrajectoryService:HandleAirdropShout(retryTargetMapData, Utils:GetCurrentTimestamp(), retryIconResult);
+        end
+    end);
+    return true;
 end
 
 local function OnShoutDetected(message)
@@ -93,8 +155,14 @@ local function OnShoutDetected(message)
         local currentPhaseId = UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
         UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE, currentPhaseId);
     end
+    local shoutIconResult = CaptureTrajectoryShoutIcon(currentMapID, targetMapData);
     if AirdropTrajectoryService and AirdropTrajectoryService.HandleAirdropShout then
-        AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime);
+        AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime, shoutIconResult);
+    end
+    if shoutIconResult then
+        CancelTrajectoryShoutRetry(targetMapData.id);
+    else
+        ScheduleTrajectoryShoutRetry(targetMapData);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
         UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {

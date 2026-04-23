@@ -10,7 +10,6 @@ AirdropTrajectoryStore.PARTIAL_MIN_ROUTE_LENGTH = 0.015
 AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE = 0.018
 AirdropTrajectoryStore.MIN_DIRECTION_DOT = 0.94
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 12
-AirdropTrajectoryStore.MIN_SHARED_ROUTE_SAMPLE_COUNT = 8
 AirdropTrajectoryStore.DB_SCHEMA_VERSION = 1
 
 local function HasStoredRoutes(bucket)
@@ -180,10 +179,15 @@ local function CopyRouteInto(outRoute, route)
     outRoute.createdAt = route.createdAt
     outRoute.updatedAt = route.updatedAt
     outRoute.source = route.source
+    outRoute.startSource = route.startSource
     outRoute.lastEventObjectGUID = route.lastEventObjectGUID
     outRoute.lastEventStartedAt = route.lastEventStartedAt
     outRoute.startConfirmed = route.startConfirmed == true
     outRoute.endConfirmed = route.endConfirmed == true
+    outRoute.verificationCount = route.verificationCount
+    outRoute.verifiedPredictionCount = route.verifiedPredictionCount
+    outRoute.lastPredictionVerified = route.lastPredictionVerified == true
+    outRoute.confidenceScore = route.confidenceScore
     return outRoute
 end
 
@@ -224,6 +228,7 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         createdAt = createdAt,
         updatedAt = updatedAt,
         source = source == "local" and "local" or "shared",
+        startSource = type(routeState.startSource) == "string" and routeState.startSource or nil,
         lastEventObjectGUID = type(routeState.lastEventObjectGUID) == "string"
             and routeState.lastEventObjectGUID ~= ""
             and routeState.lastEventObjectGUID
@@ -235,12 +240,65 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         ),
         startConfirmed = routeState.startConfirmed == true,
         endConfirmed = routeState.endConfirmed == true,
+        verificationCount = math.max(0, math.floor(tonumber(routeState.verificationCount) or 0)),
+        verifiedPredictionCount = math.max(0, math.floor(tonumber(routeState.verifiedPredictionCount) or 0)),
+        lastPredictionVerified = routeState.lastPredictionVerified == true,
+        confidenceScore = math.max(0, math.floor(tonumber(routeState.confidenceScore) or 0)),
     }
     normalized.routeKey = BuildRouteKey(normalized)
     if type(normalized.routeKey) ~= "string" or normalized.routeKey == "" then
         return nil
     end
-    return normalized
+    if normalized.verifiedPredictionCount > normalized.verificationCount then
+        normalized.verificationCount = normalized.verifiedPredictionCount
+    end
+    return FinalizeRouteReliability(normalized)
+end
+
+local function IsReliableRoute(route)
+    return type(route) == "table"
+        and route.startConfirmed == true
+        and route.endConfirmed == true
+        and route.startSource == "npc_shout"
+end
+
+local function FinalizeRouteReliability(route)
+    if type(route) ~= "table" then
+        return nil
+    end
+
+    route.verificationCount = math.max(0, math.floor(tonumber(route.verificationCount) or 0))
+    route.verifiedPredictionCount = math.max(0, math.floor(tonumber(route.verifiedPredictionCount) or 0))
+    if route.verifiedPredictionCount > route.verificationCount then
+        route.verificationCount = route.verifiedPredictionCount
+    end
+    route.lastPredictionVerified = route.lastPredictionVerified == true
+
+    local confidence = 0
+    if IsReliableRoute(route) then
+        confidence = 60
+        confidence = confidence + math.min(15, math.floor((tonumber(route.sampleCount) or 0) / 4))
+        confidence = confidence + math.min(15, math.floor((tonumber(route.observationCount) or 0) * 3))
+        if route.verificationCount > 0 then
+            local hitRate = route.verifiedPredictionCount / route.verificationCount
+            confidence = confidence + math.floor(hitRate * 10)
+            local missCount = math.max(0, route.verificationCount - route.verifiedPredictionCount)
+            confidence = confidence - math.min(10, missCount * 2)
+        else
+            confidence = confidence + 5
+        end
+        if route.lastPredictionVerified == true then
+            confidence = confidence + 5
+        end
+    end
+
+    if confidence < 0 then
+        confidence = 0
+    elseif confidence > 100 then
+        confidence = 100
+    end
+    route.confidenceScore = confidence
+    return route
 end
 
 local function IsRouteRecordValid(route)
@@ -401,16 +459,22 @@ local function MergeRoutes(existing, candidate)
         tonumber(candidate.updatedAt) or 0
     )
     merged.source = ((existing.source == "local") or (candidate.source == "local")) and "local" or "shared"
+    merged.startSource = candidate.startSource or existing.startSource
     merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
     merged.lastEventStartedAt = math.max(
         tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
         tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
     )
+    merged.verificationCount = math.max(0, tonumber(existing.verificationCount) or 0)
+        + math.max(0, tonumber(candidate.verificationCount) or 0)
+    merged.verifiedPredictionCount = math.max(0, tonumber(existing.verifiedPredictionCount) or 0)
+        + math.max(0, tonumber(candidate.verifiedPredictionCount) or 0)
+    merged.lastPredictionVerified = candidate.lastPredictionVerified == true or existing.lastPredictionVerified == true
     merged.routeKey = BuildRouteKey(merged)
     if type(merged.routeKey) ~= "string" or merged.routeKey == "" or IsRouteRecordValid(merged) ~= true then
         return CreateRouteRecord(existing)
     end
-    return merged
+    return FinalizeRouteReliability(merged)
 end
 
 local function MergeSameEventRoute(existing, candidate)
@@ -424,7 +488,7 @@ local function MergeSameEventRoute(existing, candidate)
         tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
         tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
     )
-    return merged
+    return FinalizeRouteReliability(merged)
 end
 
 local function HasRouteChanged(existing, candidate)
@@ -439,6 +503,7 @@ local function HasRouteChanged(existing, candidate)
         or existing.startY ~= candidate.startY
         or existing.endX ~= candidate.endX
         or existing.endY ~= candidate.endY
+        or existing.startSource ~= candidate.startSource
         or (existing.startConfirmed == true) ~= (candidate.startConfirmed == true)
         or (existing.endConfirmed == true) ~= (candidate.endConfirmed == true)
         or existing.observationCount ~= candidate.observationCount
@@ -447,6 +512,10 @@ local function HasRouteChanged(existing, candidate)
         or existing.source ~= candidate.source
         or existing.lastEventObjectGUID ~= candidate.lastEventObjectGUID
         or existing.lastEventStartedAt ~= candidate.lastEventStartedAt
+        or (tonumber(existing.verificationCount) or 0) ~= (tonumber(candidate.verificationCount) or 0)
+        or (tonumber(existing.verifiedPredictionCount) or 0) ~= (tonumber(candidate.verifiedPredictionCount) or 0)
+        or (existing.lastPredictionVerified == true) ~= (candidate.lastPredictionVerified == true)
+        or (tonumber(existing.confidenceScore) or 0) ~= (tonumber(candidate.confidenceScore) or 0)
 end
 
 local function IsDuplicateRouteArtifact(existing, candidate)
@@ -488,6 +557,7 @@ local function MergeDuplicateArtifact(existing, candidate)
     if merged.source ~= "local" and candidate.source == "local" then
         merged.source = "local"
     end
+    merged.startSource = candidate.startSource or existing.startSource
     if type(candidate.lastEventObjectGUID) == "string" and candidate.lastEventObjectGUID ~= "" then
         merged.lastEventObjectGUID = candidate.lastEventObjectGUID
     end
@@ -495,7 +565,16 @@ local function MergeDuplicateArtifact(existing, candidate)
         tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
         tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
     )
-    return merged
+    merged.verificationCount = math.max(
+        math.max(0, tonumber(existing.verificationCount) or 0),
+        math.max(0, tonumber(candidate.verificationCount) or 0)
+    )
+    merged.verifiedPredictionCount = math.max(
+        math.max(0, tonumber(existing.verifiedPredictionCount) or 0),
+        math.max(0, tonumber(candidate.verifiedPredictionCount) or 0)
+    )
+    merged.lastPredictionVerified = candidate.lastPredictionVerified == true or existing.lastPredictionVerified == true
+    return FinalizeRouteReliability(merged)
 end
 
 local function EnsureMapBucket(self, mapID)
@@ -533,10 +612,15 @@ local function SaveMapBucket(self, mapID)
                 createdAt = route.createdAt,
                 updatedAt = route.updatedAt,
                 source = route.source,
+                startSource = route.startSource,
                 lastEventObjectGUID = route.lastEventObjectGUID,
                 lastEventStartedAt = route.lastEventStartedAt,
                 startConfirmed = route.startConfirmed == true,
                 endConfirmed = route.endConfirmed == true,
+                verificationCount = route.verificationCount,
+                verifiedPredictionCount = route.verifiedPredictionCount,
+                lastPredictionVerified = route.lastPredictionVerified == true,
+                confidenceScore = route.confidenceScore,
             }
         end
     end
@@ -600,7 +684,9 @@ local function LoadPersistentRoutesIntoRuntime(self, sourceBucket)
                     routeState.mapID = mapID
                 end
                 local normalized = NormalizeRouteRecord(routeState, savedRoute and savedRoute.source, savedRoute and savedRoute.updatedAt)
-                if IsRouteRecordValid(normalized) == true then
+                if IsRouteRecordValid(normalized) == true
+                    and normalized.startConfirmed == true
+                    and normalized.endConfirmed == true then
                     runtimeBucket[normalized.routeKey] = normalized
                     loadedCount = loadedCount + 1
                 end
@@ -711,6 +797,7 @@ function AirdropTrajectoryStore:Initialize()
         local mapID = tonumber(rawMapID)
         if mapID then
             CanonicalizeMapBucket(self, mapID)
+            SaveMapBucket(self, mapID)
         end
     end
 
@@ -734,30 +821,61 @@ function AirdropTrajectoryStore:Initialize()
 end
 
 function AirdropTrajectoryStore:IsPredictionReady(route)
-    return type(route) == "table" and route.endConfirmed == true
+    return IsReliableRoute(route) == true
 end
 
 function AirdropTrajectoryStore:GetRouteQualityLabel(route)
     if type(route) ~= "table" then
         return "unknown"
     end
+    if IsReliableRoute(route) ~= true then
+        if route.startConfirmed == true and route.endConfirmed == true then
+            return "legacy"
+        end
+        return "partial"
+    end
+    if (tonumber(route.verifiedPredictionCount) or 0) > 0 then
+        return "verified"
+    end
     if route.startConfirmed == true and route.endConfirmed == true then
         return "complete"
     end
-    if route.endConfirmed == true then
-        return "prediction_ready"
-    end
-    return "partial"
+    return "unknown"
 end
 
 function AirdropTrajectoryStore:IsShareEligible(route)
     if IsRouteRecordValid(route) ~= true then
         return false
     end
-    if type(route) ~= "table" or route.endConfirmed ~= true then
+    if IsReliableRoute(route) ~= true then
         return false
     end
-    return (tonumber(route.sampleCount) or 0) >= (self.MIN_SHARED_ROUTE_SAMPLE_COUNT or 8)
+    return true
+end
+
+function AirdropTrajectoryStore:GetPredictionConfidence(route)
+    return type(route) == "table" and math.max(0, math.floor(tonumber(route.confidenceScore) or 0)) or 0
+end
+
+function AirdropTrajectoryStore:UpdatePredictionVerification(mapID, routeKey, isAccurate)
+    if type(mapID) ~= "number" or type(routeKey) ~= "string" or routeKey == "" then
+        return false, nil
+    end
+
+    local runtimeBucket = EnsureMapBucket(self, mapID)
+    local route = runtimeBucket[routeKey]
+    if type(route) ~= "table" then
+        return false, nil
+    end
+
+    route.verificationCount = math.max(0, tonumber(route.verificationCount) or 0) + 1
+    if isAccurate == true then
+        route.verifiedPredictionCount = math.max(0, tonumber(route.verifiedPredictionCount) or 0) + 1
+    end
+    route.lastPredictionVerified = isAccurate == true
+    FinalizeRouteReliability(route)
+    SaveMapBucket(self, mapID)
+    return true, route
 end
 
 function AirdropTrajectoryStore:Reset()
@@ -839,7 +957,10 @@ end
 
 function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTime)
     local normalized = NormalizeRouteRecord(routeState, source, currentTime)
-    if IsRouteRecordValid(normalized) ~= true then
+    if IsRouteRecordValid(normalized) ~= true
+        or type(normalized) ~= "table"
+        or normalized.startConfirmed ~= true
+        or normalized.endConfirmed ~= true then
         return false, nil
     end
 

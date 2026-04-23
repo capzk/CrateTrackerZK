@@ -9,7 +9,7 @@ TeamSharedSyncProtocol.TRAJECTORY_MESSAGE_TYPE = "TRAJECTORY_ROUTE"
 TeamSharedSyncProtocol.TRAJECTORY_REQUEST_MESSAGE_TYPE = "TRAJECTORY_REQUEST"
 TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE = "TRAJECTORY_ALERT_CLAIM"
 TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE = "TRAJECTORY_ALERT_ACK"
-TeamSharedSyncProtocol.PROTOCOL_VERSION = 1
+TeamSharedSyncProtocol.PROTOCOL_VERSION = 2
 TeamSharedSyncProtocol.COORDINATE_SCALE = 10000
 
 local function EncodePayloadField(value)
@@ -102,6 +102,10 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
     local mapID = tonumber(routeState.mapID)
     local updatedAt = tonumber(routeState.updatedAt or routeState.timestamp)
     local sampleCount = tonumber(routeState.sampleCount) or 2
+    local observationCount = tonumber(routeState.observationCount) or 1
+    local verificationCount = tonumber(routeState.verificationCount) or 0
+    local verifiedPredictionCount = tonumber(routeState.verifiedPredictionCount) or 0
+    local confidenceScore = tonumber(routeState.confidenceScore) or 0
     local startConfirmed = routeState.startConfirmed == true and 1 or 0
     local endConfirmed = routeState.endConfirmed == true and 1 or 0
     local scale = tonumber(self.COORDINATE_SCALE) or 10000
@@ -129,6 +133,10 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
         tostring(math.max(2, math.floor(sampleCount))),
         tostring(startConfirmed),
         tostring(endConfirmed),
+        tostring(math.max(1, math.floor(observationCount))),
+        tostring(math.max(0, math.floor(verificationCount))),
+        tostring(math.max(0, math.floor(verifiedPredictionCount))),
+        tostring(math.max(0, math.floor(confidenceScore))),
     }, "|")
 end
 
@@ -201,8 +209,12 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     outState.endX = nil
     outState.endY = nil
     outState.sampleCount = nil
+    outState.observationCount = nil
     outState.startConfirmed = nil
     outState.endConfirmed = nil
+    outState.verificationCount = nil
+    outState.verifiedPredictionCount = nil
+    outState.confidenceScore = nil
     outState.routeKey = nil
 
     local messageType = payload:match("^([^|]+)|")
@@ -257,8 +269,8 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     end
 
     if messageType == self.TRAJECTORY_MESSAGE_TYPE then
-        local parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+        local parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, observationCountText, verificationCountText, verifiedPredictionCountText, confidenceScoreText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
         local protocolVersion = tonumber(versionText)
         local mapID = tonumber(mapIDText)
         local scale = tonumber(self.COORDINATE_SCALE) or 10000
@@ -270,6 +282,10 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         local sampleCount = tonumber(sampleCountText)
         local startConfirmed = tonumber(startConfirmedText)
         local endConfirmed = tonumber(endConfirmedText)
+        local observationCount = tonumber(observationCountText)
+        local verificationCount = tonumber(verificationCountText)
+        local verifiedPredictionCount = tonumber(verifiedPredictionCountText)
+        local confidenceScore = tonumber(confidenceScoreText)
 
         if parsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE or protocolVersion ~= self.PROTOCOL_VERSION then
             return nil
@@ -291,6 +307,10 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         outState.sampleCount = math.max(2, math.floor(sampleCount or 2))
         outState.startConfirmed = startConfirmed == 1
         outState.endConfirmed = endConfirmed == 1
+        outState.observationCount = math.max(1, math.floor(observationCount or 1))
+        outState.verificationCount = math.max(0, math.floor(verificationCount or 0))
+        outState.verifiedPredictionCount = math.max(0, math.floor(verifiedPredictionCount or 0))
+        outState.confidenceScore = math.max(0, math.floor(confidenceScore or 0))
         return outState
     end
 

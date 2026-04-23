@@ -254,6 +254,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.autoReport.label, snapshot.autoReportInteractable == true)
     end
 
+    if controls.trajectoryPredictionTest then
+        controls.trajectoryPredictionTest:SetChecked(snapshot.trajectoryPredictionTestEnabled == true)
+        controls.trajectoryPredictionTest:SetEnabled(snapshot.trajectoryPredictionTestInteractable == true)
+        SetTextEnabled(controls.trajectoryPredictionTest.label, snapshot.trajectoryPredictionTestInteractable == true)
+    end
+
     if controls.intervalEditBox and controls.intervalLabel then
         controls.intervalEditBox:SetEnabled(snapshot.autoReportIntervalInteractable == true)
         controls.intervalEditBox:SetText(tostring(snapshot.autoReportInterval or 60))

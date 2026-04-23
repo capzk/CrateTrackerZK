@@ -11,6 +11,7 @@ end
 local UnifiedDataManager = BuildEnv('UnifiedDataManager')
 
 local AppContext = BuildEnv("AppContext");
+local PersistentMapStateStore = BuildEnv("PersistentMapStateStore");
 local PhaseStateStore = BuildEnv("PhaseStateStore");
 local StateBuckets = BuildEnv("StateBuckets");
 local TimeStateStore = BuildEnv("TimeStateStore");
@@ -90,176 +91,44 @@ local function GetPhaseScopedKey(mapId, expansionID)
     return tostring(ResolveMapExpansionID(mapId, expansionID)) .. ":" .. tostring(mapId);
 end
 
-local function GetObservedPhaseHistoryStore()
-    if StateBuckets and StateBuckets.GetObservedPhaseHistory then
-        return StateBuckets:GetObservedPhaseHistory();
-    end
-    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or {};
-    if type(uiDB.observedPhaseHistory) ~= "table" then
-        uiDB.observedPhaseHistory = {};
-    end
-    return uiDB.observedPhaseHistory;
-end
-
-local function IsPlayerCurrentlyOnTrackedMap(mapId)
-    if type(mapId) ~= "number" then
-        return false;
-    end
-
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil;
-    if type(mapData) ~= "table" or type(mapData.mapID) ~= "number" then
-        return false;
-    end
-
-    local currentMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player") or nil;
-    return currentMapID == mapData.mapID;
-end
-
-local function CanUseTemporaryRecordForPhase(manager, mapId, phaseId, tempRecord)
-    if type(tempRecord) ~= "table" then
-        return false;
-    end
-    if type(phaseId) ~= "string" or phaseId == "" then
-        return true;
-    end
-
-    if type(tempRecord.phaseId) == "string" and tempRecord.phaseId ~= "" then
-        return tempRecord.phaseId == phaseId;
-    end
-
-    local sharedStateByMap = manager and manager.sharedDisplayStateByMap or nil;
-    local state = type(sharedStateByMap) == "table" and sharedStateByMap[mapId] or nil;
-    local phaseChangedAt = type(state) == "table" and tonumber(state.phaseChangedAt) or nil;
-    if type(phaseChangedAt) ~= "number" then
-        return true;
-    end
-
-    local setTime = tonumber(tempRecord.setTime);
-    if type(setTime) ~= "number" then
-        return true;
-    end
-
-    return setTime >= phaseChangedAt;
-end
-
-local function PopulatePhaseColor(outColor, r, g, b)
-    outColor.r = r;
-    outColor.g = g;
-    outColor.b = b;
-    return outColor;
-end
-
-local function AssignDisplayTime(outDisplayTime, record, isPersistent)
-    if type(outDisplayTime) ~= "table" or type(record) ~= "table" then
+local function GetTrackedMapData(mapId)
+    if type(mapId) ~= "number" or not Data or not Data.GetMap then
         return nil;
     end
-
-    outDisplayTime.time = record.timestamp;
-    outDisplayTime.source = record.source;
-    outDisplayTime.isPersistent = isPersistent == true;
-    return outDisplayTime;
+    return Data:GetMap(mapId);
 end
 
-local function ResetDisplayTime(outDisplayTime)
-    if type(outDisplayTime) ~= "table" then
+local function GetPersistentTimeRecordInto(mapId, outRecord)
+    local mapData = GetTrackedMapData(mapId);
+    if not mapData or type(outRecord) ~= "table" then
         return nil;
     end
-    outDisplayTime.time = nil;
-    outDisplayTime.source = nil;
-    outDisplayTime.isPersistent = nil;
-    return outDisplayTime;
-end
-
-local function ReleaseSharedDisplay(manager, mapId)
-    if manager and manager.OnSharedDisplayReleased then
-        manager:OnSharedDisplayReleased(mapId);
+    if PersistentMapStateStore and PersistentMapStateStore.GetTimeRecordInto then
+        return PersistentMapStateStore:GetTimeRecordInto(mapData, outRecord);
     end
-end
-
-local function ActivateSharedDisplay(manager, mapId, currentPhaseID, sharedRecord, outDisplayTime)
-    if type(outDisplayTime) ~= "table" or type(sharedRecord) ~= "table" then
-        return nil;
-    end
-
-    outDisplayTime.time = sharedRecord.timestamp;
-    outDisplayTime.source = sharedRecord.source or manager.TimeSource.PUBLIC_CHANNEL_SYNC;
-    outDisplayTime.isPersistent = false;
-    if manager and manager.OnSharedDisplayActivated then
-        manager:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord);
-    end
-    return outDisplayTime;
-end
-
-local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
-    if tempRecord and persistentRecord then
-        if tempRecord.timestamp > persistentRecord.timestamp then
-            return tempRecord, false;
-        end
-        return persistentRecord, true;
-    end
-    if persistentRecord then
-        return persistentRecord, true;
-    end
-    if tempRecord then
-        return tempRecord, false;
-    end
-    return nil, nil;
-end
-
-local function GetActiveTemporaryTimeRecord(manager, timeData, now)
-    if not manager or type(timeData) ~= "table" or type(timeData.temporaryTime) ~= "table" then
-        return nil;
-    end
-
-    local temporaryTime = timeData.temporaryTime;
-    if now - temporaryTime.setTime <= manager.TEMPORARY_TIME_EXPIRE then
-        return temporaryTime;
-    end
-
-    timeData.temporaryTime = nil;
     return nil;
 end
 
-local function ResolveLocalDisplay(manager, mapId, tempRecord, persistentRecord, outDisplayTime)
-    local localRecord, isPersistent = SelectLatestLocalDisplayRecord(tempRecord, persistentRecord);
-    if not localRecord then
-        ReleaseSharedDisplay(manager, mapId);
+local function GetPersistentAirdropStateInto(mapId, outState)
+    local mapData = GetTrackedMapData(mapId);
+    if not mapData or type(outState) ~= "table" then
         return nil;
     end
-
-    AssignDisplayTime(outDisplayTime, localRecord, isPersistent == true);
-    ReleaseSharedDisplay(manager, mapId);
-    return outDisplayTime;
+    if PersistentMapStateStore and PersistentMapStateStore.GetAirdropStateInto then
+        return PersistentMapStateStore:GetAirdropStateInto(mapData, outState);
+    end
+    return nil;
 end
 
-local function ResolvePhaseScopedDisplay(manager, mapId, currentPhaseID, tempRecord, persistentRecord, sharedRecord, outDisplayTime)
-    local phaseTransitionEligible = manager.CanUseSharedDisplayForPhase
-        and manager:CanUseSharedDisplayForPhase(mapId, currentPhaseID) == true;
-    local tempRecordMatchesCurrentPhase = CanUseTemporaryRecordForPhase(manager, mapId, currentPhaseID, tempRecord);
-    local persistentMatchesCurrentPhase = persistentRecord
-        and type(persistentRecord.phaseId) == "string"
-        and persistentRecord.phaseId == currentPhaseID;
-    local hasLocalCurrentPhaseSource = persistentMatchesCurrentPhase
-        or (tempRecord and tempRecordMatchesCurrentPhase) == true;
-    local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible;
-
-    if persistentMatchesCurrentPhase then
-        AssignDisplayTime(outDisplayTime, persistentRecord, true);
-        ReleaseSharedDisplay(manager, mapId);
-        return outDisplayTime;
+local function PersistAirdropState(mapId, state)
+    local mapData = GetTrackedMapData(mapId);
+    if not mapData or type(state) ~= "table" then
+        return false;
     end
-
-    if tempRecord and tempRecordMatchesCurrentPhase then
-        AssignDisplayTime(outDisplayTime, tempRecord, false);
-        ReleaseSharedDisplay(manager, mapId);
-        return outDisplayTime;
+    if PersistentMapStateStore and PersistentMapStateStore.PersistAirdropState then
+        return PersistentMapStateStore:PersistAirdropState(mapData, state) == true;
     end
-
-    if sharedRecord and shouldTrySharedDisplay then
-        return ActivateSharedDisplay(manager, mapId, currentPhaseID, sharedRecord, outDisplayTime);
-    end
-
-    return ResolveLocalDisplay(manager, mapId, tempRecord, persistentRecord, outDisplayTime);
+    return false;
 end
 
 -- 初始化
@@ -389,7 +258,7 @@ function UnifiedDataManager:GetPersistentTimeRecordInto(mapId, outRecord)
         return nil;
     end
 
-    local record = Data and Data.GetPersistentTimeRecordInto and Data:GetPersistentTimeRecordInto(mapId, outRecord) or nil;
+    local record = GetPersistentTimeRecordInto(mapId, outRecord);
     if not record then
         return nil;
     end
@@ -416,7 +285,7 @@ function UnifiedDataManager:GetPersistentAirdropStateInto(mapId, outState)
         return nil;
     end
 
-    local state = Data and Data.GetPersistentAirdropStateInto and Data:GetPersistentAirdropStateInto(mapId, outState) or nil;
+    local state = GetPersistentAirdropStateInto(mapId, outState);
     if not state then
         return nil;
     end
@@ -434,12 +303,9 @@ function UnifiedDataManager:ClearPersistentPhase(mapId)
     if not self.isInitialized then
         return false;
     end
-    if Data and Data.PersistAirdropState then
-        return Data:PersistAirdropState(mapId, {
-            lastRefreshPhase = false,
-        }) == true;
-    end
-    return true;
+    return PersistAirdropState(mapId, {
+        lastRefreshPhase = false,
+    }) == true;
 end
 
 function UnifiedDataManager:SynchronizeTrackedMaps()
@@ -510,19 +376,16 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId,
         return false;
     end
 
-    local persisted = true;
-    if Data and Data.PersistAirdropState then
-        local persistState = {
-            lastRefresh = timestamp,
-            lastRefreshSource = source,
-            currentAirdropObjectGUID = metadata and metadata.currentAirdropObjectGUID or nil,
-            currentAirdropTimestamp = metadata and (metadata.currentAirdropTimestamp or metadata.eventTimestamp) or timestamp,
-        };
-        if metadata and metadata.persistPhaseState == true then
-            persistState.lastRefreshPhase = metadata.lastRefreshPhase;
-        end
-        persisted = Data:PersistAirdropState(mapId, persistState) == true;
+    local persistState = {
+        lastRefresh = timestamp,
+        lastRefreshSource = source,
+        currentAirdropObjectGUID = metadata and metadata.currentAirdropObjectGUID or nil,
+        currentAirdropTimestamp = metadata and (metadata.currentAirdropTimestamp or metadata.eventTimestamp) or timestamp,
+    };
+    if metadata and metadata.persistPhaseState == true then
+        persistState.lastRefreshPhase = metadata.lastRefreshPhase;
     end
+    local persisted = PersistAirdropState(mapId, persistState);
     if not persisted then
         return false;
     end
@@ -594,13 +457,10 @@ function UnifiedDataManager:SetPersistentPhase(mapId, phaseId, source)
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
     end
-    if Data and Data.PersistAirdropState then
-        local success = Data:PersistAirdropState(mapId, {
-            lastRefreshPhase = phaseId or false,
-        }) == true;
-        if not success then
-            return false;
-        end
+    if PersistAirdropState(mapId, {
+        lastRefreshPhase = phaseId or false,
+    }) ~= true then
+        return false;
     end
     
     return true;
@@ -692,8 +552,9 @@ function UnifiedDataManager:GetPersistentPhase(mapId)
     if not self.isInitialized then
         return nil;
     end
-    if Data and Data.GetPersistentPhase then
-        return Data:GetPersistentPhase(mapId);
+    local mapData = GetTrackedMapData(mapId);
+    if mapData and PersistentMapStateStore and PersistentMapStateStore.GetPhase then
+        return PersistentMapStateStore:GetPhase(mapData);
     end
     return nil;
 end

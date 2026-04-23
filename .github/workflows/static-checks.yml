@@ -1,0 +1,29 @@
+name: Static Checks
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Lua Runtime
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y lua5.4
+
+    - name: Run Refactor Checks
+      shell: pwsh
+      run: ./tools/run_refactor_checks.ps1 -Root "."

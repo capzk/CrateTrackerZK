@@ -254,6 +254,20 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         lt("SettingsAutoReportInterval", "通知频率（秒）"),
         onApplyInterval
     )
+
+    controls.trajectoryPredictionTest = SettingsPanelFactory:CreateCheckbox(
+        page,
+        controls.intervalLabel,
+        lt("SettingsTrajectoryPredictionTest", "测试：轨迹预测通报与标记"),
+        function(enabled)
+            if SettingsPanelActions and SettingsPanelActions.SetTrajectoryPredictionTestEnabled then
+                SettingsPanelActions:SetTrajectoryPredictionTestEnabled(enabled)
+            end
+            if onRefresh then
+                onRefresh()
+            end
+        end
+    )
 end
 
 function SettingsPanelPages:BuildAppearancePage(parent, pageKey, pages, controls, lt, onRefresh)

@@ -66,6 +66,7 @@ localeData["SettingsPhaseTeamAlertTooltip"] = "При включении соо�
 localeData["SettingsSoundAlert"] = "Звуковое напоминание";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
 localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";
+localeData["SettingsTrajectoryPredictionTest"] = "Прогноз траектории (тест)";
 localeData["SettingsClearButton"] = "Очистить локальные данные";
 localeData["SettingsToggleOn"] = "Включено";
 localeData["SettingsToggleOff"] = "Выключено";
