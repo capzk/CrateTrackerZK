@@ -317,6 +317,7 @@ function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
         createdAt = syncState.timestamp,
         updatedAt = syncState.timestamp,
         source = "shared",
+        continuityConfirmed = syncState.continuityConfirmed == true,
         startSource = type(syncState.startSource) == "string" and syncState.startSource or nil,
         endSource = type(syncState.endSource) == "string" and syncState.endSource or nil,
         startConfirmed = syncState.startConfirmed == true,

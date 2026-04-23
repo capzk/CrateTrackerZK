@@ -20,6 +20,7 @@ ExpansionConfig.expansions = {
         airdropCrateVignetteIDs = {
             2967,
             6066,
+            6067,
         },
         airdropCrates = {
             {
@@ -50,6 +51,7 @@ ExpansionConfig.expansions = {
         airdropCrateVignetteIDs = {
             2967,
             6066,
+            6067,
         },
         airdropCrates = {
             {

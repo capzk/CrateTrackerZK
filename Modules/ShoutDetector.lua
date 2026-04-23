@@ -81,23 +81,28 @@ local function CancelTrajectoryShoutRetry(mapRuntimeId)
     return true;
 end
 
-local function ScheduleTrajectoryShoutRetry(targetMapData)
+local function ScheduleTrajectoryShoutRetry(targetMapData, shoutTimestamp)
     if type(targetMapData) ~= "table" or type(targetMapData.id) ~= "number" then
         return false;
     end
-    if not C_Timer or not C_Timer.NewTimer then
+    if not C_Timer or not C_Timer.NewTicker then
         return false;
     end
 
+    local retryInterval = AirdropTrajectoryService and AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_INTERVAL or 1.0;
+    local maxAttempts = math.max(1, math.floor(tonumber(AirdropTrajectoryService and AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_ATTEMPTS) or 5));
+
     CancelTrajectoryShoutRetry(targetMapData.id);
-    ShoutDetector.trajectoryShoutRetryTimers[targetMapData.id] = C_Timer.NewTimer(1.0, function()
-        CancelTrajectoryShoutRetry(targetMapData.id);
+    local attempts = 0;
+    ShoutDetector.trajectoryShoutRetryTimers[targetMapData.id] = C_Timer.NewTicker(retryInterval, function()
+        attempts = attempts + 1;
 
         local retryTargetMapData, retryCurrentMapID = GetTrackedMap();
         if not retryTargetMapData
             or type(retryTargetMapData.id) ~= "number"
             or retryTargetMapData.id ~= targetMapData.id
             or IsMapHidden(retryTargetMapData) then
+            CancelTrajectoryShoutRetry(targetMapData.id);
             return;
         end
 
@@ -105,7 +110,27 @@ local function ScheduleTrajectoryShoutRetry(targetMapData)
         if retryIconResult
             and AirdropTrajectoryService
             and AirdropTrajectoryService.HandleAirdropShout then
-            AirdropTrajectoryService:HandleAirdropShout(retryTargetMapData, Utils:GetCurrentTimestamp(), retryIconResult);
+            CancelTrajectoryShoutRetry(targetMapData.id);
+            AirdropTrajectoryService:HandleAirdropShout(retryTargetMapData, shoutTimestamp or Utils:GetCurrentTimestamp(), retryIconResult);
+            return;
+        end
+
+        if attempts >= maxAttempts then
+            if AirdropTrajectoryService and AirdropTrajectoryService.RecordTraceEvent then
+                local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(retryTargetMapData) or tostring(retryTargetMapData.mapID or "");
+                AirdropTrajectoryService:RecordTraceEvent({
+                    recordedAt = shoutTimestamp or Utils:GetCurrentTimestamp(),
+                    eventType = "start_capture_timeout",
+                    mapName = mapName,
+                    mapID = retryTargetMapData.mapID,
+                    runtimeMapId = retryTargetMapData.id,
+                    note = "no_plane_vignette_after_shout",
+                });
+            end
+            if AirdropTrajectoryService and type(AirdropTrajectoryService.pendingShoutStartByMap) == "table" then
+                AirdropTrajectoryService.pendingShoutStartByMap[targetMapData.id] = nil;
+            end
+            CancelTrajectoryShoutRetry(targetMapData.id);
         end
     end);
     return true;
@@ -162,7 +187,7 @@ local function OnShoutDetected(message)
     if shoutIconResult then
         CancelTrajectoryShoutRetry(targetMapData.id);
     else
-        ScheduleTrajectoryShoutRetry(targetMapData);
+        ScheduleTrajectoryShoutRetry(targetMapData, currentTime);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then
         UIRefreshCoordinator:RequestRowRefresh(targetMapData.id, {

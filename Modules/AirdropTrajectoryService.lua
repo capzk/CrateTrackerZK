@@ -25,6 +25,8 @@ AirdropTrajectoryService.MATCH_PROJECTION_MARGIN = 0.08
 AirdropTrajectoryService.MATCH_CONFIRM_STABLE_SAMPLES = 2
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_ABSOLUTE = 0.05
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_RATIO = 0.20
+AirdropTrajectoryService.MATCH_MIN_REMAINING_ABSOLUTE = 0.04
+AirdropTrajectoryService.MATCH_MIN_REMAINING_RATIO = 0.15
 AirdropTrajectoryService.MATCH_START_DISTANCE_TOLERANCE = 0.08
 AirdropTrajectoryService.MATCH_AMBIGUITY_DISTANCE_MARGIN = 0.004
 AirdropTrajectoryService.MATCH_AMBIGUITY_START_MARGIN = 0.015
@@ -41,11 +43,30 @@ AirdropTrajectoryService.MOVE_CONFIRM_DISTANCE = 0.0045
 AirdropTrajectoryService.CRUISE_LINE_TOLERANCE = 0.012
 AirdropTrajectoryService.CRUISE_PROGRESS_MARGIN = 0.0035
 AirdropTrajectoryService.MISSING_FINALIZE_DELAY = 2.2
+AirdropTrajectoryService.END_CONFIRM_WAIT_TIMEOUT = 15
 AirdropTrajectoryService.PARTIAL_MIN_OBSERVATION_DISTANCE = 0.015
 AirdropTrajectoryService.PREDICTION_VERIFICATION_TOLERANCE = 0.015
 AirdropTrajectoryService.SHOUT_START_CONFIRM_WINDOW = 60
+AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_INTERVAL = 1.0
+AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_ATTEMPTS = 5
 AirdropTrajectoryService.TRACE_DEBUG_SETTING_KEY = "trajectoryTraceDebugEnabled"
-AirdropTrajectoryService.PREDICTION_TEST_SETTING_KEY = "trajectoryPredictionTestEnabled"
+AirdropTrajectoryService.MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
+AirdropTrajectoryService.MAX_TRACE_EVENTS = 30
+
+local function NormalizeTraceText(value)
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+    return value
+end
+
+local function NormalizeTraceNumber(value)
+    local numberValue = tonumber(value)
+    if type(numberValue) ~= "number" then
+        return nil
+    end
+    return numberValue
+end
 
 local function BuildPredictionMessage(targetMapData, route)
     if type(targetMapData) ~= "table" or type(route) ~= "table" then
@@ -102,6 +123,7 @@ function AirdropTrajectoryService:Initialize()
     self.isInitialized = true
     self.activeObservationByMap = self.activeObservationByMap or {}
     self.pendingShoutStartByMap = self.pendingShoutStartByMap or {}
+    self.traceEvents = self.traceEvents or {}
     if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize and not AirdropTrajectoryStore.routesByMap then
         AirdropTrajectoryStore:Initialize()
     end
@@ -127,23 +149,31 @@ function AirdropTrajectoryService:SetTraceDebugEnabled(enabled)
     return normalized
 end
 
-function AirdropTrajectoryService:IsPredictionTestEnabled()
+function AirdropTrajectoryService:IsMatchingDebugEnabled()
     if AppSettingsStore and AppSettingsStore.GetBoolean then
-        return AppSettingsStore:GetBoolean(self.PREDICTION_TEST_SETTING_KEY, false)
+        return AppSettingsStore:GetBoolean(self.MATCH_DEBUG_SETTING_KEY, false)
     end
     local uiDB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
-    return uiDB[self.PREDICTION_TEST_SETTING_KEY] == true
+    return uiDB[self.MATCH_DEBUG_SETTING_KEY] == true
 end
 
-function AirdropTrajectoryService:SetPredictionTestEnabled(enabled)
+function AirdropTrajectoryService:SetMatchingDebugEnabled(enabled)
     local normalized = enabled == true
     if AppSettingsStore and AppSettingsStore.SetBoolean then
-        AppSettingsStore:SetBoolean(self.PREDICTION_TEST_SETTING_KEY, normalized)
+        AppSettingsStore:SetBoolean(self.MATCH_DEBUG_SETTING_KEY, normalized)
         return normalized
     end
     CRATETRACKERZK_UI_DB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
-    CRATETRACKERZK_UI_DB[self.PREDICTION_TEST_SETTING_KEY] = normalized
+    CRATETRACKERZK_UI_DB[self.MATCH_DEBUG_SETTING_KEY] = normalized
     return normalized
+end
+
+function AirdropTrajectoryService:IsPredictionTestEnabled()
+    return self:IsMatchingDebugEnabled()
+end
+
+function AirdropTrajectoryService:SetPredictionTestEnabled(enabled)
+    return self:SetMatchingDebugEnabled(enabled)
 end
 
 function AirdropTrajectoryService:Reset()
@@ -151,6 +181,57 @@ function AirdropTrajectoryService:Reset()
     self.pendingShoutStartByMap = {}
     self.isInitialized = false
     return true
+end
+
+function AirdropTrajectoryService:RecordTraceEvent(event)
+    if type(event) ~= "table" then
+        return false
+    end
+
+    self.traceEvents = self.traceEvents or {}
+    local entry = {
+        recordedAt = NormalizeTraceNumber(event.recordedAt) or Utils:GetCurrentTimestamp(),
+        eventType = NormalizeTraceText(event.eventType) or "unknown",
+        mapName = NormalizeTraceText(event.mapName),
+        mapID = NormalizeTraceNumber(event.mapID),
+        runtimeMapId = NormalizeTraceNumber(event.runtimeMapId),
+        vignetteID = NormalizeTraceNumber(event.vignetteID),
+        vignetteGUID = NormalizeTraceText(event.vignetteGUID),
+        objectGUID = NormalizeTraceText(event.objectGUID),
+        sourceObjectGUID = NormalizeTraceText(event.sourceObjectGUID),
+        positionX = NormalizeTraceNumber(event.positionX),
+        positionY = NormalizeTraceNumber(event.positionY),
+        sampleCount = NormalizeTraceNumber(event.sampleCount),
+        routeKey = NormalizeTraceText(event.routeKey),
+        startSource = NormalizeTraceText(event.startSource),
+        endSource = NormalizeTraceText(event.endSource),
+        startConfirmed = event.startConfirmed == nil and nil or event.startConfirmed == true,
+        endConfirmed = event.endConfirmed == nil and nil or event.endConfirmed == true,
+        note = NormalizeTraceText(event.note),
+    }
+
+    self.traceEvents[#self.traceEvents + 1] = entry
+
+    local maxCount = math.max(1, math.floor(tonumber(self.MAX_TRACE_EVENTS) or 30))
+    while #self.traceEvents > maxCount do
+        table.remove(self.traceEvents, 1)
+    end
+    return true
+end
+
+function AirdropTrajectoryService:GetRecentTraceEvents(maxAgeSeconds)
+    local result = {}
+    local now = Utils:GetCurrentTimestamp()
+    local maxAge = tonumber(maxAgeSeconds) or 3600
+
+    for _, entry in ipairs(self.traceEvents or {}) do
+        local recordedAt = tonumber(entry and entry.recordedAt)
+        if type(recordedAt) == "number" and (now - recordedAt) <= maxAge then
+            result[#result + 1] = entry
+        end
+    end
+
+    return result
 end
 
 function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime, iconResult)
@@ -161,6 +242,7 @@ function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime,
         self:Initialize()
     end
 
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
     local shoutState = {
         timestamp = tonumber(currentTime) or Utils:GetCurrentTimestamp()
     }
@@ -170,6 +252,22 @@ function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime,
         shoutState.positionY = tonumber(iconResult.positionY)
     end
 
+    if self.RecordTraceEvent then
+        self:RecordTraceEvent({
+            recordedAt = shoutState.timestamp,
+            eventType = type(iconResult) == "table" and iconResult.detected == true and "start_capture" or "start_capture_pending",
+            mapName = mapName,
+            mapID = targetMapData.mapID,
+            runtimeMapId = targetMapData.id,
+            vignetteID = iconResult and iconResult.vignetteID or nil,
+            vignetteGUID = iconResult and iconResult.vignetteGUID or nil,
+            objectGUID = shoutState.objectGUID,
+            positionX = shoutState.positionX,
+            positionY = shoutState.positionY,
+            note = type(iconResult) == "table" and iconResult.detected == true and "shout_icon_captured" or "shout_icon_missing",
+        })
+    end
+
     self.pendingShoutStartByMap = self.pendingShoutStartByMap or {}
     self.pendingShoutStartByMap[targetMapData.id] = shoutState
 
@@ -177,14 +275,31 @@ function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime,
     if type(activeState) == "table"
         and AirdropTrajectorySamplingService
         and AirdropTrajectorySamplingService.ApplyConfirmedStartFromShout then
-        AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(activeState, shoutState)
+        local applied, reason = AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(activeState, shoutState)
+        if self.RecordTraceEvent then
+            self:RecordTraceEvent({
+                recordedAt = shoutState.timestamp,
+                eventType = applied == true and "start_applied" or "start_apply_rejected",
+                mapName = mapName,
+                mapID = targetMapData.mapID,
+                runtimeMapId = targetMapData.id,
+                objectGUID = shoutState.objectGUID,
+                sourceObjectGUID = activeState.objectGUID,
+                positionX = shoutState.positionX,
+                positionY = shoutState.positionY,
+                sampleCount = activeState.sampleCount,
+                startSource = activeState.startSource,
+                startConfirmed = activeState.startConfirmed == true,
+                note = reason,
+            })
+        end
     end
     return true
 end
 
 function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
-    local predictionTestEnabled = self.IsPredictionTestEnabled and self:IsPredictionTestEnabled() == true
-    if predictionTestEnabled ~= true then
+    local matchingDebugEnabled = self.IsMatchingDebugEnabled and self:IsMatchingDebugEnabled() == true
+    if matchingDebugEnabled ~= true then
         return true
     end
 
@@ -217,6 +332,9 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
 end
 
 function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconResult)
+    if self.IsMatchingDebugEnabled and self:IsMatchingDebugEnabled() ~= true then
+        return false
+    end
     if AirdropTrajectoryMatchingService and AirdropTrajectoryMatchingService.TryMatchPrediction then
         return AirdropTrajectoryMatchingService:TryMatchPrediction(self, targetMapData, state, iconResult)
     end

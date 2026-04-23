@@ -131,6 +131,13 @@ local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
     return nil, nil
 end
 
+local function SelectLatestPhaseMatchedLocalRecord(tempRecord, tempRecordMatchesCurrentPhase, persistentRecord, persistentMatchesCurrentPhase)
+    return SelectLatestLocalDisplayRecord(
+        tempRecordMatchesCurrentPhase == true and tempRecord or nil,
+        persistentMatchesCurrentPhase == true and persistentRecord or nil
+    )
+end
+
 local function GetActiveTemporaryTimeRecord(manager, timeData, now)
     if not manager or type(timeData) ~= "table" or type(timeData.temporaryTime) ~= "table" then
         return nil
@@ -164,18 +171,17 @@ local function ResolvePhaseScopedDisplay(manager, mapId, currentPhaseID, tempRec
     local persistentMatchesCurrentPhase = persistentRecord
         and type(persistentRecord.phaseId) == "string"
         and persistentRecord.phaseId == currentPhaseID
-    local hasLocalCurrentPhaseSource = persistentMatchesCurrentPhase
-        or (tempRecord and tempRecordMatchesCurrentPhase) == true
+    local currentPhaseRecord, currentPhaseIsPersistent = SelectLatestPhaseMatchedLocalRecord(
+        tempRecord,
+        tempRecordMatchesCurrentPhase,
+        persistentRecord,
+        persistentMatchesCurrentPhase
+    )
+    local hasLocalCurrentPhaseSource = currentPhaseRecord ~= nil
     local shouldTrySharedDisplay = (not hasLocalCurrentPhaseSource) or phaseTransitionEligible
 
-    if persistentMatchesCurrentPhase then
-        AssignDisplayTime(outDisplayTime, persistentRecord, true)
-        ReleaseSharedDisplay(manager, mapId)
-        return outDisplayTime
-    end
-
-    if tempRecord and tempRecordMatchesCurrentPhase then
-        AssignDisplayTime(outDisplayTime, tempRecord, false)
+    if currentPhaseRecord then
+        AssignDisplayTime(outDisplayTime, currentPhaseRecord, currentPhaseIsPersistent == true)
         ReleaseSharedDisplay(manager, mapId)
         return outDisplayTime
     end

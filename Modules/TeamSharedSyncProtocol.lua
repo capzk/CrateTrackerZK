@@ -107,6 +107,7 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
     local verifiedPredictionCount = tonumber(routeState.verifiedPredictionCount) or 0
     local startConfirmed = routeState.startConfirmed == true and 1 or 0
     local endConfirmed = routeState.endConfirmed == true and 1 or 0
+    local continuityConfirmed = routeState.continuityConfirmed == true and 1 or 0
     local startSource = DecodePayloadField(EncodePayloadField(routeState.startSource))
     local endSource = DecodePayloadField(EncodePayloadField(routeState.endSource))
     local scale = tonumber(self.COORDINATE_SCALE) or 10000
@@ -139,6 +140,7 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
         tostring(math.max(1, math.floor(observationCount))),
         tostring(math.max(0, math.floor(verificationCount))),
         tostring(math.max(0, math.floor(verifiedPredictionCount))),
+        tostring(continuityConfirmed),
     }, "|")
 end
 
@@ -272,8 +274,13 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     end
 
     if messageType == self.TRAJECTORY_MESSAGE_TYPE then
-        local parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, startSourceText, endSourceText, observationCountText, verificationCountText, verifiedPredictionCountText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+        local parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, startSourceText, endSourceText, observationCountText, verificationCountText, verifiedPredictionCountText, continuityConfirmedText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+        if not parsedMessageType then
+            parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, startSourceText, endSourceText, observationCountText, verificationCountText, verifiedPredictionCountText =
+                payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+            continuityConfirmedText = nil
+        end
         local protocolVersion = tonumber(versionText)
         local mapID = tonumber(mapIDText)
         local scale = tonumber(self.COORDINATE_SCALE) or 10000
@@ -290,6 +297,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         local observationCount = tonumber(observationCountText)
         local verificationCount = tonumber(verificationCountText)
         local verifiedPredictionCount = tonumber(verifiedPredictionCountText)
+        local continuityConfirmed = tonumber(continuityConfirmedText)
         if parsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE or protocolVersion ~= self.PROTOCOL_VERSION then
             return nil
         end
@@ -315,6 +323,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         outState.observationCount = math.max(1, math.floor(observationCount or 1))
         outState.verificationCount = math.max(0, math.floor(verificationCount or 0))
         outState.verifiedPredictionCount = math.max(0, math.floor(verifiedPredictionCount or 0))
+        outState.continuityConfirmed = continuityConfirmed == 1
         return outState
     end
 

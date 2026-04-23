@@ -265,20 +265,6 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         end
     end)
     ReanchorCheckbox(controls.soundAlert, controls.intervalLabel, -52, -14)
-
-    controls.trajectoryPredictionTest = SettingsPanelFactory:CreateCheckbox(
-        page,
-        controls.soundAlert,
-        lt("SettingsTrajectoryPredictionTest", "测试：轨迹预测通报与标记"),
-        function(enabled)
-            if SettingsPanelActions and SettingsPanelActions.SetTrajectoryPredictionTestEnabled then
-                SettingsPanelActions:SetTrajectoryPredictionTestEnabled(enabled)
-            end
-            if onRefresh then
-                onRefresh()
-            end
-        end
-    )
 end
 
 function SettingsPanelPages:BuildAppearancePage(parent, pageKey, pages, controls, lt, onRefresh)

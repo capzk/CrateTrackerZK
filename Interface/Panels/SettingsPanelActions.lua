@@ -5,7 +5,6 @@ local SettingsPanelState = BuildEnv("CrateTrackerZKSettingsPanelState")
 local AddonControlService = BuildEnv("AddonControlService")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
-local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 function SettingsPanelActions:SetAddonEnabled(enabled)
     if AddonControlService and AddonControlService.ApplyAddonEnabled then
@@ -42,12 +41,6 @@ end
 function SettingsPanelActions:SetAutoTeamReportEnabled(enabled)
     if Notification and Notification.SetAutoTeamReportEnabled then
         Notification:SetAutoTeamReportEnabled(enabled == true)
-    end
-end
-
-function SettingsPanelActions:SetTrajectoryPredictionTestEnabled(enabled)
-    if AirdropTrajectoryService and AirdropTrajectoryService.SetPredictionTestEnabled then
-        AirdropTrajectoryService:SetPredictionTestEnabled(enabled == true)
     end
 end
 

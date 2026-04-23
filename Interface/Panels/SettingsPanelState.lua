@@ -8,7 +8,6 @@ local ThemeConfig = BuildEnv("ThemeConfig")
 local ExpansionConfig = BuildEnv("ExpansionConfig")
 local Data = BuildEnv("Data")
 local Localization = BuildEnv("Localization")
-local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 function SettingsPanelState:LT(key, fallback)
     local L = CrateTrackerZK and CrateTrackerZK.L
@@ -90,13 +89,6 @@ end
 
 function SettingsPanelState:IsThemeSwitchEnabled()
     return ThemeConfig and ThemeConfig.IsSwitchEnabled and ThemeConfig:IsSwitchEnabled()
-end
-
-function SettingsPanelState:IsTrajectoryPredictionTestEnabled()
-    if AirdropTrajectoryService and AirdropTrajectoryService.IsPredictionTestEnabled then
-        return AirdropTrajectoryService:IsPredictionTestEnabled() == true
-    end
-    return false
 end
 
 function SettingsPanelState:GetThemeOptions()
@@ -186,8 +178,6 @@ function SettingsPanelState:GetSettingsSnapshot()
         autoReportInteractable = addonEnabled and teamEnabled,
         autoReportInterval = self:GetAutoTeamReportInterval(),
         autoReportIntervalInteractable = addonEnabled and teamEnabled and autoEnabled,
-        trajectoryPredictionTestEnabled = self:IsTrajectoryPredictionTestEnabled(),
-        trajectoryPredictionTestInteractable = addonEnabled,
         themeEnabled = self:IsThemeSwitchEnabled(),
         themeText = self:GetCurrentThemeButtonText(),
         mapGroups = self:GetTrackedMapGroups(),

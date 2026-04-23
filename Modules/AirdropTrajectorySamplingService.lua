@@ -32,6 +32,7 @@ end
 
 local function IsCompleteReliableObservation(state)
     return type(state) == "table"
+        and state.continuityBroken ~= true
         and state.startConfirmed == true
         and state.endConfirmed == true
         and state.startSource == "npc_shout"
@@ -180,6 +181,300 @@ local function EmitTraceDebugOutput(targetMapData, state)
     return true
 end
 
+local function BuildMissingCrateSummaryMessage(targetMapData, state)
+    if type(targetMapData) ~= "table" or type(state) ~= "table" then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+    local lastX = FormatCoordinatePercent(state.lastX or 0)
+    local lastY = FormatCoordinatePercent(state.lastY or 0)
+    return string.format(
+        "【%s】轨迹终点确认超时，未检测到箱子图标，已放弃本次未完成轨迹。最后飞机坐标：%s, %s",
+        mapName,
+        lastX,
+        lastY
+    )
+end
+
+local function EmitMissingCrateDebugOutput(service, targetMapData, state)
+    if type(service) ~= "table"
+        or not service.IsTraceDebugEnabled
+        or service:IsTraceDebugEnabled() ~= true then
+        return false
+    end
+
+    local message = BuildMissingCrateSummaryMessage(targetMapData, state)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        NotificationOutputService:SendLocalMessage(message)
+        return true
+    end
+    if Logger and Logger.Info then
+        Logger:Info("Trajectory", "调试", message)
+        return true
+    end
+    return false
+end
+
+local function BuildContinuityInterruptedMessage(targetMapData, state)
+    if type(state) ~= "table" then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+    local lastX = FormatCoordinatePercent(state.lastX or 0)
+    local lastY = FormatCoordinatePercent(state.lastY or 0)
+    return string.format(
+        "【%s】轨迹链路已中断，已放弃本次样本：最后飞机坐标=%s, %s | 样本=%d",
+        mapName,
+        lastX,
+        lastY,
+        math.floor(tonumber(state.sampleCount) or 0)
+    )
+end
+
+local function EmitContinuityInterruptedDebugOutput(service, targetMapData, state)
+    if type(service) ~= "table"
+        or not service.IsTraceDebugEnabled
+        or service:IsTraceDebugEnabled() ~= true then
+        return false
+    end
+
+    local message = BuildContinuityInterruptedMessage(targetMapData, state)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        NotificationOutputService:SendLocalMessage(message)
+        return true
+    end
+    if Logger and Logger.Info then
+        Logger:Info("Trajectory", "调试", message)
+        return true
+    end
+    return false
+end
+
+local function BuildEndConfirmedSummaryMessage(targetMapData, iconResult, state)
+    if type(targetMapData) ~= "table" or type(iconResult) ~= "table" then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+    local positionX = FormatCoordinatePercent(iconResult.positionX or 0)
+    local positionY = FormatCoordinatePercent(iconResult.positionY or 0)
+    return string.format(
+        "【%s】轨迹终点确认：vignetteID=%s | vignetteGUID=%s | objectGUID=%s | 坐标=%s, %s | 样本=%d",
+        mapName,
+        tostring(iconResult.vignetteID or "nil"),
+        tostring(iconResult.vignetteGUID or "nil"),
+        tostring(iconResult.objectGUID or "nil"),
+        positionX,
+        positionY,
+        math.floor(tonumber(state and state.sampleCount) or 0)
+    )
+end
+
+local function RecordEndConfirmedTraceEvent(service, targetMapData, iconResult, state, currentTime)
+    if type(service) ~= "table" or not service.RecordTraceEvent then
+        return false
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData and targetMapData.mapID or "")
+    return service:RecordTraceEvent({
+        recordedAt = tonumber(currentTime) or Utils:GetCurrentTimestamp(),
+        eventType = "end_confirmed",
+        mapName = mapName,
+        mapID = targetMapData and targetMapData.mapID or nil,
+        runtimeMapId = targetMapData and targetMapData.id or nil,
+        vignetteID = iconResult and iconResult.vignetteID or nil,
+        vignetteGUID = iconResult and iconResult.vignetteGUID or nil,
+        objectGUID = iconResult and iconResult.objectGUID or nil,
+        sourceObjectGUID = state and state.objectGUID or nil,
+        positionX = iconResult and iconResult.positionX or nil,
+        positionY = iconResult and iconResult.positionY or nil,
+        sampleCount = state and state.sampleCount or nil,
+    }) == true
+end
+
+local function EmitEndConfirmedDebugOutput(service, targetMapData, iconResult, state)
+    if type(service) ~= "table"
+        or not service.IsTraceDebugEnabled
+        or service:IsTraceDebugEnabled() ~= true then
+        return false
+    end
+
+    local message = BuildEndConfirmedSummaryMessage(targetMapData, iconResult, state)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        NotificationOutputService:SendLocalMessage(message)
+        return true
+    end
+    if Logger and Logger.Info then
+        Logger:Info("Trajectory", "调试", message)
+        return true
+    end
+    return false
+end
+
+local function ResolveFinalizeRejectReason(state)
+    if type(state) ~= "table" then
+        return "invalid_state"
+    end
+    if state.continuityBroken == true then
+        return "continuous_tracking_interrupted"
+    end
+    if state.startConfirmed ~= true then
+        return "start_not_confirmed"
+    end
+    if state.endConfirmed ~= true then
+        return "end_not_confirmed"
+    end
+    if state.startSource ~= "npc_shout" then
+        return "invalid_start_source"
+    end
+    if state.endSource ~= "crate_vignette" then
+        return "invalid_end_source"
+    end
+    return "incomplete_route"
+end
+
+local function ShouldSuppressFinalizeRejectNoise(state, reason)
+    if type(state) ~= "table" then
+        return false
+    end
+    if reason ~= "start_not_confirmed" then
+        return false
+    end
+
+    local sampleCount = math.max(0, math.floor(tonumber(state.sampleCount) or 0))
+    return state.startConfirmed ~= true
+        and state.endConfirmed ~= true
+        and type(state.startSource) ~= "string"
+        and type(state.endSource) ~= "string"
+        and sampleCount <= 1
+end
+
+local function BuildFinalizeRejectedMessage(targetMapData, state, reason)
+    if type(state) ~= "table" then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+    return string.format(
+        "【%s】轨迹未入库：reason=%s | start=%s(%s) | end=%s(%s) | 样本=%d",
+        mapName,
+        tostring(reason or "unknown"),
+        tostring(state.startConfirmed == true),
+        tostring(state.startSource or "nil"),
+        tostring(state.endConfirmed == true),
+        tostring(state.endSource or "nil"),
+        math.floor(tonumber(state.sampleCount) or 0)
+    )
+end
+
+local function EmitFinalizeRejectedDebugOutput(service, targetMapData, state, reason)
+    if type(service) ~= "table"
+        or not service.IsTraceDebugEnabled
+        or service:IsTraceDebugEnabled() ~= true then
+        return false
+    end
+
+    local message = BuildFinalizeRejectedMessage(targetMapData, state, reason)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        NotificationOutputService:SendLocalMessage(message)
+        return true
+    end
+    if Logger and Logger.Info then
+        Logger:Info("Trajectory", "调试", message)
+        return true
+    end
+    return false
+end
+
+local function BuildRouteStoredMessage(targetMapData, routeRecord, routeChanged, storeMeta)
+    if type(routeRecord) ~= "table" then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or routeRecord.mapID or "")
+    local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
+        and AirdropTrajectoryStore:GetRouteQualityLabel(routeRecord)
+        or "unknown"
+    local confidence = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionConfidence
+        and AirdropTrajectoryStore:GetPredictionConfidence(routeRecord)
+        or 0
+    local status = type(storeMeta) == "table" and storeMeta.status or nil
+    local inputRouteKey = type(storeMeta) == "table" and storeMeta.inputRouteKey or nil
+    local storedRouteKey = type(storeMeta) == "table" and storeMeta.storedRouteKey or routeRecord.routeKey
+
+    if status == "created_new_route" then
+        return string.format(
+            "【%s】轨迹已新增入库：route=%s | 状态=%s | 可信度=%d | 样本=%d | 记录=%d",
+            mapName,
+            tostring(storedRouteKey or "unknown"),
+            tostring(quality),
+            confidence,
+            math.floor(tonumber(routeRecord.sampleCount) or 0),
+            math.floor(tonumber(routeRecord.observationCount) or 0)
+        )
+    end
+
+    if status == "updated_identical_route" then
+        return string.format(
+            "【%s】轨迹与现有完整路线完全一致，已合并计数：incoming=%s | stored=%s | 状态=%s | 可信度=%d",
+            mapName,
+            tostring(inputRouteKey or "unknown"),
+            tostring(storedRouteKey or "unknown"),
+            tostring(quality),
+            confidence
+        )
+    end
+
+    return string.format(
+        "【%s】轨迹已匹配现有路线，无新增写入：route=%s | 状态=%s | 可信度=%d",
+        mapName,
+        tostring(storedRouteKey or routeRecord.routeKey or "unknown"),
+        tostring(quality),
+        confidence
+    )
+end
+
+local function EmitRouteStoredDebugOutput(service, targetMapData, routeRecord, routeChanged, storeMeta)
+    if type(service) ~= "table"
+        or not service.IsTraceDebugEnabled
+        or service:IsTraceDebugEnabled() ~= true then
+        return false
+    end
+
+    local message = BuildRouteStoredMessage(targetMapData, routeRecord, routeChanged, storeMeta)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        NotificationOutputService:SendLocalMessage(message)
+        return true
+    end
+    if Logger and Logger.Info then
+        Logger:Info("Trajectory", "调试", message)
+        return true
+    end
+    return false
+end
+
 function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, iconResult, currentTime)
     if type(targetMapData) ~= "table" or type(iconResult) ~= "table" then
         return nil
@@ -225,25 +520,20 @@ function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, 
         cruiseEndX = nil,
         cruiseEndY = nil,
         cruiseLineLength = 0,
+        continuityStartedAt = nil,
+        continuityBroken = false,
     }
 end
 
 function AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, shoutState)
     if type(state) ~= "table" or type(shoutState) ~= "table" then
-        return false
+        return false, "invalid_state"
     end
 
     local startX = tonumber(shoutState.positionX)
     local startY = tonumber(shoutState.positionY)
     if type(startX) ~= "number" or type(startY) ~= "number" then
-        return false
-    end
-
-    local shoutObjectGUID = type(shoutState.objectGUID) == "string" and shoutState.objectGUID or nil
-    if shoutObjectGUID
-        and type(state.objectGUID) == "string"
-        and state.objectGUID ~= shoutObjectGUID then
-        return false
+        return false, "missing_position"
     end
 
     state.startConfirmed = true
@@ -253,6 +543,8 @@ function AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, sh
     state.startAnchorY = startY
     state.startAnchorSamples = 1
     state.startSource = "npc_shout"
+    state.continuityStartedAt = tonumber(shoutState.timestamp) or Utils:GetCurrentTimestamp()
+    state.continuityBroken = false
     if state.movingStarted == true then
         local cruiseEndX = tonumber(state.cruiseEndX) or tonumber(state.lastX)
         local cruiseEndY = tonumber(state.cruiseEndY) or tonumber(state.lastY)
@@ -260,7 +552,7 @@ function AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, sh
             UpdateCruiseLineEndpoint(state, startX, startY, cruiseEndX, cruiseEndY)
         end
     end
-    return true
+    return true, nil
 end
 
 function AirdropTrajectorySamplingService:AppendObservedPoint(state, positionX, positionY)
@@ -318,6 +610,8 @@ function AirdropTrajectorySamplingService:HandleDetectedCrate(service, targetMap
     state.lastSeenAt = tonumber(currentTime) or Utils:GetCurrentTimestamp()
     state.missingSince = nil
     self:AppendObservedPoint(state, endX, endY)
+    RecordEndConfirmedTraceEvent(service, targetMapData, iconResult, state, state.lastSeenAt)
+    EmitEndConfirmedDebugOutput(service, targetMapData, iconResult, state)
     state.endConfirmed = true
     state.endX = endX
     state.endY = endY
@@ -352,6 +646,30 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
     self:FinalizeObservedEndpoints(service, state)
 
     if IsCompleteReliableObservation(state) ~= true then
+        local rejectReason = ResolveFinalizeRejectReason(state)
+        if ShouldSuppressFinalizeRejectNoise(state, rejectReason) == true then
+            return false
+        end
+        if service and service.RecordTraceEvent then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = finalizeTime,
+                eventType = "finalize_rejected",
+                mapName = mapName,
+                mapID = state.mapID,
+                runtimeMapId = runtimeMapId,
+                sourceObjectGUID = state.objectGUID,
+                positionX = state.lastX,
+                positionY = state.lastY,
+                sampleCount = state.sampleCount,
+                startSource = state.startSource,
+                endSource = state.endSource,
+                startConfirmed = state.startConfirmed == true,
+                endConfirmed = state.endConfirmed == true,
+                note = rejectReason,
+            })
+        end
+        EmitFinalizeRejectedDebugOutput(service, targetMapData or { mapID = state.mapID }, state, rejectReason)
         return false
     end
 
@@ -362,13 +680,34 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
     local routeDistance = ComputeDistance(startX, startY, endX, endY)
     local minimumObservationDistance = service.MIN_OBSERVATION_DISTANCE or 0.025
     if routeDistance < minimumObservationDistance then
+        if service and service.RecordTraceEvent then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = finalizeTime,
+                eventType = "finalize_rejected",
+                mapName = mapName,
+                mapID = state.mapID,
+                runtimeMapId = runtimeMapId,
+                sourceObjectGUID = state.objectGUID,
+                positionX = endX,
+                positionY = endY,
+                sampleCount = state.sampleCount,
+                startSource = state.startSource,
+                endSource = state.endSource,
+                startConfirmed = state.startConfirmed == true,
+                endConfirmed = state.endConfirmed == true,
+                note = "route_too_short",
+            })
+        end
+        EmitFinalizeRejectedDebugOutput(service, targetMapData or { mapID = state.mapID }, state, "route_too_short")
         return false
     end
 
     local routeChanged = false
     local routeRecord = nil
+    local routeStoreMeta = nil
     if AirdropTrajectoryStore and AirdropTrajectoryStore.UpsertRoute then
-        routeChanged, routeRecord = AirdropTrajectoryStore:UpsertRoute(
+        routeChanged, routeRecord, routeStoreMeta = AirdropTrajectoryStore:UpsertRoute(
             state.mapID,
             {
                 mapID = state.mapID,
@@ -381,6 +720,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
                 createdAt = state.firstSeenAt,
                 updatedAt = finalizeTime,
                 source = "local",
+                continuityConfirmed = state.continuityBroken ~= true and state.continuityStartedAt ~= nil,
                 startSource = state.startSource,
                 endSource = state.endSource,
                 eventObjectGUID = state.objectGUID,
@@ -391,6 +731,28 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
             "local",
             finalizeTime
         )
+    end
+
+    if type(routeRecord) == "table" and service and service.RecordTraceEvent then
+        local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+        service:RecordTraceEvent({
+            recordedAt = finalizeTime,
+            eventType = routeChanged == true and "route_saved" or "route_unchanged",
+            mapName = mapName,
+            mapID = state.mapID,
+            runtimeMapId = runtimeMapId,
+            sourceObjectGUID = state.objectGUID,
+            sampleCount = routeRecord.sampleCount,
+            routeKey = routeStoreMeta and routeStoreMeta.storedRouteKey or routeRecord.routeKey,
+            startSource = routeRecord.startSource,
+            endSource = routeRecord.endSource,
+            startConfirmed = routeRecord.startConfirmed == true,
+            endConfirmed = routeRecord.endConfirmed == true,
+            note = routeStoreMeta and routeStoreMeta.status or (routeChanged == true and "stored_immediately_on_end_confirm" or "matched_existing_route"),
+        })
+    end
+    if type(routeRecord) == "table" then
+        EmitRouteStoredDebugOutput(service, targetMapData or { mapID = state.mapID }, routeRecord, routeChanged == true, routeStoreMeta)
     end
 
     local predictionAccurate = IsPredictionAccurate(service, state, routeRecord)
@@ -436,10 +798,61 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
         return false
     end
 
+    if state.startConfirmed == true and state.endConfirmed ~= true then
+        state.continuityBroken = true
+        if service and service.RecordTraceEvent then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = now,
+                eventType = "continuity_interrupted",
+                mapName = mapName,
+                mapID = targetMapData.mapID,
+                runtimeMapId = targetMapData.id,
+                sourceObjectGUID = state.objectGUID,
+                positionX = state.lastX,
+                positionY = state.lastY,
+                sampleCount = state.sampleCount,
+                startSource = state.startSource,
+                endSource = state.endSource,
+                startConfirmed = state.startConfirmed == true,
+                endConfirmed = state.endConfirmed == true,
+                note = "detection_interrupted_before_end_confirm",
+            })
+        end
+        EmitContinuityInterruptedDebugOutput(service, targetMapData, state)
+        service.activeObservationByMap[targetMapData.id] = nil
+        return false
+    end
+
     if state.movingStarted == true then
         if state.endConfirmed == true then
             return self:FinalizeObservation(service, targetMapData.id, now)
         end
+        if type(state.missingSince) ~= "number" then
+            state.missingSince = now
+            return false
+        end
+        if (now - state.missingSince) < (service.END_CONFIRM_WAIT_TIMEOUT or 15) then
+            return false
+        end
+
+        if service and service.RecordTraceEvent then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = now,
+                eventType = "end_confirm_timeout",
+                mapName = mapName,
+                mapID = targetMapData.mapID,
+                runtimeMapId = targetMapData.id,
+                sourceObjectGUID = state.objectGUID,
+                positionX = state.lastX,
+                positionY = state.lastY,
+                sampleCount = state.sampleCount,
+                note = "crate_not_detected",
+            })
+        end
+        EmitMissingCrateDebugOutput(service, targetMapData, state)
+        service.activeObservationByMap[targetMapData.id] = nil
         return false
     end
 
@@ -493,12 +906,39 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
 
         local pendingShoutStart = service.pendingShoutStartByMap and service.pendingShoutStartByMap[runtimeMapId] or nil
         local pendingTimestamp = pendingShoutStart and tonumber(pendingShoutStart.timestamp) or nil
+        local applySucceeded = false
+        local applyReason = nil
         if type(pendingTimestamp) == "number"
             and (currentTime - pendingTimestamp) >= 0
             and (currentTime - pendingTimestamp) <= (service.SHOUT_START_CONFIRM_WINDOW or 60)
-            and self:ApplyConfirmedStartFromShout(state, pendingShoutStart) == true
-            and service.pendingShoutStartByMap then
-            service.pendingShoutStartByMap[runtimeMapId] = nil
+        then
+            applySucceeded, applyReason = self:ApplyConfirmedStartFromShout(state, pendingShoutStart)
+            if applySucceeded == true and service.pendingShoutStartByMap then
+                service.pendingShoutStartByMap[runtimeMapId] = nil
+            end
+        elseif type(pendingTimestamp) == "number" then
+            applyReason = "pending_shout_expired"
+            if service.pendingShoutStartByMap then
+                service.pendingShoutStartByMap[runtimeMapId] = nil
+            end
+        end
+        if service and service.RecordTraceEvent and type(pendingTimestamp) == "number" then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = currentTime,
+                eventType = applySucceeded == true and "start_applied" or "start_apply_rejected",
+                mapName = mapName,
+                mapID = targetMapData.mapID,
+                runtimeMapId = runtimeMapId,
+                objectGUID = pendingShoutStart and pendingShoutStart.objectGUID or nil,
+                sourceObjectGUID = state.objectGUID,
+                positionX = pendingShoutStart and pendingShoutStart.positionX or nil,
+                positionY = pendingShoutStart and pendingShoutStart.positionY or nil,
+                sampleCount = state.sampleCount,
+                startSource = state.startSource,
+                startConfirmed = state.startConfirmed == true,
+                note = applySucceeded == true and "pending_shout_applied" or applyReason,
+            })
         end
         service.activeObservationByMap[runtimeMapId] = state
     else

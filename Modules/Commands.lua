@@ -295,6 +295,7 @@ function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨迹命令：/ctk traj debug [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj export [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
+    SendLocalDebugMessage("轨迹命令：/ctk traj trace recent");
 end
 
 function Commands:PrintSyncHelp()
@@ -317,9 +318,28 @@ function Commands:HandleTrajectoryTraceCommand(args)
         return true;
     end
 
+    if action == "recent" or action == "last" then
+        local entries = AirdropTrajectoryService.GetRecentTraceEvents
+            and AirdropTrajectoryService:GetRecentTraceEvents(3600)
+            or {};
+        if #entries == 0 then
+            SendLocalDebugMessage("最近 1 小时内没有轨迹终点调试记录。");
+            return true;
+        end
+
+        SendLocalDebugMessage(string.format("轨迹终点调试记录（最近 1 小时）：共 %d 条。", #entries));
+        for _, entry in ipairs(entries) do
+            local line = self:BuildTrajectoryTraceEventLine(entry);
+            if line then
+                SendLocalDebugMessage(line);
+            end
+        end
+        return true;
+    end
+
     if action == "on" then
         AirdropTrajectoryService:SetTraceDebugEnabled(true);
-        SendLocalDebugMessage("轨迹点链调试已开启：终点确认后将输出本次空投轨迹点链。");
+        SendLocalDebugMessage("轨迹点链调试已开启：终点确认后将输出本次空投轨迹点链和箱子捕获细节。");
         return true;
     end
 
@@ -329,8 +349,98 @@ function Commands:HandleTrajectoryTraceCommand(args)
         return true;
     end
 
-    SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
+    SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status|recent");
     return true;
+end
+
+function Commands:HandleTrajectoryMatchCommand(args)
+    local action = NormalizeCommandToken(args[3]);
+    if not AirdropTrajectoryService
+        or not AirdropTrajectoryService.SetMatchingDebugEnabled
+        or not AirdropTrajectoryService.IsMatchingDebugEnabled then
+        SendLocalDebugMessage("轨迹匹配调试链路未初始化。");
+        return true;
+    end
+
+    if action == "status" or action == "" then
+        local enabled = AirdropTrajectoryService:IsMatchingDebugEnabled() == true;
+        SendLocalDebugMessage(string.format("轨迹匹配调试：%s", enabled and "已开启" or "已关闭"));
+        return true;
+    end
+
+    if action == "on" then
+        AirdropTrajectoryService:SetMatchingDebugEnabled(true);
+        SendLocalDebugMessage("轨迹匹配调试已开启：将允许本地预测匹配与标记输出。");
+        return true;
+    end
+
+    if action == "off" then
+        AirdropTrajectoryService:SetMatchingDebugEnabled(false);
+        SendLocalDebugMessage("轨迹匹配调试已关闭。");
+        return true;
+    end
+
+    SendLocalDebugMessage("轨迹命令：/ctk traj match on|off|status");
+    return true;
+end
+
+function Commands:BuildTrajectoryTraceEventLine(entry)
+    if type(entry) ~= "table" then
+        return nil;
+    end
+
+    local parts = {
+        string.format("[%s]", FormatAuditTime(entry.recordedAt)),
+        tostring(entry.eventType or "unknown"),
+    };
+
+    if type(entry.mapName) == "string" and entry.mapName ~= "" then
+        parts[#parts + 1] = "map=" .. entry.mapName;
+    elseif type(entry.mapID) == "number" then
+        parts[#parts + 1] = "mapID=" .. tostring(math.floor(entry.mapID));
+    end
+    if type(entry.vignetteID) == "number" then
+        parts[#parts + 1] = "vignetteID=" .. tostring(math.floor(entry.vignetteID));
+    end
+    if type(entry.vignetteGUID) == "string" and entry.vignetteGUID ~= "" then
+        parts[#parts + 1] = "vignetteGUID=" .. entry.vignetteGUID;
+    end
+    if type(entry.objectGUID) == "string" and entry.objectGUID ~= "" then
+        parts[#parts + 1] = "objectGUID=" .. entry.objectGUID;
+    end
+    if type(entry.sourceObjectGUID) == "string" and entry.sourceObjectGUID ~= "" then
+        parts[#parts + 1] = "planeGUID=" .. entry.sourceObjectGUID;
+    end
+    if type(entry.positionX) == "number" and type(entry.positionY) == "number" then
+        parts[#parts + 1] = string.format(
+            "pos=%s,%s",
+            FormatCoordinatePercent(entry.positionX),
+            FormatCoordinatePercent(entry.positionY)
+        );
+    end
+    if type(entry.sampleCount) == "number" then
+        parts[#parts + 1] = "samples=" .. tostring(math.floor(entry.sampleCount));
+    end
+    if type(entry.startConfirmed) == "boolean" or type(entry.endConfirmed) == "boolean" then
+        parts[#parts + 1] = string.format(
+            "start=%s(%s)",
+            tostring(entry.startConfirmed == true),
+            tostring(entry.startSource or "nil")
+        );
+        parts[#parts + 1] = string.format(
+            "end=%s(%s)",
+            tostring(entry.endConfirmed == true),
+            tostring(entry.endSource or "nil")
+        );
+    end
+    if type(entry.routeKey) == "string" and entry.routeKey ~= "" then
+        parts[#parts + 1] = "route=" .. entry.routeKey;
+    end
+    if type(entry.note) == "string" and entry.note ~= "" then
+        parts[#parts + 1] = "note=" .. entry.note;
+    end
+
+    return table.concat(parts, " | ");
 end
 
 function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
@@ -414,6 +524,9 @@ function Commands:HandleTrajectoryCommand(args)
     end
     if mode == "trace" then
         return self:HandleTrajectoryTraceCommand(args);
+    end
+    if mode == "match" then
+        return self:HandleTrajectoryMatchCommand(args);
     end
     if mode ~= "debug" and mode ~= "export" then
         self:PrintTrajectoryHelp();

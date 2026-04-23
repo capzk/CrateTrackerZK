@@ -7,9 +7,7 @@ local ClearLegacyPersistentBucket
 
 AirdropTrajectoryStore.COORDINATE_SCALE = 1000
 AirdropTrajectoryStore.MIN_ROUTE_LENGTH = 0.02
-AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE = 0.018
-AirdropTrajectoryStore.MIN_DIRECTION_DOT = 0.94
-AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 12
+AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 200
 AirdropTrajectoryStore.DB_SCHEMA_VERSION = 2
 
 local function EnsureTrajectoryPersistentState()
@@ -89,27 +87,6 @@ local function ComputeRouteVector(route)
     return 0, 0, 0
 end
 
-local function BuildProjectionContext(route)
-    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.BuildProjectionContext then
-        return AirdropTrajectoryGeometryService:BuildProjectionContext(route)
-    end
-    return nil
-end
-
-local function ProjectPoint(context, x, y)
-    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.ProjectPoint then
-        return AirdropTrajectoryGeometryService:ProjectPoint(context, x, y)
-    end
-    return nil
-end
-
-local function DistancePointToLine(context, x, y)
-    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.DistancePointToLine then
-        return AirdropTrajectoryGeometryService:DistancePointToLine(context, x, y)
-    end
-    return math.huge, nil
-end
-
 local function BuildRouteKey(route)
     local startX = QuantizeCoordinate(route and route.startX)
     local startY = QuantizeCoordinate(route and route.startY)
@@ -141,6 +118,7 @@ local function CopyRouteInto(outRoute, route)
     outRoute.createdAt = route.createdAt
     outRoute.updatedAt = route.updatedAt
     outRoute.source = route.source
+    outRoute.continuityConfirmed = route.continuityConfirmed == true
     outRoute.startSource = route.startSource
     outRoute.endSource = route.endSource
     outRoute.lastEventObjectGUID = route.lastEventObjectGUID
@@ -194,6 +172,7 @@ local function NormalizeRouteRecord(routeState, source, currentTime)
         createdAt = createdAt,
         updatedAt = updatedAt,
         source = source == "local" and "local" or "shared",
+        continuityConfirmed = routeState.continuityConfirmed == true,
         startSource = type(routeState.startSource) == "string" and routeState.startSource or nil,
         endSource = type(routeState.endSource) == "string" and routeState.endSource or nil,
         lastEventObjectGUID = type(routeState.lastEventObjectGUID) == "string"
@@ -289,172 +268,6 @@ local function IsRouteRecordValid(route)
     return length >= (AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02)
 end
 
-local function SelectReferenceRoute(existing, candidate)
-    local _, _, existingLength = ComputeRouteVector(existing)
-    local _, _, candidateLength = ComputeRouteVector(candidate)
-    if candidateLength > existingLength then
-        return candidate, existing
-    end
-    return existing, candidate
-end
-
-local function IsProjectionRangeOverlapping(rangeStartA, rangeEndA, rangeStartB, rangeEndB, margin)
-    local left = math.max(math.min(rangeStartA, rangeEndA), math.min(rangeStartB, rangeEndB))
-    local right = math.min(math.max(rangeStartA, rangeEndA), math.max(rangeStartB, rangeEndB))
-    return right >= (left - (margin or 0))
-end
-
-local function IsSimilarRoute(existing, candidate)
-    if IsRouteRecordValid(existing) ~= true or IsRouteRecordValid(candidate) ~= true then
-        return false
-    end
-
-    local reference, other = SelectReferenceRoute(existing, candidate)
-    local referenceContext = BuildProjectionContext(reference)
-    local otherDx, otherDy, otherLength = ComputeRouteVector(other)
-    if not referenceContext or otherLength <= 0 then
-        return false
-    end
-
-    local directionDot = (referenceContext.unitX * (otherDx / otherLength))
-        + (referenceContext.unitY * (otherDy / otherLength))
-    if directionDot < (AirdropTrajectoryStore.MIN_DIRECTION_DOT or 0.94) then
-        return false
-    end
-
-    local startDistance, startProjection = DistancePointToLine(referenceContext, other.startX, other.startY)
-    local endDistance, endProjection = DistancePointToLine(referenceContext, other.endX, other.endY)
-    local tolerance = AirdropTrajectoryStore.ROUTE_LINE_TOLERANCE or 0.018
-    if startDistance > tolerance or endDistance > tolerance then
-        return false
-    end
-    if type(startProjection) ~= "number" or type(endProjection) ~= "number" or endProjection <= startProjection then
-        return false
-    end
-
-    return IsProjectionRangeOverlapping(
-        0,
-        referenceContext.length,
-        startProjection,
-        endProjection,
-        tolerance * 2
-    )
-end
-
-local function MergeRoutes(existing, candidate)
-    local reference = SelectReferenceRoute(existing, candidate)
-    local referenceContext = BuildProjectionContext(reference)
-    if not referenceContext then
-        return CreateRouteRecord(existing)
-    end
-
-    local startPoints = {
-        {
-            x = existing.startX,
-            y = existing.startY,
-            projection = ProjectPoint(referenceContext, existing.startX, existing.startY) or 0,
-            confirmed = existing.startConfirmed == true,
-        },
-        {
-            x = candidate.startX,
-            y = candidate.startY,
-            projection = ProjectPoint(referenceContext, candidate.startX, candidate.startY) or 0,
-            confirmed = candidate.startConfirmed == true,
-        },
-    }
-    local endPoints = {
-        {
-            x = existing.endX,
-            y = existing.endY,
-            projection = ProjectPoint(referenceContext, existing.endX, existing.endY) or referenceContext.length,
-            confirmed = existing.endConfirmed == true,
-        },
-        {
-            x = candidate.endX,
-            y = candidate.endY,
-            projection = ProjectPoint(referenceContext, candidate.endX, candidate.endY) or referenceContext.length,
-            confirmed = candidate.endConfirmed == true,
-        },
-    }
-
-    table.sort(startPoints, function(left, right)
-        if left.confirmed ~= right.confirmed then
-            return left.confirmed == true
-        end
-        if left.projection == right.projection then
-            if left.x == right.x then
-                return left.y < right.y
-            end
-            return left.x < right.x
-        end
-        return left.projection < right.projection
-    end)
-    table.sort(endPoints, function(left, right)
-        if left.confirmed ~= right.confirmed then
-            return left.confirmed == true
-        end
-        if left.projection == right.projection then
-            if left.x == right.x then
-                return left.y < right.y
-            end
-            return left.x < right.x
-        end
-        return left.projection > right.projection
-    end)
-
-    local merged = {}
-    merged.mapID = existing.mapID
-    merged.startConfirmed = existing.startConfirmed == true or candidate.startConfirmed == true
-    merged.endConfirmed = existing.endConfirmed == true or candidate.endConfirmed == true
-    merged.startX = NormalizeCoordinate(startPoints[1].x)
-    merged.startY = NormalizeCoordinate(startPoints[1].y)
-    merged.endX = NormalizeCoordinate(endPoints[1].x)
-    merged.endY = NormalizeCoordinate(endPoints[1].y)
-    merged.observationCount = math.max(1, tonumber(existing.observationCount) or 1)
-        + math.max(1, tonumber(candidate.observationCount) or 1)
-    merged.sampleCount = math.max(tonumber(existing.sampleCount) or 0, tonumber(candidate.sampleCount) or 0)
-    merged.createdAt = math.min(
-        tonumber(existing.createdAt) or tonumber(existing.updatedAt) or Utils:GetCurrentTimestamp(),
-        tonumber(candidate.createdAt) or tonumber(candidate.updatedAt) or Utils:GetCurrentTimestamp()
-    )
-    merged.updatedAt = math.max(
-        tonumber(existing.updatedAt) or 0,
-        tonumber(candidate.updatedAt) or 0
-    )
-    merged.source = ((existing.source == "local") or (candidate.source == "local")) and "local" or "shared"
-    merged.startSource = candidate.startSource or existing.startSource
-    merged.endSource = candidate.endSource or existing.endSource
-    merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
-    merged.lastEventStartedAt = math.max(
-        tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
-        tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
-    )
-    merged.verificationCount = math.max(0, tonumber(existing.verificationCount) or 0)
-        + math.max(0, tonumber(candidate.verificationCount) or 0)
-    merged.verifiedPredictionCount = math.max(0, tonumber(existing.verifiedPredictionCount) or 0)
-        + math.max(0, tonumber(candidate.verifiedPredictionCount) or 0)
-    merged.lastPredictionVerified = candidate.lastPredictionVerified == true or existing.lastPredictionVerified == true
-    merged.routeKey = BuildRouteKey(merged)
-    if type(merged.routeKey) ~= "string" or merged.routeKey == "" or IsRouteRecordValid(merged) ~= true then
-        return CreateRouteRecord(existing)
-    end
-    return FinalizeRouteReliability(merged)
-end
-
-local function MergeSameEventRoute(existing, candidate)
-    local merged = MergeRoutes(existing, candidate)
-    merged.observationCount = math.max(
-        tonumber(existing.observationCount) or 1,
-        tonumber(candidate.observationCount) or 1
-    )
-    merged.lastEventObjectGUID = candidate.lastEventObjectGUID or existing.lastEventObjectGUID
-    merged.lastEventStartedAt = math.max(
-        tonumber(existing.lastEventStartedAt) or tonumber(existing.createdAt) or 0,
-        tonumber(candidate.lastEventStartedAt) or tonumber(candidate.createdAt) or 0
-    )
-    return FinalizeRouteReliability(merged)
-end
-
 local function HasRouteChanged(existing, candidate)
     if type(existing) ~= "table" then
         return true
@@ -482,24 +295,6 @@ local function HasRouteChanged(existing, candidate)
         or (existing.lastPredictionVerified == true) ~= (candidate.lastPredictionVerified == true)
 end
 
-local function IsDuplicateRouteArtifact(existing, candidate)
-    if type(existing) ~= "table" or type(candidate) ~= "table" then
-        return false
-    end
-
-    if existing.routeKey ~= candidate.routeKey then
-        return false
-    end
-
-    local existingUpdatedAt = tonumber(existing.updatedAt)
-    local candidateUpdatedAt = tonumber(candidate.updatedAt)
-    if type(existingUpdatedAt) ~= "number" or type(candidateUpdatedAt) ~= "number" then
-        return false
-    end
-
-    return existingUpdatedAt == candidateUpdatedAt
-end
-
 local function MergeDuplicateArtifact(existing, candidate)
     local merged = CreateRouteRecord(existing)
     if type(merged) ~= "table" then
@@ -518,6 +313,7 @@ local function MergeDuplicateArtifact(existing, candidate)
         tonumber(existing.updatedAt) or 0,
         tonumber(candidate.updatedAt) or 0
     )
+    merged.continuityConfirmed = existing.continuityConfirmed == true or candidate.continuityConfirmed == true
     if merged.source ~= "local" and candidate.source == "local" then
         merged.source = "local"
     end
@@ -577,6 +373,7 @@ local function SaveMapBucket(self, mapID)
                 createdAt = route.createdAt,
                 updatedAt = route.updatedAt,
                 source = route.source,
+                continuityConfirmed = route.continuityConfirmed == true,
                 startSource = route.startSource,
                 endSource = route.endSource,
                 lastEventObjectGUID = route.lastEventObjectGUID,
@@ -661,89 +458,12 @@ local function LoadPersistentRoutesIntoRuntime(self, sourceBucket)
     return loadedCount
 end
 
-local function CanonicalizeMapBucket(self, mapID)
-    local runtimeBucket = self.routesByMap and self.routesByMap[mapID] or nil
-    if type(runtimeBucket) ~= "table" then
-        return 0
-    end
-
-    local routes = {}
-    for _, route in pairs(runtimeBucket) do
-        if type(route) == "table" then
-            routes[#routes + 1] = CreateRouteRecord(route)
-        end
-    end
-    if #routes <= 1 then
-        return 0
-    end
-
-    table.sort(routes, function(left, right)
-        local leftUpdatedAt = tonumber(left and left.updatedAt) or 0
-        local rightUpdatedAt = tonumber(right and right.updatedAt) or 0
-        if leftUpdatedAt == rightUpdatedAt then
-            local leftSamples = tonumber(left and left.sampleCount) or 0
-            local rightSamples = tonumber(right and right.sampleCount) or 0
-            if leftSamples == rightSamples then
-                return (left.routeKey or "") < (right.routeKey or "")
-            end
-            return leftSamples > rightSamples
-        end
-        return leftUpdatedAt > rightUpdatedAt
-    end)
-
-    local canonicalBucket = {}
-    local mergedCount = 0
-    for _, route in ipairs(routes) do
-        local matchedKey = nil
-        local matchedRoute = nil
-        for routeKey, existingRoute in pairs(canonicalBucket) do
-            if IsSimilarRoute(existingRoute, route) == true
-                or IsLegacyShadowOfReliableRoute(existingRoute, route) == true
-                or IsLegacyShadowOfReliableRoute(route, existingRoute) == true then
-                matchedKey = routeKey
-                matchedRoute = existingRoute
-                break
-            end
-        end
-
-        if not matchedRoute then
-            canonicalBucket[route.routeKey] = route
-        else
-            local merged = nil
-            if IsLegacyShadowOfReliableRoute(matchedRoute, route) == true then
-                merged = MergeReliableRouteWithLegacyShadow(matchedRoute, route)
-            elseif IsLegacyShadowOfReliableRoute(route, matchedRoute) == true then
-                merged = MergeReliableRouteWithLegacyShadow(route, matchedRoute)
-            else
-                merged = IsDuplicateRouteArtifact(matchedRoute, route) == true
-                    and MergeDuplicateArtifact(matchedRoute, route)
-                    or MergeRoutes(matchedRoute, route)
-            end
-            canonicalBucket[matchedKey] = nil
-            canonicalBucket[merged.routeKey] = merged
-            mergedCount = mergedCount + 1
-        end
-    end
-
-    self.routesByMap[mapID] = canonicalBucket
-    PruneMapBucket(self, mapID)
-    SaveMapBucket(self, mapID)
-    return mergedCount
-end
-
 function AirdropTrajectoryStore:Initialize()
     self.routesByMap = {}
 
     local trajectoryState = EnsureTrajectoryPersistentState()
     local persistentBucket = trajectoryState.maps or {}
     LoadPersistentRoutesIntoRuntime(self, persistentBucket)
-    for rawMapID in pairs(persistentBucket) do
-        local mapID = tonumber(rawMapID)
-        if mapID then
-            CanonicalizeMapBucket(self, mapID)
-            SaveMapBucket(self, mapID)
-        end
-    end
 
     return true
 end
@@ -773,6 +493,9 @@ function AirdropTrajectoryStore:IsShareEligible(route)
         return false
     end
     if IsReliableRoute(route) ~= true then
+        return false
+    end
+    if route.continuityConfirmed ~= true then
         return false
     end
     return true
@@ -885,53 +608,50 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
     if IsRouteRecordValid(normalized) ~= true
         or type(normalized) ~= "table"
         or IsReliableRoute(normalized) ~= true then
-        return false, nil
+        return false, nil, {
+            status = "rejected",
+            reason = "invalid_route",
+        }
     end
 
     local resolvedMapID = tonumber(normalized.mapID)
     local runtimeBucket = EnsureMapBucket(self, resolvedMapID)
-    local matchedKey = nil
-    local matchedRoute = nil
-    local sameEventMatched = false
-
-    for routeKey, route in pairs(runtimeBucket) do
-        if IsSimilarRoute(route, normalized) == true then
-            local isSameEvent = type(normalized.lastEventObjectGUID) == "string"
-                and normalized.lastEventObjectGUID ~= ""
-                and type(route.lastEventObjectGUID) == "string"
-                and route.lastEventObjectGUID == normalized.lastEventObjectGUID
-            if isSameEvent then
-                matchedKey = routeKey
-                matchedRoute = route
-                sameEventMatched = true
-                break
-            end
-            if not matchedRoute then
-                matchedKey = routeKey
-                matchedRoute = route
-            end
-        end
-    end
+    local matchedKey = normalized.routeKey
+    local matchedRoute = runtimeBucket[matchedKey]
 
     if matchedRoute then
-        local merged = sameEventMatched == true
-            and MergeSameEventRoute(matchedRoute, normalized)
-            or MergeRoutes(matchedRoute, normalized)
+        local merged = MergeDuplicateArtifact(matchedRoute, normalized)
         if HasRouteChanged(matchedRoute, merged) ~= true then
-            return false, matchedRoute
+            return false, matchedRoute, {
+                status = "unchanged",
+                reason = "matched_identical_route",
+                inputRouteKey = normalized.routeKey,
+                matchedRouteKey = matchedKey,
+                storedRouteKey = matchedRoute.routeKey,
+            }
         end
 
         runtimeBucket[matchedKey] = nil
-        runtimeBucket[merged.routeKey] = merged
+        merged.routeKey = matchedKey
+        runtimeBucket[matchedKey] = merged
         PruneMapBucket(self, resolvedMapID)
         SaveMapBucket(self, resolvedMapID)
-        return true, runtimeBucket[merged.routeKey]
+        return true, runtimeBucket[matchedKey], {
+            status = "updated_identical_route",
+            inputRouteKey = normalized.routeKey,
+            matchedRouteKey = matchedKey,
+            storedRouteKey = matchedKey,
+        }
     end
 
     runtimeBucket[normalized.routeKey] = normalized
     PruneMapBucket(self, resolvedMapID)
     SaveMapBucket(self, resolvedMapID)
-    return true, runtimeBucket[normalized.routeKey]
+    return true, runtimeBucket[normalized.routeKey], {
+        status = "created_new_route",
+        inputRouteKey = normalized.routeKey,
+        storedRouteKey = normalized.routeKey,
+    }
 end
 
 return AirdropTrajectoryStore

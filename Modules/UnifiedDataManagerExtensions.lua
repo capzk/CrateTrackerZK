@@ -95,7 +95,8 @@ function UnifiedDataManager:RestoreTemporaryPhaseCache()
             if now - record.detectTime <= self.TEMPORARY_PHASE_EXPIRE then
                 local phaseData = self:GetOrCreatePhaseData(mapId, true, expansionID);
                 phaseData.phaseId = record.phaseId;
-                phaseData.source = "phase_cache_restore";
+                -- 恢复后的本地位面缓存继续沿用“本地探测”口径，避免展示链路把它当成无效当前位面。
+                phaseData.source = self.PhaseSource and self.PhaseSource.PHASE_DETECTION or "phase_detection";
                 phaseData.detectTime = record.detectTime;
                 mapData.currentPhaseID = record.phaseId;
             end

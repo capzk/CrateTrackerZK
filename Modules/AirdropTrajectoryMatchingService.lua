@@ -138,6 +138,25 @@ local function ShouldRejectByStartDistance(service, state, matched)
     return false
 end
 
+local function ShouldRejectByRemainingDistance(service, matched)
+    if type(service) ~= "table" or type(matched) ~= "table" then
+        return false
+    end
+
+    local routeLength = tonumber(matched.routeLength)
+    local projection = tonumber(matched.projection)
+    if type(routeLength) ~= "number" or routeLength <= 0 or type(projection) ~= "number" then
+        return false
+    end
+
+    local remainingDistance = routeLength - projection
+    local minRemainingDistance = math.max(
+        tonumber(service.MATCH_MIN_REMAINING_ABSOLUTE) or 0.04,
+        routeLength * (tonumber(service.MATCH_MIN_REMAINING_RATIO) or 0.15)
+    )
+    return remainingDistance < minRemainingDistance
+end
+
 local function SortPredictionCandidates(candidates)
     table.sort(candidates, function(left, right)
         local leftDistance = tonumber(left and left.distance) or math.huge
@@ -449,6 +468,9 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
     if (tonumber(candidate.projection) or 0) < minProgress then
+        return false
+    end
+    if ShouldRejectByRemainingDistance(service, candidate) == true then
         return false
     end
 
