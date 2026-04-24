@@ -187,6 +187,140 @@ local function BuildTrajectoryExportLine(route)
     );
 end
 
+local function FormatAngleDegrees(angle)
+    local value = tonumber(angle)
+    if type(value) ~= "number" then
+        return "0.0"
+    end
+    return string.format("%.1f", math.deg(value))
+end
+
+local function FormatTrackOffset(value)
+    local numberValue = tonumber(value)
+    if type(numberValue) ~= "number" then
+        return "0.000"
+    end
+    return string.format("%.3f", numberValue)
+end
+
+local function BuildTrackGroupLine(trackIndex, track, includeMapPrefix)
+    if type(track) ~= "table" then
+        return nil;
+    end
+    local prefix = "";
+    if includeMapPrefix == true then
+        prefix = string.format("[%s|%d] ", GetMapDisplayNameByMapID(track.mapID), tonumber(track.mapID) or 0);
+    end
+    local quality = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRouteQualityLabel
+        and AirdropTrajectoryStore:GetRouteQualityLabel(track)
+        or "unknown";
+    local confidence = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionConfidence
+        and AirdropTrajectoryStore:GetPredictionConfidence(track)
+        or 0;
+    local verificationCount = math.max(0, math.floor(tonumber(track.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(track.verifiedPredictionCount) or 0));
+    local startX = FormatCoordinatePercent(track.startX);
+    local startY = FormatCoordinatePercent(track.startY);
+    local endX = FormatCoordinatePercent(track.endX);
+    local endY = FormatCoordinatePercent(track.endY);
+    return string.format(
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | track=%s | angle=%s | offset=%s | 落点 %d | raw %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | route=%s | 更新 %d",
+        prefix,
+        tonumber(trackIndex) or 0,
+        startX,
+        startY,
+        endX,
+        endY,
+        tostring(track.trackKey or "unknown"),
+        FormatAngleDegrees(track.angle),
+        FormatTrackOffset(track.offset),
+        math.max(0, math.floor(tonumber(track.landingClusterCount) or 0)),
+        math.max(0, math.floor(tonumber(track.rawRouteCount) or 0)),
+        tostring(quality),
+        confidence,
+        verifiedPredictionCount,
+        verificationCount,
+        math.floor(tonumber(track.sampleCount) or 0),
+        tostring(track.representativeRouteKey or track.routeKey or "unknown"),
+        math.floor(tonumber(track.updatedAt) or 0)
+    );
+end
+
+local function BuildLandingClusterLine(track, landingCluster)
+    if type(track) ~= "table" or type(landingCluster) ~= "table" then
+        return nil;
+    end
+    local verificationCount = math.max(0, math.floor(tonumber(landingCluster.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(landingCluster.verifiedPredictionCount) or 0));
+    local endX = FormatCoordinatePercent(landingCluster.endX);
+    local endY = FormatCoordinatePercent(landingCluster.endY);
+    return string.format(
+        "    落点#%d 终点 %s, %s | projection=%.3f | routes=%d | 验证 %d/%d | 样本 %d | route=%s",
+        math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
+        endX,
+        endY,
+        tonumber(landingCluster.endProjection) or 0,
+        math.max(1, math.floor(tonumber(landingCluster.clusterRouteCount) or 1)),
+        verifiedPredictionCount,
+        verificationCount,
+        math.floor(tonumber(landingCluster.sampleCount) or 0),
+        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown")
+    );
+end
+
+local function BuildTrackExportLine(track)
+    if type(track) ~= "table" then
+        return nil;
+    end
+    local verificationCount = math.max(0, math.floor(tonumber(track.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(track.verifiedPredictionCount) or 0));
+    local confidence = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionConfidence
+        and AirdropTrajectoryStore:GetPredictionConfidence(track)
+        or 0;
+    return string.format(
+        "CTK_TRACK|mapID=%d|trackKey=%s|start=%s,%s|end=%s,%s|angle=%.6f|offset=%.6f|landings=%d|rawRoutes=%d|verified=%d/%d|samples=%d|confidence=%d|updated=%d|route=%s",
+        tonumber(track.mapID) or 0,
+        tostring(track.trackKey or "unknown"),
+        FormatCoordinatePercent(track.startX),
+        FormatCoordinatePercent(track.startY),
+        FormatCoordinatePercent(track.endX),
+        FormatCoordinatePercent(track.endY),
+        tonumber(track.angle) or 0,
+        tonumber(track.offset) or 0,
+        math.max(0, math.floor(tonumber(track.landingClusterCount) or 0)),
+        math.max(0, math.floor(tonumber(track.rawRouteCount) or 0)),
+        verifiedPredictionCount,
+        verificationCount,
+        math.floor(tonumber(track.sampleCount) or 0),
+        confidence,
+        math.floor(tonumber(track.updatedAt) or 0),
+        tostring(track.representativeRouteKey or track.routeKey or "unknown")
+    );
+end
+
+local function BuildLandingExportLine(track, landingCluster)
+    if type(track) ~= "table" or type(landingCluster) ~= "table" then
+        return nil;
+    end
+    local verificationCount = math.max(0, math.floor(tonumber(landingCluster.verificationCount) or 0));
+    local verifiedPredictionCount = math.max(0, math.floor(tonumber(landingCluster.verifiedPredictionCount) or 0));
+    return string.format(
+        "CTK_LANDING|mapID=%d|trackKey=%s|index=%d|end=%s,%s|projection=%.6f|routes=%d|verified=%d/%d|samples=%d|updated=%d|route=%s",
+        tonumber(track.mapID) or 0,
+        tostring(track.trackKey or "unknown"),
+        math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
+        FormatCoordinatePercent(landingCluster.endX),
+        FormatCoordinatePercent(landingCluster.endY),
+        tonumber(landingCluster.endProjection) or 0,
+        math.max(1, math.floor(tonumber(landingCluster.clusterRouteCount) or 1)),
+        verifiedPredictionCount,
+        verificationCount,
+        math.floor(tonumber(landingCluster.sampleCount) or 0),
+        math.floor(tonumber(landingCluster.updatedAt) or 0),
+        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown")
+    );
+end
+
 local function FormatAuditTime(timestamp)
     local value = tonumber(timestamp)
     if type(value) ~= "number" then
@@ -292,8 +426,8 @@ local function BuildSyncAuditLine(entry)
 end
 
 function Commands:PrintTrajectoryHelp()
-    SendLocalDebugMessage("轨迹命令：/ctk traj debug [all]");
-    SendLocalDebugMessage("轨迹命令：/ctk traj export [all]");
+    SendLocalDebugMessage("轨道命令：/ctk traj debug [all]");
+    SendLocalDebugMessage("轨道命令：/ctk traj export [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace recent");
     SendLocalDebugMessage("轨迹预测开关：设置 -> 轨迹预测（测试功能）");
@@ -421,62 +555,100 @@ end
 function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
     local mapData = GetCurrentTrackedMapData();
     if not mapData or type(mapData.mapID) ~= "number" then
-        SendLocalDebugMessage("当前不在可追踪地图，无法输出当前地图轨迹；可使用 /ctk traj debug all 或 /ctk traj export all");
+        SendLocalDebugMessage("当前不在可追踪地图，无法输出当前地图轨道视图；可使用 /ctk traj debug all 或 /ctk traj export all");
         return true;
     end
 
-    local routes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(mapData.mapID) or {};
+    local tracks = AirdropTrajectoryStore and AirdropTrajectoryStore.GetTrackGroups and AirdropTrajectoryStore:GetTrackGroups(mapData.mapID) or {};
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapData.mapID);
-    if #routes == 0 then
-        SendLocalDebugMessage(string.format("【%s】当前没有已存储的空投轨迹数据。", mapName));
+    if #tracks == 0 then
+        SendLocalDebugMessage(string.format("【%s】当前没有可用的轨道组数据。", mapName));
         return true;
     end
 
     if exportMode == true then
-        SendLocalDebugMessage(string.format("【%s】轨迹导出：共 %d 条。", mapName, #routes));
-        for _, route in ipairs(routes) do
-            local exportLine = BuildTrajectoryExportLine(route);
-            if exportLine then
-                SendLocalDebugMessage(exportLine);
+        SendLocalDebugMessage(string.format("【%s】轨道导出：共 %d 条。", mapName, #tracks));
+        for _, track in ipairs(tracks) do
+            local trackExportLine = BuildTrackExportLine(track);
+            if trackExportLine then
+                SendLocalDebugMessage(trackExportLine);
+            end
+            for _, landingCluster in ipairs(track.landingClusters or {}) do
+                local landingExportLine = BuildLandingExportLine(track, landingCluster);
+                if landingExportLine then
+                    SendLocalDebugMessage(landingExportLine);
+                end
             end
         end
         return true;
     end
 
-    SendLocalDebugMessage(string.format("【%s】轨迹调试：共 %d 条。", mapName, #routes));
-    for index, route in ipairs(routes) do
-        local line = BuildTrajectoryLine(index, route, false);
-        if line then
-            SendLocalDebugMessage(line);
+    SendLocalDebugMessage(string.format("【%s】轨道调试：共 %d 条。", mapName, #tracks));
+    for index, track in ipairs(tracks) do
+        local trackLine = BuildTrackGroupLine(index, track, false);
+        if trackLine then
+            SendLocalDebugMessage(trackLine);
+        end
+        for _, landingCluster in ipairs(track.landingClusters or {}) do
+            local landingLine = BuildLandingClusterLine(track, landingCluster);
+            if landingLine then
+                SendLocalDebugMessage(landingLine);
+            end
         end
     end
     return true;
 end
 
 function Commands:PrintAllTrajectoryRoutes(exportMode)
-    local routes = {};
-    routes = AirdropTrajectoryStore and AirdropTrajectoryStore.AppendRoutesTo and AirdropTrajectoryStore:AppendRoutesTo(routes) or routes;
-    if #routes == 0 then
-        SendLocalDebugMessage("当前没有任何已存储的空投轨迹数据。");
+    local tracks = {};
+    local mapIDs = {};
+    for mapID in pairs(AirdropTrajectoryStore and AirdropTrajectoryStore.routesByMap or {}) do
+        if type(mapID) == "number" then
+            mapIDs[#mapIDs + 1] = mapID;
+        end
+    end
+    table.sort(mapIDs);
+
+    for _, mapID in ipairs(mapIDs) do
+        local mapTracks = AirdropTrajectoryStore and AirdropTrajectoryStore.GetTrackGroups and AirdropTrajectoryStore:GetTrackGroups(mapID) or {};
+        for _, track in ipairs(mapTracks) do
+            tracks[#tracks + 1] = track;
+        end
+    end
+
+    if #tracks == 0 then
+        SendLocalDebugMessage("当前没有任何轨道组数据。");
         return true;
     end
 
     if exportMode == true then
-        SendLocalDebugMessage(string.format("轨迹导出（全部地图）：共 %d 条。", #routes));
-        for _, route in ipairs(routes) do
-            local exportLine = BuildTrajectoryExportLine(route);
-            if exportLine then
-                SendLocalDebugMessage(exportLine);
+        SendLocalDebugMessage(string.format("轨道导出（全部地图）：共 %d 条。", #tracks));
+        for _, track in ipairs(tracks) do
+            local trackExportLine = BuildTrackExportLine(track);
+            if trackExportLine then
+                SendLocalDebugMessage(trackExportLine);
+            end
+            for _, landingCluster in ipairs(track.landingClusters or {}) do
+                local landingExportLine = BuildLandingExportLine(track, landingCluster);
+                if landingExportLine then
+                    SendLocalDebugMessage(landingExportLine);
+                end
             end
         end
         return true;
     end
 
-    SendLocalDebugMessage(string.format("轨迹调试（全部地图）：共 %d 条。", #routes));
-    for index, route in ipairs(routes) do
-        local line = BuildTrajectoryLine(index, route, true);
-        if line then
-            SendLocalDebugMessage(line);
+    SendLocalDebugMessage(string.format("轨道调试（全部地图）：共 %d 条。", #tracks));
+    for index, track in ipairs(tracks) do
+        local trackLine = BuildTrackGroupLine(index, track, true);
+        if trackLine then
+            SendLocalDebugMessage(trackLine);
+        end
+        for _, landingCluster in ipairs(track.landingClusters or {}) do
+            local landingLine = BuildLandingClusterLine(track, landingCluster);
+            if landingLine then
+                SendLocalDebugMessage(landingLine);
+            end
         end
     end
     return true;
@@ -502,6 +674,10 @@ function Commands:HandleTrajectoryCommand(args)
     end
     if mode == "match" then
         return self:HandleTrajectoryMatchCommand(args);
+    end
+    if mode == "family" then
+        SendLocalDebugMessage("family 视图已被 track 视图替代，请使用 /ctk traj debug [all] 或 /ctk traj export [all]。");
+        return true;
     end
     if mode ~= "debug" and mode ~= "export" then
         self:PrintTrajectoryHelp();

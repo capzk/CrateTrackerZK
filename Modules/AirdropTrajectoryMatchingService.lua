@@ -34,25 +34,6 @@ local function DistancePointToLine(context, x, y)
     return math.huge, nil
 end
 
-local function EvaluateRouteMatch(service, route, observationLine)
-    if AirdropTrajectoryGeometryService and AirdropTrajectoryGeometryService.EvaluateRouteMatch then
-        return AirdropTrajectoryGeometryService:EvaluateRouteMatch(
-            route,
-            observationLine.endX,
-            observationLine.endY,
-            observationLine.dx,
-            observationLine.dy,
-            {
-                projectionMargin = service.MATCH_PROJECTION_MARGIN or 0.08,
-                distanceTolerance = service.MATCH_DISTANCE_TOLERANCE or 0.015,
-                minDirectionDot = service.MATCH_MIN_DIRECTION_DOT or 0.92,
-                minDirectionDistance = service.MATCH_DIRECTION_MIN_DISTANCE or 0.0035,
-            }
-        )
-    end
-    return nil
-end
-
 local function ResolveObservationStart(state)
     if type(state) ~= "table" then
         return nil, nil
@@ -99,28 +80,6 @@ local function ResolveObservationLine(state, fallbackX, fallbackY)
     }
 end
 
-local function EnrichPredictionCandidate(state, matched, observationLine)
-    if type(state) ~= "table" or type(matched) ~= "table" or type(matched.route) ~= "table" then
-        return nil
-    end
-
-    local observationStartX, observationStartY = ResolveObservationStart(state)
-    if type(observationStartX) ~= "number" or type(observationStartY) ~= "number" then
-        return matched
-    end
-
-    matched.startDistance = ComputeDistance(observationStartX, observationStartY, matched.route.startX, matched.route.startY)
-    matched.observationCount = tonumber(matched.route.observationCount) or 0
-    matched.sampleCount = tonumber(matched.route.sampleCount) or 0
-    matched.confidenceScore = AirdropTrajectoryStore
-        and AirdropTrajectoryStore.GetPredictionConfidence
-        and AirdropTrajectoryStore:GetPredictionConfidence(matched.route)
-        or 0
-    matched.verifiedPredictionCount = tonumber(matched.route.verifiedPredictionCount) or 0
-    matched.observationLength = type(observationLine) == "table" and tonumber(observationLine.length) or 0
-    return matched
-end
-
 local function ShouldRejectByStartDistance(service, state, matched)
     if type(service) ~= "table" or type(state) ~= "table" or type(matched) ~= "table" then
         return false
@@ -157,7 +116,87 @@ local function ShouldRejectByRemainingDistance(service, matched)
     return remainingDistance < minRemainingDistance
 end
 
-local function SortPredictionCandidates(candidates)
+local function ResolveTrackUnitVector(track)
+    if type(track) ~= "table" then
+        return nil, nil
+    end
+
+    local ux = tonumber(track.ux)
+    local uy = tonumber(track.uy)
+    if type(ux) == "number" and type(uy) == "number" then
+        return ux, uy
+    end
+
+    local referenceRoute = type(track.representativeRoute) == "table" and track.representativeRoute or track
+    local dx, dy, length = ComputeRouteVector(referenceRoute)
+    if length <= 0 then
+        return nil, nil
+    end
+    return dx / length, dy / length
+end
+
+local function ComputeAngleDelta(observationDX, observationDY, referenceUX, referenceUY)
+    local observationLength = ComputeDistance(0, 0, observationDX or 0, observationDY or 0)
+    if observationLength <= 0 then
+        return math.huge
+    end
+
+    local referenceLength = ComputeDistance(0, 0, referenceUX or 0, referenceUY or 0)
+    if referenceLength <= 0 then
+        return math.huge
+    end
+
+    local dot = (((observationDX or 0) / observationLength) * ((referenceUX or 0) / referenceLength))
+        + (((observationDY or 0) / observationLength) * ((referenceUY or 0) / referenceLength))
+    dot = math.max(-1, math.min(1, dot))
+    return math.acos(dot)
+end
+
+local function EvaluateTrackCandidate(service, track, observationLine)
+    if type(service) ~= "table" or type(track) ~= "table" or type(observationLine) ~= "table" then
+        return nil
+    end
+
+    local referenceRoute = type(track.representativeRoute) == "table" and track.representativeRoute or track
+    local trackUX, trackUY = ResolveTrackUnitVector(track)
+    if type(trackUX) ~= "number"
+        or type(trackUY) ~= "number"
+        or type(referenceRoute) ~= "table" then
+        return nil
+    end
+
+    local context = {
+        startX = referenceRoute.startX,
+        startY = referenceRoute.startY,
+        unitX = trackUX,
+        unitY = trackUY,
+    }
+    local distance = DistancePointToLine(context, observationLine.endX, observationLine.endY)
+    if type(distance) ~= "number" or distance > (tonumber(service.MATCH_TRACK_DISTANCE_THRESHOLD) or 0.012) then
+        return nil
+    end
+
+    local angleDelta = ComputeAngleDelta(observationLine.dx, observationLine.dy, trackUX, trackUY)
+    if angleDelta > (tonumber(service.MATCH_TRACK_ANGLE_THRESHOLD) or 0.06) then
+        return nil
+    end
+
+    return {
+        track = track,
+        distance = distance,
+        angleDelta = angleDelta,
+        currentProjection = (observationLine.endX * trackUX) + (observationLine.endY * trackUY),
+        verifiedPredictionCount = tonumber(track.verifiedPredictionCount) or 0,
+        observationCount = tonumber(track.observationCount) or 0,
+        confidenceScore = AirdropTrajectoryStore
+            and AirdropTrajectoryStore.GetPredictionConfidence
+            and AirdropTrajectoryStore:GetPredictionConfidence(track)
+            or 0,
+        updatedAt = tonumber(track.updatedAt) or 0,
+    }
+end
+
+local function SortTrackCandidates(candidates)
     table.sort(candidates, function(left, right)
         local leftDistance = tonumber(left and left.distance) or math.huge
         local rightDistance = tonumber(right and right.distance) or math.huge
@@ -165,16 +204,10 @@ local function SortPredictionCandidates(candidates)
             return leftDistance < rightDistance
         end
 
-        local leftStartDistance = tonumber(left and left.startDistance) or math.huge
-        local rightStartDistance = tonumber(right and right.startDistance) or math.huge
-        if leftStartDistance ~= rightStartDistance then
-            return leftStartDistance < rightStartDistance
-        end
-
-        local leftConfidence = tonumber(left and left.confidenceScore) or 0
-        local rightConfidence = tonumber(right and right.confidenceScore) or 0
-        if leftConfidence ~= rightConfidence then
-            return leftConfidence > rightConfidence
+        local leftAngleDelta = tonumber(left and left.angleDelta) or math.huge
+        local rightAngleDelta = tonumber(right and right.angleDelta) or math.huge
+        if leftAngleDelta ~= rightAngleDelta then
+            return leftAngleDelta < rightAngleDelta
         end
 
         local leftVerifiedCount = tonumber(left and left.verifiedPredictionCount) or 0
@@ -189,18 +222,24 @@ local function SortPredictionCandidates(candidates)
             return leftObservationCount > rightObservationCount
         end
 
-        local leftSampleCount = tonumber(left and left.sampleCount) or 0
-        local rightSampleCount = tonumber(right and right.sampleCount) or 0
-        if leftSampleCount ~= rightSampleCount then
-            return leftSampleCount > rightSampleCount
+        local leftConfidence = tonumber(left and left.confidenceScore) or 0
+        local rightConfidence = tonumber(right and right.confidenceScore) or 0
+        if leftConfidence ~= rightConfidence then
+            return leftConfidence > rightConfidence
         end
 
-        return (left.route and left.route.routeKey or "") < (right.route and right.route.routeKey or "")
+        local leftUpdatedAt = tonumber(left and left.updatedAt) or 0
+        local rightUpdatedAt = tonumber(right and right.updatedAt) or 0
+        if leftUpdatedAt ~= rightUpdatedAt then
+            return leftUpdatedAt > rightUpdatedAt
+        end
+
+        return tostring(left and left.track and left.track.trackKey or "") < tostring(right and right.track and right.track.trackKey or "")
     end)
     return candidates
 end
 
-local function IsCandidateSelectionAmbiguous(service, candidates)
+local function IsTrackSelectionAmbiguous(service, candidates)
     if type(service) ~= "table" or type(candidates) ~= "table" or #candidates <= 1 then
         return false
     end
@@ -211,215 +250,81 @@ local function IsCandidateSelectionAmbiguous(service, candidates)
         return false
     end
 
-    local distanceMargin = tonumber(service.MATCH_AMBIGUITY_DISTANCE_MARGIN) or 0.004
-    local startMargin = tonumber(service.MATCH_AMBIGUITY_START_MARGIN) or 0.015
+    local distanceMargin = tonumber(service.MATCH_TRACK_AMBIGUITY_DISTANCE_MARGIN) or 0.004
+    local angleMargin = tonumber(service.MATCH_TRACK_AMBIGUITY_ANGLE_MARGIN) or 0.01
     local distanceDelta = math.abs((tonumber(second.distance) or math.huge) - (tonumber(best.distance) or math.huge))
-    local startDelta = math.abs((tonumber(second.startDistance) or math.huge) - (tonumber(best.startDistance) or math.huge))
-    return distanceDelta <= distanceMargin and startDelta <= startMargin
+    local angleDelta = math.abs((tonumber(second.angleDelta) or math.huge) - (tonumber(best.angleDelta) or math.huge))
+    return distanceDelta <= distanceMargin and angleDelta <= angleMargin
 end
 
-local function ResolveRouteFamilyStartTolerance(service, route, sibling)
-    if type(service) ~= "table" then
-        return 0.03
+local function GetForwardLandingClusters(track, currentProjection)
+    if type(track) ~= "table" then
+        return {}
     end
 
-    local defaultTolerance = tonumber(service.MATCH_ROUTE_FAMILY_START_TOLERANCE) or 0.03
-    if type(route) == "table"
-        and type(sibling) == "table"
-        and route.startConfirmed == true
-        and sibling.startConfirmed == true then
-        return math.min(defaultTolerance, 0.015)
-    end
-    return defaultTolerance
-end
-
-local function BuildProjectedPoint(route, unitX, unitY, routeLength, travelDistance)
-    if type(route) ~= "table"
-        or type(unitX) ~= "number"
-        or type(unitY) ~= "number"
-        or type(routeLength) ~= "number"
-        or routeLength <= 0
-        or type(travelDistance) ~= "number" then
-        return nil, nil
-    end
-
-    local clampedDistance = math.max(0, math.min(routeLength, travelDistance))
-    return route.startX + (clampedDistance * unitX), route.startY + (clampedDistance * unitY)
-end
-
-local function IsSiblingRoutePlausible(service, siblingContext, siblingLength, positionX, positionY, candidateDistance)
-    if type(service) ~= "table"
-        or type(siblingContext) ~= "table"
-        or type(siblingLength) ~= "number"
-        or siblingLength <= 0
-        or type(positionX) ~= "number"
-        or type(positionY) ~= "number" then
-        return false
-    end
-
-    local lineTolerance = tonumber(service.MATCH_ROUTE_FAMILY_LINE_TOLERANCE) or 0.02
-    local extensionMargin = tonumber(service.MATCH_ROUTE_FAMILY_EXTENSION_MARGIN) or 0.02
-    local distanceMargin = tonumber(service.MATCH_ROUTE_FAMILY_DISTANCE_MARGIN) or 0.003
-    local siblingFitDistance, siblingProjection = DistancePointToLine(siblingContext, positionX, positionY)
-    if type(siblingFitDistance) ~= "number" or type(siblingProjection) ~= "number" then
-        return false
-    end
-
-    local projectionMargin = siblingLength * extensionMargin
-    if siblingProjection < -projectionMargin or siblingProjection > (siblingLength + projectionMargin) then
-        return false
-    end
-    if siblingFitDistance > lineTolerance then
-        return false
-    end
-    return siblingFitDistance <= ((tonumber(candidateDistance) or math.huge) + distanceMargin)
-end
-
-local function IsCandidatePredictionAmbiguous(service, candidate, routes, positionX, positionY)
-    if type(service) ~= "table"
-        or type(candidate) ~= "table"
-        or type(routes) ~= "table"
-        or type(positionX) ~= "number"
-        or type(positionY) ~= "number" then
-        return false
-    end
-
-    local route = candidate.route
-    local projection = tonumber(candidate.projection)
-    local routeLength = tonumber(candidate.routeLength)
-    if type(route) ~= "table"
-        or type(routeLength) ~= "number"
-        or routeLength <= 0
-        or type(projection) ~= "number" then
-        return false
-    end
-
-    local familyDirectionDot = tonumber(service.MATCH_ROUTE_FAMILY_DIRECTION_DOT) or 0.985
-    local separationMin = tonumber(service.MATCH_ROUTE_FAMILY_SEPARATION_MIN) or 0.012
-    local routeDx, routeDy, routeVectorLength = ComputeRouteVector(route)
-    if routeVectorLength <= 0 then
-        return false
-    end
-
-    local routeUnitX = routeDx / routeVectorLength
-    local routeUnitY = routeDy / routeVectorLength
-    local travelDistance = math.max(0, projection)
-    local candidatePointX, candidatePointY = BuildProjectedPoint(route, routeUnitX, routeUnitY, routeLength, travelDistance)
-    if type(candidatePointX) ~= "number" or type(candidatePointY) ~= "number" then
-        return false
-    end
-
-    for _, sibling in ipairs(routes) do
-        if type(sibling) == "table"
-            and sibling ~= route
-            and sibling.startConfirmed == true
-            and sibling.endConfirmed == true then
-            local siblingDx, siblingDy, siblingLength = ComputeRouteVector(sibling)
-            if siblingLength > 0 then
-                local startTolerance = ResolveRouteFamilyStartTolerance(service, route, sibling)
-                local startDistance = ComputeDistance(route.startX, route.startY, sibling.startX, sibling.startY)
-                local directionDot = ((routeUnitX * (siblingDx / siblingLength)) + (routeUnitY * (siblingDy / siblingLength)))
-                if startDistance <= startTolerance and directionDot >= familyDirectionDot then
-                    local siblingContext = BuildProjectionContext(sibling)
-                    if type(siblingContext) == "table"
-                        and IsSiblingRoutePlausible(
-                            service,
-                            siblingContext,
-                            siblingLength,
-                            positionX,
-                            positionY,
-                            candidate.distance
-                        ) == true then
-                        local siblingUnitX = siblingDx / siblingLength
-                        local siblingUnitY = siblingDy / siblingLength
-                        local siblingPointX, siblingPointY = BuildProjectedPoint(
-                            sibling,
-                            siblingUnitX,
-                            siblingUnitY,
-                            siblingLength,
-                            travelDistance
-                        )
-                        if type(siblingPointX) == "number" and type(siblingPointY) == "number" then
-                            local familySeparation = ComputeDistance(
-                                candidatePointX,
-                                candidatePointY,
-                                siblingPointX,
-                                siblingPointY
-                            )
-                            if familySeparation < separationMin then
-                                return true
-                            end
-                        end
-                    end
-                end
+    local result = {}
+    for _, landingCluster in ipairs(track.landingClusters or {}) do
+        if type(landingCluster) == "table" then
+            local endProjection = tonumber(landingCluster.endProjection)
+            if type(endProjection) == "number" and endProjection > currentProjection then
+                result[#result + 1] = landingCluster
             end
         end
     end
-
-    return false
+    table.sort(result, function(left, right)
+        local leftProjection = tonumber(left and left.endProjection) or math.huge
+        local rightProjection = tonumber(right and right.endProjection) or math.huge
+        if leftProjection ~= rightProjection then
+            return leftProjection < rightProjection
+        end
+        return (left and left.representativeRouteKey or left and left.routeKey or "") < (right and right.representativeRouteKey or right and right.routeKey or "")
+    end)
+    return result
 end
 
-local function ShouldSuppressShortFamilyRoute(service, candidate, routes, positionX, positionY)
-    if type(service) ~= "table"
-        or type(candidate) ~= "table"
-        or type(routes) ~= "table"
-        or type(positionX) ~= "number"
-        or type(positionY) ~= "number" then
-        return false
+local function BuildLandingPredictionCandidate(state, trackCandidate, landingCluster, observationLine)
+    if type(state) ~= "table"
+        or type(trackCandidate) ~= "table"
+        or type(landingCluster) ~= "table"
+        or type(observationLine) ~= "table" then
+        return nil
     end
 
-    local route = candidate.route
-    local routeLength = tonumber(candidate.routeLength)
-    if type(route) ~= "table" or type(routeLength) ~= "number" or routeLength <= 0 then
-        return false
+    local predictionRoute = type(landingCluster.representativeRoute) == "table" and landingCluster.representativeRoute or landingCluster
+    local projectionContext = BuildProjectionContext(predictionRoute)
+    if type(predictionRoute) ~= "table" or type(projectionContext) ~= "table" then
+        return nil
     end
 
-    local shortRouteMaxLength = tonumber(service.MATCH_SHORT_ROUTE_MAX_LENGTH) or 0.18
-    if routeLength > shortRouteMaxLength then
-        return false
+    local observationStartX, observationStartY = ResolveObservationStart(state)
+    if type(observationStartX) ~= "number" or type(observationStartY) ~= "number" then
+        return nil
     end
 
-    local familyDirectionDot = tonumber(service.MATCH_ROUTE_FAMILY_DIRECTION_DOT) or 0.985
-    local longerRatio = math.max(1.0, tonumber(service.MATCH_SHORT_ROUTE_LONGER_RATIO) or 1.6)
-    local lengthGap = math.max(0, tonumber(service.MATCH_SHORT_ROUTE_LENGTH_GAP) or 0.05)
-    local routeDx, routeDy, routeVectorLength = ComputeRouteVector(route)
-    if routeVectorLength <= 0 then
-        return false
+    local _, projection = DistancePointToLine(projectionContext, observationLine.endX, observationLine.endY)
+    if type(projection) ~= "number" then
+        return nil
     end
 
-    local routeUnitX = routeDx / routeVectorLength
-    local routeUnitY = routeDy / routeVectorLength
-
-    for _, sibling in ipairs(routes) do
-        if type(sibling) == "table"
-            and sibling ~= route
-            and sibling.startConfirmed == true
-            and sibling.endConfirmed == true then
-            local siblingDx, siblingDy, siblingLength = ComputeRouteVector(sibling)
-            if siblingLength > 0 then
-                local startTolerance = ResolveRouteFamilyStartTolerance(service, route, sibling)
-                local startDistance = ComputeDistance(route.startX, route.startY, sibling.startX, sibling.startY)
-                local directionDot = ((routeUnitX * (siblingDx / siblingLength)) + (routeUnitY * (siblingDy / siblingLength)))
-                local longerEnough = siblingLength >= math.max(routeLength * longerRatio, routeLength + lengthGap)
-                if longerEnough == true and startDistance <= startTolerance and directionDot >= familyDirectionDot then
-                    local siblingContext = BuildProjectionContext(sibling)
-                    if type(siblingContext) == "table"
-                        and IsSiblingRoutePlausible(
-                            service,
-                            siblingContext,
-                            siblingLength,
-                            positionX,
-                            positionY,
-                            candidate.distance
-                        ) == true then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-
-    return false
+    return {
+        route = landingCluster,
+        predictionRoute = predictionRoute,
+        track = trackCandidate.track,
+        distance = trackCandidate.distance,
+        angleDelta = trackCandidate.angleDelta,
+        startDistance = ComputeDistance(observationStartX, observationStartY, predictionRoute.startX, predictionRoute.startY),
+        observationCount = tonumber(landingCluster.observationCount) or 0,
+        sampleCount = tonumber(landingCluster.sampleCount) or 0,
+        confidenceScore = AirdropTrajectoryStore
+            and AirdropTrajectoryStore.GetPredictionConfidence
+            and AirdropTrajectoryStore:GetPredictionConfidence(landingCluster)
+            or 0,
+        verifiedPredictionCount = tonumber(landingCluster.verifiedPredictionCount) or 0,
+        observationLength = tonumber(observationLine.length) or 0,
+        projection = projection,
+        routeLength = tonumber(projectionContext.length) or 0,
+        currentProjection = tonumber(trackCandidate.currentProjection) or 0,
+    }
 end
 
 function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapData, state, iconResult)
@@ -453,71 +358,76 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
 
-    local completeMatches = {}
-    local routes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(targetMapData.mapID) or {}
+    local trackMatches = {}
+    local tracks = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionTracks and AirdropTrajectoryStore:GetPredictionTracks(targetMapData.mapID) or {}
 
-    for _, route in ipairs(routes) do
+    for _, track in ipairs(tracks) do
         local predictionReady = AirdropTrajectoryStore and AirdropTrajectoryStore.IsPredictionReady
-            and AirdropTrajectoryStore:IsPredictionReady(route) == true
-        local routeKey = type(route) == "table" and route.routeKey or nil
-        if predictionReady == true and type(routeKey) == "string" and routeKey ~= "" then
-            local matched = EvaluateRouteMatch(service, route, observationLine)
-            if matched and type(matched.routeLength) == "number" then
-                matched = EnrichPredictionCandidate(state, matched, observationLine)
-                if ShouldRejectByStartDistance(service, state, matched) ~= true then
-                    completeMatches[#completeMatches + 1] = matched
-                end
+            and AirdropTrajectoryStore:IsPredictionReady(track) == true
+        local trackKey = type(track) == "table" and track.trackKey or nil
+        if predictionReady == true and type(trackKey) == "string" and trackKey ~= "" then
+            local matched = EvaluateTrackCandidate(service, track, observationLine)
+            if type(matched) == "table" then
+                trackMatches[#trackMatches + 1] = matched
             end
         end
     end
 
-    local currentMatches = SortPredictionCandidates(completeMatches)
-
-    if #currentMatches == 0 then
+    local currentTrackMatches = SortTrackCandidates(trackMatches)
+    if #currentTrackMatches == 0 then
         state.uniqueMatchState = nil
         return false
     end
 
-    local candidate = currentMatches[1]
-    local route = candidate.route
-    if type(route) ~= "table" or state.announcedRouteKey == route.routeKey then
-        return false
-    end
-
-    if ShouldSuppressShortFamilyRoute(service, candidate, routes, observationLine.endX, observationLine.endY) == true then
+    if IsTrackSelectionAmbiguous(service, currentTrackMatches) == true then
         state.uniqueMatchState = nil
         return false
     end
 
-    local isSelectionAmbiguous = IsCandidateSelectionAmbiguous(service, currentMatches)
-    if IsCandidatePredictionAmbiguous(service, candidate, routes, observationLine.endX, observationLine.endY) then
+    local trackCandidate = currentTrackMatches[1]
+    local track = trackCandidate.track
+    if type(track) ~= "table" then
+        state.uniqueMatchState = nil
+        return false
+    end
+
+    local forwardLandingClusters = GetForwardLandingClusters(track, tonumber(trackCandidate.currentProjection) or 0)
+    if #forwardLandingClusters ~= 1 then
+        return false
+    end
+
+    local candidate = BuildLandingPredictionCandidate(state, trackCandidate, forwardLandingClusters[1], observationLine)
+    local route = candidate and candidate.route
+    local predictionRoute = candidate and candidate.predictionRoute
+    local predictedRouteKey = type(route) == "table" and (route.representativeRouteKey or route.routeKey) or nil
+    if type(candidate) ~= "table"
+        or type(route) ~= "table"
+        or type(predictionRoute) ~= "table"
+        or type(predictedRouteKey) ~= "string"
+        or predictedRouteKey == ""
+        or state.announcedRouteKey == predictedRouteKey then
+        return false
+    end
+
+    if ShouldRejectByStartDistance(service, state, candidate) == true then
+        state.uniqueMatchState = nil
         return false
     end
 
     local uniqueState = state.uniqueMatchState
-    if isSelectionAmbiguous == true
-        and (type(uniqueState) ~= "table" or uniqueState.routeKey ~= route.routeKey) then
-        state.uniqueMatchState = nil
-        return false
-    end
-
     local shouldResetUniqueState = type(uniqueState) ~= "table"
-        or uniqueState.routeKey ~= route.routeKey
+        or uniqueState.routeKey ~= predictedRouteKey
     if shouldResetUniqueState then
         uniqueState = {
-            routeKey = route.routeKey,
-            route = route,
+            routeKey = predictedRouteKey,
+            route = predictionRoute,
             routeLength = candidate.routeLength,
             matchedSamples = 1,
         }
         state.uniqueMatchState = uniqueState
     else
-        if isSelectionAmbiguous == true and uniqueState.routeKey ~= route.routeKey then
-            state.uniqueMatchState = nil
-            return false
-        end
         uniqueState.matchedSamples = (tonumber(uniqueState.matchedSamples) or 0) + 1
-        uniqueState.route = route
+        uniqueState.route = predictionRoute
         uniqueState.routeLength = candidate.routeLength
     end
 
@@ -542,23 +452,23 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
 
-    local notified = service:NotifyPrediction(targetMapData, route)
+    local notified = service:NotifyPrediction(targetMapData, predictionRoute)
     if notified == true then
-        state.announcedRouteKey = route.routeKey
-        state.predictedRouteKey = route.routeKey
-        state.predictedEndX = route.endX
-        state.predictedEndY = route.endY
+        state.announcedRouteKey = predictedRouteKey
+        state.predictedRouteKey = predictedRouteKey
+        state.predictedEndX = predictionRoute.endX
+        state.predictedEndY = predictionRoute.endY
         state.uniqueMatchState = nil
         if service.IsPredictionTestEnabled
             and service:IsPredictionTestEnabled() == true
             and AirdropTrajectoryAlertCoordinator
             and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionMatched then
-            AirdropTrajectoryAlertCoordinator:HandleLocalPredictionMatched(
-                targetMapData,
-                route,
-                iconResult.objectGUID,
-                Utils:GetCurrentTimestamp()
-            )
+                AirdropTrajectoryAlertCoordinator:HandleLocalPredictionMatched(
+                    targetMapData,
+                    predictionRoute,
+                    iconResult.objectGUID,
+                    Utils:GetCurrentTimestamp()
+                )
         end
     end
     return notified == true

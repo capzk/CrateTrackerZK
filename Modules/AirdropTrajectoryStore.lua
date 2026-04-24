@@ -9,6 +9,10 @@ AirdropTrajectoryStore.COORDINATE_SCALE = 1000
 AirdropTrajectoryStore.MIN_ROUTE_LENGTH = 0.02
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 200
 AirdropTrajectoryStore.DB_SCHEMA_VERSION = 2
+AirdropTrajectoryStore.TRACK_ANGLE_THRESHOLD = 0.06
+AirdropTrajectoryStore.TRACK_OFFSET_THRESHOLD = 0.012
+AirdropTrajectoryStore.LANDING_PROJECTION_THRESHOLD = 0.03
+AirdropTrajectoryStore.LANDING_ENDPOINT_DISTANCE_THRESHOLD = 0.03
 
 local function EnsureTrajectoryPersistentState()
     if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table"
@@ -135,6 +139,53 @@ end
 local function CreateRouteRecord(route)
     local outRoute = {}
     return CopyRouteInto(outRoute, route)
+end
+
+local function CreateLandingClusterRecord(cluster)
+    local outRoute = CreateRouteRecord(cluster)
+    if type(outRoute) ~= "table" or type(cluster) ~= "table" then
+        return outRoute
+    end
+
+    outRoute.clusterRouteCount = math.max(1, math.floor(tonumber(cluster.clusterRouteCount) or 1))
+    outRoute.representativeRouteKey = type(cluster.representativeRouteKey) == "string"
+        and cluster.representativeRouteKey
+        or outRoute.routeKey
+    outRoute.endProjection = tonumber(cluster.endProjection)
+    outRoute.trackKey = type(cluster.trackKey) == "string" and cluster.trackKey or nil
+    outRoute.clusterIndex = tonumber(cluster.clusterIndex)
+    outRoute.representativeRoute = type(cluster.representativeRoute) == "table"
+        and CreateRouteRecord(cluster.representativeRoute)
+        or CreateRouteRecord(cluster)
+    return outRoute
+end
+
+local function CreateTrackGroupRecord(trackGroup)
+    local outRoute = CreateRouteRecord(trackGroup)
+    if type(outRoute) ~= "table" or type(trackGroup) ~= "table" then
+        return outRoute
+    end
+
+    outRoute.trackKey = type(trackGroup.trackKey) == "string" and trackGroup.trackKey or nil
+    outRoute.representativeRouteKey = type(trackGroup.representativeRouteKey) == "string"
+        and trackGroup.representativeRouteKey
+        or outRoute.routeKey
+    outRoute.rawRouteCount = math.max(1, math.floor(tonumber(trackGroup.rawRouteCount) or 1))
+    outRoute.landingClusterCount = math.max(1, math.floor(tonumber(trackGroup.landingClusterCount) or 1))
+    outRoute.angle = tonumber(trackGroup.angle)
+    outRoute.offset = tonumber(trackGroup.offset)
+    outRoute.ux = tonumber(trackGroup.ux)
+    outRoute.uy = tonumber(trackGroup.uy)
+    outRoute.nx = tonumber(trackGroup.nx)
+    outRoute.ny = tonumber(trackGroup.ny)
+    outRoute.representativeRoute = type(trackGroup.representativeRoute) == "table"
+        and CreateRouteRecord(trackGroup.representativeRoute)
+        or CreateRouteRecord(trackGroup)
+    outRoute.landingClusters = {}
+    for _, landingCluster in ipairs(trackGroup.landingClusters or {}) do
+        outRoute.landingClusters[#outRoute.landingClusters + 1] = CreateLandingClusterRecord(landingCluster)
+    end
+    return outRoute
 end
 
 local IsReliableRoute
@@ -293,6 +344,448 @@ local function HasRouteChanged(existing, candidate)
         or (tonumber(existing.verificationCount) or 0) ~= (tonumber(candidate.verificationCount) or 0)
         or (tonumber(existing.verifiedPredictionCount) or 0) ~= (tonumber(candidate.verifiedPredictionCount) or 0)
         or (existing.lastPredictionVerified == true) ~= (candidate.lastPredictionVerified == true)
+end
+
+local function CompareRepresentativePriority(left, right)
+    local leftVerifiedCount = math.max(0, math.floor(tonumber(left and left.verifiedPredictionCount) or 0))
+    local rightVerifiedCount = math.max(0, math.floor(tonumber(right and right.verifiedPredictionCount) or 0))
+    if leftVerifiedCount ~= rightVerifiedCount then
+        return leftVerifiedCount > rightVerifiedCount
+    end
+
+    local leftObservationCount = math.max(0, math.floor(tonumber(left and left.observationCount) or 0))
+    local rightObservationCount = math.max(0, math.floor(tonumber(right and right.observationCount) or 0))
+    if leftObservationCount ~= rightObservationCount then
+        return leftObservationCount > rightObservationCount
+    end
+
+    local leftSampleCount = math.max(0, math.floor(tonumber(left and left.sampleCount) or 0))
+    local rightSampleCount = math.max(0, math.floor(tonumber(right and right.sampleCount) or 0))
+    if leftSampleCount ~= rightSampleCount then
+        return leftSampleCount > rightSampleCount
+    end
+
+    local leftUpdatedAt = math.max(0, math.floor(tonumber(left and left.updatedAt) or 0))
+    local rightUpdatedAt = math.max(0, math.floor(tonumber(right and right.updatedAt) or 0))
+    if leftUpdatedAt ~= rightUpdatedAt then
+        return leftUpdatedAt > rightUpdatedAt
+    end
+
+    return tostring(left and left.routeKey or "") < tostring(right and right.routeKey or "")
+end
+
+local function SortRoutesForDerivation(routes)
+    table.sort(routes, function(left, right)
+        return CompareRepresentativePriority(left, right)
+    end)
+    return routes
+end
+
+local function NormalizeAngleDelta(leftAngle, rightAngle)
+    local delta = math.abs((tonumber(leftAngle) or 0) - (tonumber(rightAngle) or 0))
+    if delta > math.pi then
+        delta = (math.pi * 2) - delta
+    end
+    return math.abs(delta)
+end
+
+local function BuildTrackDescriptor(route)
+    if type(route) ~= "table" then
+        return nil
+    end
+
+    local dx, dy, length = ComputeRouteVector(route)
+    if length <= 0 then
+        return nil
+    end
+
+    local ux = dx / length
+    local uy = dy / length
+    local nx = -uy
+    local ny = ux
+    return {
+        angle = math.atan2(dy, dx),
+        ux = ux,
+        uy = uy,
+        nx = nx,
+        ny = ny,
+        offset = ((tonumber(route.startX) or 0) * nx) + ((tonumber(route.startY) or 0) * ny),
+        endProjection = ((tonumber(route.endX) or 0) * ux) + ((tonumber(route.endY) or 0) * uy),
+    }
+end
+
+local function BuildTrackMatchInfo(store, trackGroup, candidateRoute)
+    if type(store) ~= "table" or type(trackGroup) ~= "table" or type(candidateRoute) ~= "table" then
+        return nil
+    end
+
+    local trackAngle = tonumber(trackGroup.angle)
+    local trackOffset = tonumber(trackGroup.offset)
+    local candidateDescriptor = BuildTrackDescriptor(candidateRoute)
+    if type(trackAngle) ~= "number"
+        or type(trackOffset) ~= "number"
+        or type(candidateDescriptor) ~= "table" then
+        return nil
+    end
+
+    local angleDelta = NormalizeAngleDelta(trackAngle, candidateDescriptor.angle)
+    if angleDelta > (tonumber(store.TRACK_ANGLE_THRESHOLD) or 0.04) then
+        return nil
+    end
+
+    local offsetDistance = math.abs(trackOffset - candidateDescriptor.offset)
+    if offsetDistance > (tonumber(store.TRACK_OFFSET_THRESHOLD) or 0.008) then
+        return nil
+    end
+
+    return {
+        angleDelta = angleDelta,
+        offsetDistance = offsetDistance,
+    }
+end
+
+local function CompareTrackMatchInfo(left, right)
+    if type(left) ~= "table" then
+        return false
+    end
+    if type(right) ~= "table" then
+        return true
+    end
+
+    if left.offsetDistance ~= right.offsetDistance then
+        return left.offsetDistance < right.offsetDistance
+    end
+    if left.angleDelta ~= right.angleDelta then
+        return left.angleDelta < right.angleDelta
+    end
+    return false
+end
+
+local function InvalidateTrackGroups(self, mapID)
+    self.trackGroupsByMap = self.trackGroupsByMap or {}
+    if type(mapID) == "number" then
+        self.trackGroupsByMap[mapID] = nil
+        return true
+    end
+    self.trackGroupsByMap = {}
+    return true
+end
+
+local function SortTrackGroups(routes)
+    table.sort(routes, function(left, right)
+        local leftUpdatedAt = math.max(0, math.floor(tonumber(left and left.updatedAt) or 0))
+        local rightUpdatedAt = math.max(0, math.floor(tonumber(right and right.updatedAt) or 0))
+        if leftUpdatedAt ~= rightUpdatedAt then
+            return leftUpdatedAt > rightUpdatedAt
+        end
+        return tostring(left and left.routeKey or "") < tostring(right and right.routeKey or "")
+    end)
+    return routes
+end
+
+local function BuildAggregatedRepresentativeRoute(representativeRoute, memberRoutes)
+    if type(representativeRoute) ~= "table" or type(memberRoutes) ~= "table" then
+        return nil
+    end
+
+    local aggregated = CreateRouteRecord(representativeRoute)
+    if type(aggregated) ~= "table" then
+        return nil
+    end
+
+    aggregated.observationCount = 0
+    aggregated.sampleCount = 0
+    aggregated.createdAt = math.huge
+    aggregated.updatedAt = 0
+    aggregated.source = representativeRoute.source
+    aggregated.continuityConfirmed = false
+    aggregated.verificationCount = 0
+    aggregated.verifiedPredictionCount = 0
+    aggregated.lastPredictionVerified = false
+
+    for _, memberRoute in ipairs(memberRoutes) do
+        aggregated.observationCount = aggregated.observationCount + math.max(1, math.floor(tonumber(memberRoute.observationCount) or 1))
+        aggregated.sampleCount = math.max(aggregated.sampleCount, math.max(2, math.floor(tonumber(memberRoute.sampleCount) or 2)))
+        aggregated.updatedAt = math.max(aggregated.updatedAt, math.max(0, math.floor(tonumber(memberRoute.updatedAt) or 0)))
+        aggregated.createdAt = math.min(
+            aggregated.createdAt,
+            math.max(0, math.floor(tonumber(memberRoute.createdAt) or tonumber(memberRoute.updatedAt) or 0))
+        )
+        if aggregated.source ~= "local" and memberRoute.source == "local" then
+            aggregated.source = "local"
+        end
+        aggregated.continuityConfirmed = aggregated.continuityConfirmed or memberRoute.continuityConfirmed == true
+        aggregated.verificationCount = aggregated.verificationCount + math.max(0, math.floor(tonumber(memberRoute.verificationCount) or 0))
+        aggregated.verifiedPredictionCount = aggregated.verifiedPredictionCount + math.max(0, math.floor(tonumber(memberRoute.verifiedPredictionCount) or 0))
+        aggregated.lastPredictionVerified = aggregated.lastPredictionVerified or memberRoute.lastPredictionVerified == true
+    end
+
+    if aggregated.createdAt == math.huge then
+        aggregated.createdAt = math.max(0, math.floor(tonumber(representativeRoute.createdAt) or tonumber(representativeRoute.updatedAt) or 0))
+    end
+
+    return FinalizeRouteReliability(aggregated)
+end
+
+local function BuildLandingClusterAggregate(trackGroup, landingCluster, clusterIndex)
+    if type(trackGroup) ~= "table" or type(landingCluster) ~= "table" or type(landingCluster.representativeRoute) ~= "table" then
+        return nil
+    end
+
+    local aggregated = BuildAggregatedRepresentativeRoute(landingCluster.representativeRoute, landingCluster.memberRoutes or {})
+    if type(aggregated) ~= "table" then
+        return nil
+    end
+
+    aggregated.routeKey = landingCluster.representativeRoute.routeKey
+    aggregated.representativeRouteKey = landingCluster.representativeRoute.routeKey
+    aggregated.representativeRoute = CreateRouteRecord(landingCluster.representativeRoute)
+    aggregated.clusterRouteCount = math.max(1, math.floor(tonumber(landingCluster.clusterRouteCount) or #(landingCluster.memberRoutes or {})))
+    aggregated.endProjection = tonumber(landingCluster.endProjection)
+    aggregated.trackKey = type(trackGroup.trackKey) == "string" and trackGroup.trackKey or nil
+    aggregated.clusterIndex = clusterIndex
+    return aggregated
+end
+
+local function BuildTrackGroupAggregate(trackGroup)
+    if type(trackGroup) ~= "table" or type(trackGroup.representativeRoute) ~= "table" then
+        return nil
+    end
+
+    local aggregated = BuildAggregatedRepresentativeRoute(trackGroup.representativeRoute, trackGroup.memberRoutes or {})
+    if type(aggregated) ~= "table" then
+        return nil
+    end
+
+    aggregated.routeKey = trackGroup.representativeRoute.routeKey
+    aggregated.trackKey = tostring(trackGroup.mapID or aggregated.mapID or "0") .. ":" .. tostring(trackGroup.representativeRoute.routeKey or "unknown")
+    aggregated.representativeRouteKey = trackGroup.representativeRoute.routeKey
+    aggregated.representativeRoute = CreateRouteRecord(trackGroup.representativeRoute)
+    aggregated.rawRouteCount = math.max(1, math.floor(tonumber(trackGroup.rawRouteCount) or #(trackGroup.memberRoutes or {})))
+    aggregated.angle = tonumber(trackGroup.angle)
+    aggregated.offset = tonumber(trackGroup.offset)
+    aggregated.ux = tonumber(trackGroup.ux)
+    aggregated.uy = tonumber(trackGroup.uy)
+    aggregated.nx = tonumber(trackGroup.nx)
+    aggregated.ny = tonumber(trackGroup.ny)
+    aggregated.landingClusters = {}
+    table.sort(trackGroup.landingClusters or {}, function(left, right)
+        local leftProjection = tonumber(left and left.endProjection) or math.huge
+        local rightProjection = tonumber(right and right.endProjection) or math.huge
+        if leftProjection ~= rightProjection then
+            return leftProjection < rightProjection
+        end
+        return CompareRepresentativePriority(left and left.representativeRoute, right and right.representativeRoute)
+    end)
+    for index, landingCluster in ipairs(trackGroup.landingClusters or {}) do
+        local clusterRecord = BuildLandingClusterAggregate(aggregated, landingCluster, index)
+        if type(clusterRecord) == "table" then
+            aggregated.landingClusters[#aggregated.landingClusters + 1] = clusterRecord
+        end
+    end
+    aggregated.landingClusterCount = #aggregated.landingClusters
+    return aggregated
+end
+
+local function ComputeTrackEndProjection(trackGroup, route)
+    if type(trackGroup) ~= "table" or type(route) ~= "table" then
+        return nil
+    end
+
+    local trackUx = tonumber(trackGroup.ux)
+    local trackUy = tonumber(trackGroup.uy)
+    if type(trackUx) ~= "number" or type(trackUy) ~= "number" then
+        return nil
+    end
+
+    return ((tonumber(route.endX) or 0) * trackUx) + ((tonumber(route.endY) or 0) * trackUy)
+end
+
+local function BuildLandingClusterMatchInfo(store, trackGroup, landingCluster, candidateRoute)
+    if type(store) ~= "table"
+        or type(trackGroup) ~= "table"
+        or type(landingCluster) ~= "table"
+        or type(candidateRoute) ~= "table" then
+        return nil
+    end
+
+    local trackUx = tonumber(trackGroup.ux)
+    local trackUy = tonumber(trackGroup.uy)
+    if type(trackUx) ~= "number" or type(trackUy) ~= "number" then
+        return nil
+    end
+
+    local candidateProjection = ((tonumber(candidateRoute.endX) or 0) * trackUx) + ((tonumber(candidateRoute.endY) or 0) * trackUy)
+    local projectionDistance = math.abs(candidateProjection - (tonumber(landingCluster.endProjection) or 0))
+    if projectionDistance > (tonumber(store.LANDING_PROJECTION_THRESHOLD) or 0.03) then
+        return nil
+    end
+
+    local endpointDistance = ComputeDistance(
+        landingCluster.representativeRoute.endX,
+        landingCluster.representativeRoute.endY,
+        candidateRoute.endX,
+        candidateRoute.endY
+    )
+    if endpointDistance > (tonumber(store.LANDING_ENDPOINT_DISTANCE_THRESHOLD) or 0.03) then
+        return nil
+    end
+
+    return {
+        projectionDistance = projectionDistance,
+        endpointDistance = endpointDistance,
+    }
+end
+
+local function CompareLandingClusterMatchInfo(left, right)
+    if type(left) ~= "table" then
+        return false
+    end
+    if type(right) ~= "table" then
+        return true
+    end
+
+    if left.projectionDistance ~= right.projectionDistance then
+        return left.projectionDistance < right.projectionDistance
+    end
+    if left.endpointDistance ~= right.endpointDistance then
+        return left.endpointDistance < right.endpointDistance
+    end
+    return false
+end
+
+local function BuildTrackGroupCacheForMap(self, mapID)
+    if type(mapID) ~= "number" then
+        return {
+            trackGroups = {},
+            predictionTracks = {},
+        }
+    end
+
+    self.trackGroupsByMap = self.trackGroupsByMap or {}
+    if type(self.trackGroupsByMap[mapID]) == "table" then
+        return self.trackGroupsByMap[mapID]
+    end
+
+    local runtimeBucket = self.routesByMap and self.routesByMap[mapID] or nil
+    if type(runtimeBucket) ~= "table" then
+        local emptyCache = {
+            trackGroups = {},
+            predictionTracks = {},
+        }
+        self.trackGroupsByMap[mapID] = emptyCache
+        return emptyCache
+    end
+
+    local rawRoutes = {}
+    for _, route in pairs(runtimeBucket) do
+        if IsReliableRoute(route) == true then
+            rawRoutes[#rawRoutes + 1] = route
+        end
+    end
+    SortRoutesForDerivation(rawRoutes)
+
+    local trackGroups = {}
+    for _, route in ipairs(rawRoutes) do
+        local bestTrackGroup = nil
+        local bestMatch = nil
+        for _, trackGroup in ipairs(trackGroups) do
+            local trackMatchInfo = BuildTrackMatchInfo(self, trackGroup, route)
+            if type(trackMatchInfo) == "table" then
+                if CompareTrackMatchInfo(trackMatchInfo, bestMatch) then
+                    bestTrackGroup = trackGroup
+                    bestMatch = trackMatchInfo
+                elseif type(bestMatch) == "table"
+                    and trackMatchInfo.offsetDistance == bestMatch.offsetDistance
+                    and trackMatchInfo.angleDelta == bestMatch.angleDelta
+                    and CompareRepresentativePriority(trackGroup.representativeRoute, bestTrackGroup and bestTrackGroup.representativeRoute) then
+                    bestTrackGroup = trackGroup
+                    bestMatch = trackMatchInfo
+                end
+            end
+        end
+
+        if type(bestTrackGroup) ~= "table" then
+            local descriptor = BuildTrackDescriptor(route)
+            trackGroups[#trackGroups + 1] = {
+                mapID = mapID,
+                representativeRoute = route,
+                memberRoutes = { route },
+                angle = descriptor and descriptor.angle or nil,
+                ux = descriptor and descriptor.ux or nil,
+                uy = descriptor and descriptor.uy or nil,
+                nx = descriptor and descriptor.nx or nil,
+                ny = descriptor and descriptor.ny or nil,
+                offset = descriptor and descriptor.offset or nil,
+                landingClusters = {},
+            }
+        else
+            bestTrackGroup.memberRoutes[#bestTrackGroup.memberRoutes + 1] = route
+            if CompareRepresentativePriority(route, bestTrackGroup.representativeRoute) then
+                bestTrackGroup.representativeRoute = route
+                local descriptor = BuildTrackDescriptor(route)
+                bestTrackGroup.angle = descriptor and descriptor.angle or nil
+                bestTrackGroup.ux = descriptor and descriptor.ux or nil
+                bestTrackGroup.uy = descriptor and descriptor.uy or nil
+                bestTrackGroup.nx = descriptor and descriptor.nx or nil
+                bestTrackGroup.ny = descriptor and descriptor.ny or nil
+                bestTrackGroup.offset = descriptor and descriptor.offset or nil
+            end
+        end
+    end
+
+    local aggregatedTrackGroups = {}
+    for _, trackGroup in ipairs(trackGroups) do
+        local landingClusters = {}
+        local sortedMembers = {}
+        for _, memberRoute in ipairs(trackGroup.memberRoutes or {}) do
+            sortedMembers[#sortedMembers + 1] = memberRoute
+        end
+        SortRoutesForDerivation(sortedMembers)
+
+        for _, memberRoute in ipairs(sortedMembers) do
+            local bestLandingCluster = nil
+            local bestLandingMatch = nil
+            for _, landingCluster in ipairs(landingClusters) do
+                local landingMatchInfo = BuildLandingClusterMatchInfo(self, trackGroup, landingCluster, memberRoute)
+                if CompareLandingClusterMatchInfo(landingMatchInfo, bestLandingMatch) then
+                    bestLandingCluster = landingCluster
+                    bestLandingMatch = landingMatchInfo
+                end
+            end
+
+            if type(bestLandingCluster) ~= "table" then
+                landingClusters[#landingClusters + 1] = {
+                    representativeRoute = memberRoute,
+                    memberRoutes = { memberRoute },
+                    endProjection = ComputeTrackEndProjection(trackGroup, memberRoute),
+                    clusterRouteCount = 1,
+                }
+            else
+                bestLandingCluster.memberRoutes[#bestLandingCluster.memberRoutes + 1] = memberRoute
+                bestLandingCluster.clusterRouteCount = #(bestLandingCluster.memberRoutes)
+                if CompareRepresentativePriority(memberRoute, bestLandingCluster.representativeRoute) then
+                    bestLandingCluster.representativeRoute = memberRoute
+                    bestLandingCluster.endProjection = ComputeTrackEndProjection(trackGroup, memberRoute)
+                end
+            end
+        end
+
+        trackGroup.rawRouteCount = #(trackGroup.memberRoutes or {})
+        trackGroup.landingClusters = landingClusters
+        local aggregatedTrackGroup = BuildTrackGroupAggregate(trackGroup)
+        if type(aggregatedTrackGroup) == "table" then
+            aggregatedTrackGroups[#aggregatedTrackGroups + 1] = aggregatedTrackGroup
+        end
+    end
+    SortTrackGroups(aggregatedTrackGroups)
+
+    local cache = {
+        trackGroups = aggregatedTrackGroups,
+        predictionTracks = aggregatedTrackGroups,
+    }
+    self.trackGroupsByMap[mapID] = cache
+    return cache
 end
 
 local function MergeDuplicateArtifact(existing, candidate)
@@ -489,6 +982,7 @@ end
 
 function AirdropTrajectoryStore:Initialize()
     self.routesByMap = {}
+    self.trackGroupsByMap = {}
 
     local trajectoryState = EnsureTrajectoryPersistentState()
     local persistentBucket = trajectoryState.maps or {}
@@ -552,11 +1046,13 @@ function AirdropTrajectoryStore:UpdatePredictionVerification(mapID, routeKey, is
     route.lastPredictionVerified = isAccurate == true
     FinalizeRouteReliability(route)
     SaveMapBucket(self, mapID)
+    InvalidateTrackGroups(self, mapID)
     return true, route
 end
 
 function AirdropTrajectoryStore:Reset()
     self.routesByMap = {}
+    self.trackGroupsByMap = {}
     return true
 end
 
@@ -572,6 +1068,7 @@ function AirdropTrajectoryStore:ClearPersistentData()
     CRATETRACKERZK_TRAJECTORY_DB = nil
     EnsureTrajectoryPersistentState()
     self.routesByMap = {}
+    self.trackGroupsByMap = {}
     return true
 end
 
@@ -598,6 +1095,32 @@ function AirdropTrajectoryStore:GetRoutes(mapID)
         return leftUpdatedAt > rightUpdatedAt
     end)
     return routes
+end
+
+function AirdropTrajectoryStore:GetPredictionTracks(mapID)
+    if type(mapID) ~= "number" then
+        return {}
+    end
+
+    local cache = BuildTrackGroupCacheForMap(self, mapID)
+    local routes = {}
+    for _, route in ipairs(cache.predictionTracks or {}) do
+        routes[#routes + 1] = CreateTrackGroupRecord(route)
+    end
+    return routes
+end
+
+function AirdropTrajectoryStore:GetTrackGroups(mapID)
+    if type(mapID) ~= "number" then
+        return {}
+    end
+
+    local cache = BuildTrackGroupCacheForMap(self, mapID)
+    local trackGroups = {}
+    for _, route in ipairs(cache.trackGroups or {}) do
+        trackGroups[#trackGroups + 1] = CreateTrackGroupRecord(route)
+    end
+    return trackGroups
 end
 
 function AirdropTrajectoryStore:AppendRoutesTo(outRoutes)
@@ -665,6 +1188,7 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
         runtimeBucket[matchedKey] = merged
         PruneMapBucket(self, resolvedMapID)
         SaveMapBucket(self, resolvedMapID)
+        InvalidateTrackGroups(self, resolvedMapID)
         return true, runtimeBucket[matchedKey], {
             status = "updated_identical_route",
             inputRouteKey = normalized.routeKey,
@@ -676,11 +1200,20 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
     runtimeBucket[normalized.routeKey] = normalized
     PruneMapBucket(self, resolvedMapID)
     SaveMapBucket(self, resolvedMapID)
+    InvalidateTrackGroups(self, resolvedMapID)
     return true, runtimeBucket[normalized.routeKey], {
         status = "created_new_route",
         inputRouteKey = normalized.routeKey,
         storedRouteKey = normalized.routeKey,
     }
+end
+
+function AirdropTrajectoryStore:GetPredictionRoutes(mapID)
+    return self:GetPredictionTracks(mapID)
+end
+
+function AirdropTrajectoryStore:GetRouteFamilies(mapID)
+    return self:GetTrackGroups(mapID)
 end
 
 return AirdropTrajectoryStore

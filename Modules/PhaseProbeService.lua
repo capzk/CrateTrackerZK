@@ -13,6 +13,9 @@ local UnitIsWildBattlePet = UnitIsWildBattlePet
 local UnitInVehicle = UnitInVehicle
 local UnitUsingVehicle = UnitUsingVehicle
 local UnitCreatureID = UnitCreatureID
+local UnitCreatureType = UnitCreatureType
+local UnitIsTrivial = UnitIsTrivial
+local UnitLevel = UnitLevel
 local C_GUIDUtil_GetCreatureID = C_GUIDUtil and C_GUIDUtil.GetCreatureID or nil
 
 -- 玩家坐骑随行 NPC（商人/拍卖师/幻化师/车夫等）黑名单
@@ -32,6 +35,20 @@ local EXCLUDED_PLAYER_MOUNT_NPC_IDS = {
     [142666] = true,  -- Collector Unta
     [142668] = true,  -- Merchant Maku
 }
+
+local LOW_LEVEL_PROBE_MAX_LEVEL = 5
+local CRITTER_CREATURE_TYPES = {
+    ["Critter"] = true,
+    ["小动物"] = true,
+    ["小動物"] = true,
+}
+
+local function IsCritterCreatureType(creatureType)
+    if type(creatureType) ~= "string" or creatureType == "" then
+        return false
+    end
+    return CRITTER_CREATURE_TYPES[creatureType] == true
+end
 
 local function SafeSplitGuid(guid)
     if not guid or type(guid) ~= "string" then
@@ -79,6 +96,20 @@ function PhaseProbeService:IsIgnoredUnit(unit)
     end
 
     if UnitUsingVehicle and UnitUsingVehicle(unit) then
+        return true
+    end
+
+    local creatureType = UnitCreatureType and UnitCreatureType(unit) or nil
+    if IsCritterCreatureType(creatureType) then
+        return true
+    end
+
+    if UnitIsTrivial and UnitIsTrivial(unit) then
+        return true
+    end
+
+    local unitLevel = UnitLevel and tonumber(UnitLevel(unit)) or nil
+    if type(unitLevel) == "number" and unitLevel > 0 and unitLevel <= LOW_LEVEL_PROBE_MAX_LEVEL then
         return true
     end
 
