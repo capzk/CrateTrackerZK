@@ -67,6 +67,7 @@ localeData["SettingsSoundAlert"] = "Звуковое напоминание";
 localeData["SettingsAutoReport"] = "Авто-уведомление";
 localeData["SettingsAutoReportInterval"] = "Интервал отправки (сек)";
 localeData["SettingsTrajectoryPredictionTest"] = "Прогноз траектории (тест)";
+localeData["SettingsTrajectoryPredictionTestTooltip"] = "При включении будут показываться только локально видимые подсказки прогноза траектории и метка точки падения на карте; сообщения прогноза, видимые группе, не отправляются.";
 localeData["SettingsClearButton"] = "Очистить локальные данные";
 localeData["SettingsToggleOn"] = "Включено";
 localeData["SettingsToggleOff"] = "Выключено";

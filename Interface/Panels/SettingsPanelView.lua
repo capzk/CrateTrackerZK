@@ -248,6 +248,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.soundAlert.label, snapshot.soundAlertInteractable == true)
     end
 
+    if controls.trajectoryPrediction then
+        controls.trajectoryPrediction:SetChecked(snapshot.trajectoryPredictionEnabled == true)
+        controls.trajectoryPrediction:SetEnabled(snapshot.trajectoryPredictionInteractable == true)
+        SetTextEnabled(controls.trajectoryPrediction.label, snapshot.trajectoryPredictionInteractable == true)
+    end
+
     if controls.autoReport then
         controls.autoReport:SetChecked(snapshot.autoReportEnabled == true)
         controls.autoReport:SetEnabled(snapshot.autoReportInteractable == true)

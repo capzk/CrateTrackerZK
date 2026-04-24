@@ -65,6 +65,7 @@ localeData["SettingsSoundAlert"] = "사운드 리마인더";
 localeData["SettingsAutoReport"] = "자동 알림";
 localeData["SettingsAutoReportInterval"] = "알림 간격 (초)";
 localeData["SettingsTrajectoryPredictionTest"] = "궤적 예측 (테스트 기능)";
+localeData["SettingsTrajectoryPredictionTestTooltip"] = "활성화하면 나에게만 보이는 궤적 예측 알림과 지도 낙하지점 표식만 표시되며, 팀에게 보이는 예측 메시지는 전송되지 않습니다.";
 localeData["SettingsClearButton"] = "로컬 데이터 삭제";
 localeData["SettingsToggleOn"] = "활성화";
 localeData["SettingsToggleOff"] = "비활성화";

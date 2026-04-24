@@ -296,6 +296,7 @@ function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨迹命令：/ctk traj export [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace recent");
+    SendLocalDebugMessage("轨迹预测开关：设置 -> 轨迹预测（测试功能）");
 end
 
 function Commands:PrintSyncHelp()
@@ -354,33 +355,7 @@ function Commands:HandleTrajectoryTraceCommand(args)
 end
 
 function Commands:HandleTrajectoryMatchCommand(args)
-    local action = NormalizeCommandToken(args[3]);
-    if not AirdropTrajectoryService
-        or not AirdropTrajectoryService.SetMatchingDebugEnabled
-        or not AirdropTrajectoryService.IsMatchingDebugEnabled then
-        SendLocalDebugMessage("轨迹匹配调试链路未初始化。");
-        return true;
-    end
-
-    if action == "status" or action == "" then
-        local enabled = AirdropTrajectoryService:IsMatchingDebugEnabled() == true;
-        SendLocalDebugMessage(string.format("轨迹匹配调试：%s", enabled and "已开启" or "已关闭"));
-        return true;
-    end
-
-    if action == "on" then
-        AirdropTrajectoryService:SetMatchingDebugEnabled(true);
-        SendLocalDebugMessage("轨迹匹配调试已开启：将允许本地预测匹配与标记输出。");
-        return true;
-    end
-
-    if action == "off" then
-        AirdropTrajectoryService:SetMatchingDebugEnabled(false);
-        SendLocalDebugMessage("轨迹匹配调试已关闭。");
-        return true;
-    end
-
-    SendLocalDebugMessage("轨迹命令：/ctk traj match on|off|status");
+    SendLocalDebugMessage("轨迹预测开关已移至设置页：设置 -> 轨迹预测（测试功能）。");
     return true;
 end
 

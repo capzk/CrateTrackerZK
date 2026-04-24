@@ -38,6 +38,9 @@ AirdropTrajectoryService.MATCH_ROUTE_FAMILY_LINE_TOLERANCE = 0.02
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_EXTENSION_MARGIN = 0.02
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_SEPARATION_MIN = 0.012
 AirdropTrajectoryService.MATCH_ROUTE_FAMILY_DISTANCE_MARGIN = 0.003
+AirdropTrajectoryService.MATCH_SHORT_ROUTE_MAX_LENGTH = 0.18
+AirdropTrajectoryService.MATCH_SHORT_ROUTE_LONGER_RATIO = 1.6
+AirdropTrajectoryService.MATCH_SHORT_ROUTE_LENGTH_GAP = 0.05
 AirdropTrajectoryService.STATIONARY_TOLERANCE = 0.006
 AirdropTrajectoryService.MOVE_CONFIRM_DISTANCE = 0.0045
 AirdropTrajectoryService.CRUISE_LINE_TOLERANCE = 0.012
@@ -46,11 +49,13 @@ AirdropTrajectoryService.MISSING_FINALIZE_DELAY = 2.2
 AirdropTrajectoryService.END_CONFIRM_WAIT_TIMEOUT = 15
 AirdropTrajectoryService.PARTIAL_MIN_OBSERVATION_DISTANCE = 0.015
 AirdropTrajectoryService.PREDICTION_VERIFICATION_TOLERANCE = 0.015
+AirdropTrajectoryService.FINALIZED_OBSERVATION_SUPPRESSION_WINDOW = 120
 AirdropTrajectoryService.SHOUT_START_CONFIRM_WINDOW = 60
 AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_INTERVAL = 1.0
 AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_ATTEMPTS = 5
 AirdropTrajectoryService.TRACE_DEBUG_SETTING_KEY = "trajectoryTraceDebugEnabled"
-AirdropTrajectoryService.MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
+AirdropTrajectoryService.PREDICTION_ENABLED_SETTING_KEY = "trajectoryPredictionEnabled"
+AirdropTrajectoryService.LEGACY_MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
 AirdropTrajectoryService.MAX_TRACE_EVENTS = 30
 
 local function NormalizeTraceText(value)
@@ -123,6 +128,7 @@ function AirdropTrajectoryService:Initialize()
     self.isInitialized = true
     self.activeObservationByMap = self.activeObservationByMap or {}
     self.pendingShoutStartByMap = self.pendingShoutStartByMap or {}
+    self.recentFinalizedObservationByMap = self.recentFinalizedObservationByMap or {}
     self.traceEvents = self.traceEvents or {}
     if AirdropTrajectoryStore and AirdropTrajectoryStore.Initialize and not AirdropTrajectoryStore.routesByMap then
         AirdropTrajectoryStore:Initialize()
@@ -150,36 +156,104 @@ function AirdropTrajectoryService:SetTraceDebugEnabled(enabled)
 end
 
 function AirdropTrajectoryService:IsMatchingDebugEnabled()
-    if AppSettingsStore and AppSettingsStore.GetBoolean then
-        return AppSettingsStore:GetBoolean(self.MATCH_DEBUG_SETTING_KEY, false)
-    end
-    local uiDB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
-    return uiDB[self.MATCH_DEBUG_SETTING_KEY] == true
+    return self:IsPredictionEnabled()
 end
 
 function AirdropTrajectoryService:SetMatchingDebugEnabled(enabled)
+    return self:SetPredictionEnabled(enabled)
+end
+
+function AirdropTrajectoryService:IsPredictionEnabled()
+    local uiState = AppSettingsStore and AppSettingsStore.GetUIState and AppSettingsStore:GetUIState() or nil
+    if type(uiState) == "table" then
+        local explicitValue = uiState[self.PREDICTION_ENABLED_SETTING_KEY]
+        if explicitValue ~= nil then
+            return explicitValue == true
+        end
+        return uiState[self.LEGACY_MATCH_DEBUG_SETTING_KEY] == true
+    end
+
+    local uiDB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
+    if uiDB[self.PREDICTION_ENABLED_SETTING_KEY] ~= nil then
+        return uiDB[self.PREDICTION_ENABLED_SETTING_KEY] == true
+    end
+    return uiDB[self.LEGACY_MATCH_DEBUG_SETTING_KEY] == true
+end
+
+function AirdropTrajectoryService:SetPredictionEnabled(enabled)
     local normalized = enabled == true
-    if AppSettingsStore and AppSettingsStore.SetBoolean then
-        AppSettingsStore:SetBoolean(self.MATCH_DEBUG_SETTING_KEY, normalized)
+    if AppSettingsStore and AppSettingsStore.GetUIState then
+        local uiState = AppSettingsStore:GetUIState()
+        uiState[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
+        uiState[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
         return normalized
     end
+
     CRATETRACKERZK_UI_DB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
-    CRATETRACKERZK_UI_DB[self.MATCH_DEBUG_SETTING_KEY] = normalized
+    CRATETRACKERZK_UI_DB[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
+    CRATETRACKERZK_UI_DB[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
     return normalized
 end
 
 function AirdropTrajectoryService:IsPredictionTestEnabled()
-    return self:IsMatchingDebugEnabled()
+    return self:IsPredictionEnabled()
 end
 
 function AirdropTrajectoryService:SetPredictionTestEnabled(enabled)
-    return self:SetMatchingDebugEnabled(enabled)
+    return self:SetPredictionEnabled(enabled)
 end
 
 function AirdropTrajectoryService:Reset()
     self.activeObservationByMap = {}
     self.pendingShoutStartByMap = {}
+    self.recentFinalizedObservationByMap = {}
     self.isInitialized = false
+    return true
+end
+
+function AirdropTrajectoryService:RememberRecentlyFinalizedObservation(runtimeMapId, objectGUID, currentTime)
+    if type(runtimeMapId) ~= "number" then
+        return false
+    end
+
+    self.recentFinalizedObservationByMap = self.recentFinalizedObservationByMap or {}
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        self.recentFinalizedObservationByMap[runtimeMapId] = nil
+        return false
+    end
+
+    self.recentFinalizedObservationByMap[runtimeMapId] = {
+        objectGUID = objectGUID,
+        finalizedAt = tonumber(currentTime) or Utils:GetCurrentTimestamp(),
+    }
+    return true
+end
+
+function AirdropTrajectoryService:ShouldSuppressObservationStart(runtimeMapId, objectGUID, currentTime)
+    if type(runtimeMapId) ~= "number"
+        or type(objectGUID) ~= "string"
+        or objectGUID == "" then
+        return false
+    end
+
+    local recentByMap = self.recentFinalizedObservationByMap
+    local recentState = type(recentByMap) == "table" and recentByMap[runtimeMapId] or nil
+    if type(recentState) ~= "table" then
+        return false
+    end
+
+    local finalizedAt = tonumber(recentState.finalizedAt)
+    local now = tonumber(currentTime) or Utils:GetCurrentTimestamp()
+    local suppressionWindow = math.max(0, tonumber(self.FINALIZED_OBSERVATION_SUPPRESSION_WINDOW) or 120)
+    if type(finalizedAt) ~= "number" or (now - finalizedAt) > suppressionWindow then
+        recentByMap[runtimeMapId] = nil
+        return false
+    end
+
+    if recentState.objectGUID ~= objectGUID then
+        return false
+    end
+
     return true
 end
 
@@ -276,6 +350,9 @@ function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime,
         and AirdropTrajectorySamplingService
         and AirdropTrajectorySamplingService.ApplyConfirmedStartFromShout then
         local applied, reason = AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(activeState, shoutState)
+        if applied == true and self.pendingShoutStartByMap then
+            self.pendingShoutStartByMap[targetMapData.id] = nil
+        end
         if self.RecordTraceEvent then
             self:RecordTraceEvent({
                 recordedAt = shoutState.timestamp,
@@ -298,8 +375,8 @@ function AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime,
 end
 
 function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
-    local matchingDebugEnabled = self.IsMatchingDebugEnabled and self:IsMatchingDebugEnabled() == true
-    if matchingDebugEnabled ~= true then
+    local predictionEnabled = self.IsPredictionEnabled and self:IsPredictionEnabled() == true
+    if predictionEnabled ~= true then
         return true
     end
 
@@ -332,7 +409,7 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
 end
 
 function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconResult)
-    if self.IsMatchingDebugEnabled and self:IsMatchingDebugEnabled() ~= true then
+    if self.IsPredictionEnabled and self:IsPredictionEnabled() ~= true then
         return false
     end
     if AirdropTrajectoryMatchingService and AirdropTrajectoryMatchingService.TryMatchPrediction then

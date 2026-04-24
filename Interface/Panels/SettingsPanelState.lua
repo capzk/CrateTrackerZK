@@ -8,6 +8,7 @@ local ThemeConfig = BuildEnv("ThemeConfig")
 local ExpansionConfig = BuildEnv("ExpansionConfig")
 local Data = BuildEnv("Data")
 local Localization = BuildEnv("Localization")
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 function SettingsPanelState:LT(key, fallback)
     local L = CrateTrackerZK and CrateTrackerZK.L
@@ -70,6 +71,16 @@ end
 function SettingsPanelState:IsAutoTeamReportEnabled()
     if Notification and Notification.IsAutoTeamReportEnabled then
         return Notification:IsAutoTeamReportEnabled()
+    end
+    return false
+end
+
+function SettingsPanelState:IsTrajectoryPredictionEnabled()
+    if AirdropTrajectoryService and AirdropTrajectoryService.IsPredictionEnabled then
+        return AirdropTrajectoryService:IsPredictionEnabled() == true
+    end
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.trajectoryPredictionEnabled ~= nil then
+        return CRATETRACKERZK_UI_DB.trajectoryPredictionEnabled == true
     end
     return false
 end
@@ -174,6 +185,8 @@ function SettingsPanelState:GetSettingsSnapshot()
         phaseTeamAlertInteractable = addonEnabled and teamEnabled,
         soundAlertEnabled = soundEnabled,
         soundAlertInteractable = addonEnabled,
+        trajectoryPredictionEnabled = self:IsTrajectoryPredictionEnabled(),
+        trajectoryPredictionInteractable = addonEnabled,
         autoReportEnabled = autoEnabled,
         autoReportInteractable = addonEnabled and teamEnabled,
         autoReportInterval = self:GetAutoTeamReportInterval(),

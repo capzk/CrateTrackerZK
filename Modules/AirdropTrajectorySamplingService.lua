@@ -530,6 +530,18 @@ function AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, sh
         return false, "invalid_state"
     end
 
+    local shoutObjectGUID = type(shoutState.objectGUID) == "string" and shoutState.objectGUID or nil
+    local stateObjectGUID = type(state.objectGUID) == "string" and state.objectGUID or nil
+    if type(shoutObjectGUID) ~= "string" or shoutObjectGUID == "" then
+        return false, "missing_shout_object_guid"
+    end
+    if type(stateObjectGUID) ~= "string" or stateObjectGUID == "" then
+        return false, "missing_state_object_guid"
+    end
+    if shoutObjectGUID ~= stateObjectGUID then
+        return false, "object_guid_mismatch"
+    end
+
     local startX = tonumber(shoutState.positionX)
     local startY = tonumber(shoutState.positionY)
     if type(startX) ~= "number" or type(startY) ~= "number" then
@@ -616,6 +628,9 @@ function AirdropTrajectorySamplingService:HandleDetectedCrate(service, targetMap
     state.endX = endX
     state.endY = endY
     state.endSource = "crate_vignette"
+    if service and service.RememberRecentlyFinalizedObservation then
+        service:RememberRecentlyFinalizedObservation(targetMapData.id, state.objectGUID, state.lastSeenAt)
+    end
     self:FinalizeObservation(service, targetMapData.id, state.lastSeenAt)
     return true
 end
@@ -894,11 +909,18 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
     service.activeObservationByMap = service.activeObservationByMap or {}
     local state = service.activeObservationByMap[runtimeMapId]
 
-    if type(state) ~= "table" or state.objectGUID ~= iconResult.objectGUID then
-        if type(state) == "table" then
-            self:FinalizeObservation(service, runtimeMapId, currentTime)
-        end
+    if type(state) == "table" and state.objectGUID ~= iconResult.objectGUID then
+        self:FinalizeObservation(service, runtimeMapId, currentTime)
+        state = nil
+    end
 
+    if type(state) ~= "table"
+        and service.ShouldSuppressObservationStart
+        and service:ShouldSuppressObservationStart(runtimeMapId, iconResult.objectGUID, currentTime) == true then
+        return false
+    end
+
+    if type(state) ~= "table" then
         state = self:CreateObservationState(targetMapData, iconResult, currentTime)
         if type(state) ~= "table" then
             return false

@@ -301,10 +301,39 @@ local function MergeDuplicateArtifact(existing, candidate)
         return CreateRouteRecord(candidate)
     end
 
+    local existingObservationCount = math.max(1, math.floor(tonumber(existing.observationCount) or 1))
+    local candidateObservationCount = math.max(1, math.floor(tonumber(candidate.observationCount) or 1))
+    local existingEventObjectGUID = type(existing.lastEventObjectGUID) == "string"
+        and existing.lastEventObjectGUID ~= ""
+        and existing.lastEventObjectGUID
+        or nil
+    local candidateEventObjectGUID = type(candidate.lastEventObjectGUID) == "string"
+        and candidate.lastEventObjectGUID ~= ""
+        and candidate.lastEventObjectGUID
+        or nil
+    local existingEventStartedAt = math.floor(tonumber(existing.lastEventStartedAt) or 0)
+    local candidateEventStartedAt = math.floor(tonumber(candidate.lastEventStartedAt) or 0)
+    local sameObservationEvent = false
+    if type(existingEventObjectGUID) == "string" and type(candidateEventObjectGUID) == "string" then
+        if existingEventObjectGUID == candidateEventObjectGUID then
+            if existingEventStartedAt > 0 and candidateEventStartedAt > 0 then
+                sameObservationEvent = existingEventStartedAt == candidateEventStartedAt
+            else
+                sameObservationEvent = true
+            end
+        end
+    end
+
     merged.startConfirmed = existing.startConfirmed == true or candidate.startConfirmed == true
     merged.endConfirmed = existing.endConfirmed == true or candidate.endConfirmed == true
     merged.sampleCount = math.max(tonumber(existing.sampleCount) or 0, tonumber(candidate.sampleCount) or 0)
-    merged.observationCount = math.max(tonumber(existing.observationCount) or 1, tonumber(candidate.observationCount) or 1)
+    if sameObservationEvent == true then
+        merged.observationCount = math.max(existingObservationCount, candidateObservationCount)
+    elseif candidate.source == "local" then
+        merged.observationCount = existingObservationCount + candidateObservationCount
+    else
+        merged.observationCount = math.max(existingObservationCount, candidateObservationCount)
+    end
     merged.createdAt = math.min(
         tonumber(existing.createdAt) or tonumber(existing.updatedAt) or Utils:GetCurrentTimestamp(),
         tonumber(candidate.createdAt) or tonumber(candidate.updatedAt) or Utils:GetCurrentTimestamp()

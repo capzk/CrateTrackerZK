@@ -265,6 +265,24 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         end
     end)
     ReanchorCheckbox(controls.soundAlert, controls.intervalLabel, -52, -14)
+
+    controls.trajectoryPrediction = SettingsPanelFactory:CreateCheckbox(
+        page,
+        controls.soundAlert,
+        lt("SettingsTrajectoryPredictionTest", "轨迹预测（测试功能）"),
+        function(enabled)
+            if SettingsPanelActions and SettingsPanelActions.SetTrajectoryPredictionEnabled then
+                SettingsPanelActions:SetTrajectoryPredictionEnabled(enabled)
+            end
+            if onRefresh then
+                onRefresh()
+            end
+        end,
+        lt(
+            "SettingsTrajectoryPredictionTestTooltip",
+            "开启后，仅显示你自己可见的轨迹预测提示与地图落点标记，不发送团队可见的预测消息。"
+        )
+    )
 end
 
 function SettingsPanelPages:BuildAppearancePage(parent, pageKey, pages, controls, lt, onRefresh)

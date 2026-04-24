@@ -359,6 +359,69 @@ local function IsCandidatePredictionAmbiguous(service, candidate, routes, positi
     return false
 end
 
+local function ShouldSuppressShortFamilyRoute(service, candidate, routes, positionX, positionY)
+    if type(service) ~= "table"
+        or type(candidate) ~= "table"
+        or type(routes) ~= "table"
+        or type(positionX) ~= "number"
+        or type(positionY) ~= "number" then
+        return false
+    end
+
+    local route = candidate.route
+    local routeLength = tonumber(candidate.routeLength)
+    if type(route) ~= "table" or type(routeLength) ~= "number" or routeLength <= 0 then
+        return false
+    end
+
+    local shortRouteMaxLength = tonumber(service.MATCH_SHORT_ROUTE_MAX_LENGTH) or 0.18
+    if routeLength > shortRouteMaxLength then
+        return false
+    end
+
+    local familyDirectionDot = tonumber(service.MATCH_ROUTE_FAMILY_DIRECTION_DOT) or 0.985
+    local longerRatio = math.max(1.0, tonumber(service.MATCH_SHORT_ROUTE_LONGER_RATIO) or 1.6)
+    local lengthGap = math.max(0, tonumber(service.MATCH_SHORT_ROUTE_LENGTH_GAP) or 0.05)
+    local routeDx, routeDy, routeVectorLength = ComputeRouteVector(route)
+    if routeVectorLength <= 0 then
+        return false
+    end
+
+    local routeUnitX = routeDx / routeVectorLength
+    local routeUnitY = routeDy / routeVectorLength
+
+    for _, sibling in ipairs(routes) do
+        if type(sibling) == "table"
+            and sibling ~= route
+            and sibling.startConfirmed == true
+            and sibling.endConfirmed == true then
+            local siblingDx, siblingDy, siblingLength = ComputeRouteVector(sibling)
+            if siblingLength > 0 then
+                local startTolerance = ResolveRouteFamilyStartTolerance(service, route, sibling)
+                local startDistance = ComputeDistance(route.startX, route.startY, sibling.startX, sibling.startY)
+                local directionDot = ((routeUnitX * (siblingDx / siblingLength)) + (routeUnitY * (siblingDy / siblingLength)))
+                local longerEnough = siblingLength >= math.max(routeLength * longerRatio, routeLength + lengthGap)
+                if longerEnough == true and startDistance <= startTolerance and directionDot >= familyDirectionDot then
+                    local siblingContext = BuildProjectionContext(sibling)
+                    if type(siblingContext) == "table"
+                        and IsSiblingRoutePlausible(
+                            service,
+                            siblingContext,
+                            siblingLength,
+                            positionX,
+                            positionY,
+                            candidate.distance
+                        ) == true then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    return false
+end
+
 function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapData, state, iconResult)
     if type(service) ~= "table"
         or type(targetMapData) ~= "table"
@@ -418,6 +481,11 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     local candidate = currentMatches[1]
     local route = candidate.route
     if type(route) ~= "table" or state.announcedRouteKey == route.routeKey then
+        return false
+    end
+
+    if ShouldSuppressShortFamilyRoute(service, candidate, routes, observationLine.endX, observationLine.endY) == true then
+        state.uniqueMatchState = nil
         return false
     end
 

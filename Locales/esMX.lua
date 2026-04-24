@@ -65,6 +65,7 @@ localeData["SettingsSoundAlert"] = "Alerta de sonido";
 localeData["SettingsAutoReport"] = "Notificar automaticamente";
 localeData["SettingsAutoReportInterval"] = "Intervalo de reporte (seg)";
 localeData["SettingsTrajectoryPredictionTest"] = "Prediccion de trayectoria (prueba)";
+localeData["SettingsTrajectoryPredictionTestTooltip"] = "Cuando esta activado, solo se muestran para ti los avisos locales de prediccion de trayectoria y la marca del punto previsto en el mapa; no se envian mensajes de prediccion visibles para el equipo.";
 localeData["SettingsClearButton"] = "Borrar datos locales";
 localeData["SettingsToggleOn"] = "Activado";
 localeData["SettingsToggleOff"] = "Desactivado";

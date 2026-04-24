@@ -7,7 +7,7 @@ local function ShowTooltip(owner, titleText, bodyText)
     end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
-    GameTooltip:SetText(titleText or "")
+    GameTooltip:SetText(titleText or "", 1, 1, 1, 1, true)
     if type(bodyText) == "string" and bodyText ~= "" then
         GameTooltip:AddLine(bodyText, 1, 1, 1, true)
     end

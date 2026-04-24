@@ -64,6 +64,7 @@ localeData["SettingsSoundAlert"] = "Sound Reminder";
 localeData["SettingsAutoReport"] = "Auto Notify";
 localeData["SettingsAutoReportInterval"] = "Report Interval (sec)";
 localeData["SettingsTrajectoryPredictionTest"] = "Trajectory Prediction (Test)";
+localeData["SettingsTrajectoryPredictionTestTooltip"] = "When enabled, only locally visible trajectory prediction messages and map markers are shown to you; no team-visible prediction messages are sent.";
 localeData["SettingsClearButton"] = "Clear Local Data";
 localeData["SettingsToggleOn"] = "Enabled";
 localeData["SettingsToggleOff"] = "Disabled";

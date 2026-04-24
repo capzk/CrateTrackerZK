@@ -64,6 +64,7 @@ localeData["SettingsSoundAlert"] = "聲音提醒";
 localeData["SettingsAutoReport"] = "自動通知";
 localeData["SettingsAutoReportInterval"] = "通知頻率（秒）";
 localeData["SettingsTrajectoryPredictionTest"] = "軌跡預測（測試功能）";
+localeData["SettingsTrajectoryPredictionTestTooltip"] = "開啟後，僅顯示你自己可見的軌跡預測提示與地圖落點標記，不發送團隊可見的預測消息。";
 localeData["SettingsClearButton"] = "清除本機資料";
 localeData["SettingsToggleOn"] = "已開啟";
 localeData["SettingsToggleOff"] = "已關閉";
