@@ -276,11 +276,6 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     if messageType == self.TRAJECTORY_MESSAGE_TYPE then
         local parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, startSourceText, endSourceText, observationCountText, verificationCountText, verifiedPredictionCountText, continuityConfirmedText =
             payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
-        if not parsedMessageType then
-            parsedMessageType, versionText, mapIDText, startXText, startYText, endXText, endYText, timestampText, sampleCountText, startConfirmedText, endConfirmedText, startSourceText, endSourceText, observationCountText, verificationCountText, verifiedPredictionCountText =
-                payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
-            continuityConfirmedText = nil
-        end
         local protocolVersion = tonumber(versionText)
         local mapID = tonumber(mapIDText)
         local scale = tonumber(self.COORDINATE_SCALE) or 10000

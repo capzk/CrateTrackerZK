@@ -6,6 +6,7 @@ local AddonControlService = BuildEnv("AddonControlService")
 local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
+local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 
 function SettingsPanelActions:SetAddonEnabled(enabled)
     if AddonControlService and AddonControlService.ApplyAddonEnabled then
@@ -48,6 +49,12 @@ end
 function SettingsPanelActions:SetTrajectoryPredictionEnabled(enabled)
     if AirdropTrajectoryService and AirdropTrajectoryService.SetPredictionEnabled then
         AirdropTrajectoryService:SetPredictionEnabled(enabled == true)
+    end
+end
+
+function SettingsPanelActions:SetTrajectoryPredictionTeamAlertEnabled(enabled)
+    if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.SetSettingEnabled then
+        AirdropTrajectoryAlertCoordinator:SetSettingEnabled(enabled == true)
     end
 end
 

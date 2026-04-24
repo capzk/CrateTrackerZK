@@ -1110,6 +1110,15 @@ function AirdropTrajectoryStore:GetPredictionTracks(mapID)
     return routes
 end
 
+function AirdropTrajectoryStore:GetPredictionTrackReferences(mapID)
+    if type(mapID) ~= "number" then
+        return {}
+    end
+
+    local cache = BuildTrackGroupCacheForMap(self, mapID)
+    return cache.predictionTracks or {}
+end
+
 function AirdropTrajectoryStore:GetTrackGroups(mapID)
     if type(mapID) ~= "number" then
         return {}

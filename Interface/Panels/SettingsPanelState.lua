@@ -9,6 +9,7 @@ local ExpansionConfig = BuildEnv("ExpansionConfig")
 local Data = BuildEnv("Data")
 local Localization = BuildEnv("Localization")
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
+local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 
 function SettingsPanelState:LT(key, fallback)
     local L = CrateTrackerZK and CrateTrackerZK.L
@@ -81,6 +82,16 @@ function SettingsPanelState:IsTrajectoryPredictionEnabled()
     end
     if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.trajectoryPredictionEnabled ~= nil then
         return CRATETRACKERZK_UI_DB.trajectoryPredictionEnabled == true
+    end
+    return false
+end
+
+function SettingsPanelState:IsTrajectoryPredictionTeamAlertEnabled()
+    if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.IsSettingEnabled then
+        return AirdropTrajectoryAlertCoordinator:IsSettingEnabled() == true
+    end
+    if CRATETRACKERZK_UI_DB and CRATETRACKERZK_UI_DB.trajectoryPredictionTeamAlertEnabled ~= nil then
+        return CRATETRACKERZK_UI_DB.trajectoryPredictionTeamAlertEnabled == true
     end
     return false
 end
@@ -174,6 +185,7 @@ function SettingsPanelState:GetSettingsSnapshot()
     local teamEnabled = addonEnabled and self:IsTeamNotificationEnabled()
     local soundEnabled = addonEnabled and self:IsSoundAlertEnabled()
     local autoEnabled = addonEnabled and teamEnabled and self:IsAutoTeamReportEnabled()
+    local trajectoryPredictionEnabled = self:IsTrajectoryPredictionEnabled()
 
     return {
         addonEnabled = addonEnabled,
@@ -185,8 +197,10 @@ function SettingsPanelState:GetSettingsSnapshot()
         phaseTeamAlertInteractable = addonEnabled and teamEnabled,
         soundAlertEnabled = soundEnabled,
         soundAlertInteractable = addonEnabled,
-        trajectoryPredictionEnabled = self:IsTrajectoryPredictionEnabled(),
+        trajectoryPredictionEnabled = trajectoryPredictionEnabled,
         trajectoryPredictionInteractable = addonEnabled,
+        trajectoryPredictionTeamAlertEnabled = self:IsTrajectoryPredictionTeamAlertEnabled(),
+        trajectoryPredictionTeamAlertInteractable = addonEnabled and teamEnabled and trajectoryPredictionEnabled,
         autoReportEnabled = autoEnabled,
         autoReportInteractable = addonEnabled and teamEnabled,
         autoReportInterval = self:GetAutoTeamReportInterval(),

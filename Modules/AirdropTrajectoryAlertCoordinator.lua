@@ -6,15 +6,51 @@ local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local Notification = BuildEnv("Notification")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local Data = BuildEnv("Data")
+local AppSettingsStore = BuildEnv("AppSettingsStore")
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 AirdropTrajectoryAlertCoordinator.MAX_VISIBLE_SENDERS = 1
 AirdropTrajectoryAlertCoordinator.CLAIM_COLLECTION_DELAY = 0.35
 AirdropTrajectoryAlertCoordinator.EVENT_TTL = 20
-AirdropTrajectoryAlertCoordinator.FEATURE_ENABLED = false
+AirdropTrajectoryAlertCoordinator.FEATURE_ENABLED = true
+AirdropTrajectoryAlertCoordinator.SETTING_KEY = "trajectoryPredictionTeamAlertEnabled"
 AirdropTrajectoryAlertCoordinator.eventStateByKey = AirdropTrajectoryAlertCoordinator.eventStateByKey or {}
 
+function AirdropTrajectoryAlertCoordinator:IsSettingEnabled()
+    if AppSettingsStore and AppSettingsStore.GetBoolean then
+        return AppSettingsStore:GetBoolean(self.SETTING_KEY, false)
+    end
+    local uiDB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
+    return uiDB[self.SETTING_KEY] == true
+end
+
+function AirdropTrajectoryAlertCoordinator:SetSettingEnabled(enabled)
+    local normalized = enabled == true
+    if AppSettingsStore and AppSettingsStore.SetBoolean then
+        AppSettingsStore:SetBoolean(self.SETTING_KEY, normalized)
+    else
+        CRATETRACKERZK_UI_DB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
+        CRATETRACKERZK_UI_DB[self.SETTING_KEY] = normalized
+    end
+    if normalized ~= true and self.Reset then
+        self:Reset()
+    end
+    return normalized
+end
+
 function AirdropTrajectoryAlertCoordinator:IsFeatureEnabled()
-    return self.FEATURE_ENABLED == true
+    if self.FEATURE_ENABLED ~= true then
+        return false
+    end
+    if self:IsSettingEnabled() ~= true then
+        return false
+    end
+    if AirdropTrajectoryService
+        and AirdropTrajectoryService.IsPredictionEnabled
+        and AirdropTrajectoryService:IsPredictionEnabled() ~= true then
+        return false
+    end
+    return true
 end
 
 local function NormalizeSenderKey(sender)
@@ -257,6 +293,9 @@ function AirdropTrajectoryAlertCoordinator:PruneExpiredState(currentTime)
 end
 
 function AirdropTrajectoryAlertCoordinator:EvaluateVisibleSend(eventKey)
+    if self:IsFeatureEnabled() ~= true then
+        return false
+    end
     local state = self.eventStateByKey and self.eventStateByKey[eventKey] or nil
     if type(state) ~= "table" then
         return false

@@ -280,9 +280,28 @@ function SettingsPanelPages:BuildNotificationsPage(parent, pageKey, pages, contr
         end,
         lt(
             "SettingsTrajectoryPredictionTestTooltip",
-            "开启后，仅显示你自己可见的轨迹预测提示与地图落点标记，不发送团队可见的预测消息。"
+            "开启后，显示本地轨迹预测提示和地图落点标记。"
         )
     )
+
+    controls.trajectoryPredictionTeamAlert = SettingsPanelFactory:CreateCheckbox(
+        page,
+        controls.trajectoryPrediction,
+        lt("SettingsTrajectoryTeamAlert", "预测成功发送团队消息"),
+        function(enabled)
+            if SettingsPanelActions and SettingsPanelActions.SetTrajectoryPredictionTeamAlertEnabled then
+                SettingsPanelActions:SetTrajectoryPredictionTeamAlertEnabled(enabled)
+            end
+            if onRefresh then
+                onRefresh()
+            end
+        end,
+        lt(
+            "SettingsTrajectoryTeamAlertTooltip",
+            "开启后，预测成功时发送团队频道消息。"
+        )
+    )
+    ReanchorCheckbox(controls.trajectoryPredictionTeamAlert, controls.trajectoryPrediction, 26, -14)
 end
 
 function SettingsPanelPages:BuildAppearancePage(parent, pageKey, pages, controls, lt, onRefresh)

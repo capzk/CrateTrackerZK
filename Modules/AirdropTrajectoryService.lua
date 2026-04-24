@@ -5,6 +5,7 @@ local AirdropTrajectoryMatchingService = BuildEnv("AirdropTrajectoryMatchingServ
 local AirdropTrajectorySamplingService = BuildEnv("AirdropTrajectorySamplingService")
 local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
+local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local Data = BuildEnv("Data")
@@ -45,9 +46,10 @@ AirdropTrajectoryService.END_CONFIRM_WAIT_TIMEOUT = 15
 AirdropTrajectoryService.PARTIAL_MIN_OBSERVATION_DISTANCE = 0.015
 AirdropTrajectoryService.PREDICTION_VERIFICATION_TOLERANCE = 0.015
 AirdropTrajectoryService.FINALIZED_OBSERVATION_SUPPRESSION_WINDOW = 120
-AirdropTrajectoryService.SHOUT_START_CONFIRM_WINDOW = 60
 AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_INTERVAL = 1.0
 AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_ATTEMPTS = 5
+AirdropTrajectoryService.SHOUT_START_CONFIRM_WINDOW =
+    AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_INTERVAL * AirdropTrajectoryService.SHOUT_CAPTURE_RETRY_ATTEMPTS
 AirdropTrajectoryService.TRACE_DEBUG_SETTING_KEY = "trajectoryTraceDebugEnabled"
 AirdropTrajectoryService.PREDICTION_ENABLED_SETTING_KEY = "trajectoryPredictionEnabled"
 AirdropTrajectoryService.LEGACY_MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
@@ -181,12 +183,22 @@ function AirdropTrajectoryService:SetPredictionEnabled(enabled)
         local uiState = AppSettingsStore:GetUIState()
         uiState[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
         uiState[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
+        if normalized ~= true
+            and AirdropTrajectoryAlertCoordinator
+            and AirdropTrajectoryAlertCoordinator.Reset then
+            AirdropTrajectoryAlertCoordinator:Reset()
+        end
         return normalized
     end
 
     CRATETRACKERZK_UI_DB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
     CRATETRACKERZK_UI_DB[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
     CRATETRACKERZK_UI_DB[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
+    if normalized ~= true
+        and AirdropTrajectoryAlertCoordinator
+        and AirdropTrajectoryAlertCoordinator.Reset then
+        AirdropTrajectoryAlertCoordinator:Reset()
+    end
     return normalized
 end
 

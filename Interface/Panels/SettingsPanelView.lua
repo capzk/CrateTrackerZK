@@ -254,6 +254,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.trajectoryPrediction.label, snapshot.trajectoryPredictionInteractable == true)
     end
 
+    if controls.trajectoryPredictionTeamAlert then
+        controls.trajectoryPredictionTeamAlert:SetChecked(snapshot.trajectoryPredictionTeamAlertEnabled == true)
+        controls.trajectoryPredictionTeamAlert:SetEnabled(snapshot.trajectoryPredictionTeamAlertInteractable == true)
+        SetTextEnabled(controls.trajectoryPredictionTeamAlert.label, snapshot.trajectoryPredictionTeamAlertInteractable == true)
+    end
+
     if controls.autoReport then
         controls.autoReport:SetChecked(snapshot.autoReportEnabled == true)
         controls.autoReport:SetEnabled(snapshot.autoReportInteractable == true)

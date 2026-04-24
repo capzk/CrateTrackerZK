@@ -359,7 +359,12 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     end
 
     local trackMatches = {}
-    local tracks = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionTracks and AirdropTrajectoryStore:GetPredictionTracks(targetMapData.mapID) or {}
+    local tracks = AirdropTrajectoryStore
+        and (
+            (AirdropTrajectoryStore.GetPredictionTrackReferences and AirdropTrajectoryStore:GetPredictionTrackReferences(targetMapData.mapID))
+            or (AirdropTrajectoryStore.GetPredictionTracks and AirdropTrajectoryStore:GetPredictionTracks(targetMapData.mapID))
+        )
+        or {}
 
     for _, track in ipairs(tracks) do
         local predictionReady = AirdropTrajectoryStore and AirdropTrajectoryStore.IsPredictionReady
@@ -393,6 +398,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
 
     local forwardLandingClusters = GetForwardLandingClusters(track, tonumber(trackCandidate.currentProjection) or 0)
     if #forwardLandingClusters ~= 1 then
+        state.uniqueMatchState = nil
         return false
     end
 
