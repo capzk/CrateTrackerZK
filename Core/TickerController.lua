@@ -153,6 +153,9 @@ function TickerController:StartCleanupTicker(owner)
         if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.PruneExpiredState then
             PhaseTeamAlertCoordinator:PruneExpiredState(cleanupTime)
         end
+        if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.PruneExpiredState then
+            AirdropTrajectoryAlertCoordinator:PruneExpiredState(cleanupTime)
+        end
         if Logger and Logger.PruneMessageCache then
             Logger:PruneMessageCache(cleanupTime)
         end
