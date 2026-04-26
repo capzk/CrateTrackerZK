@@ -23,23 +23,43 @@ TeamSharedSyncListener.FEATURE_ENABLED = true
 TeamSharedSyncListener.syncStateBuffer = TeamSharedSyncListener.syncStateBuffer or {}
 TeamSharedSyncListener.channelContextBuffer = TeamSharedSyncListener.channelContextBuffer or {}
 TeamSharedSyncListener.ADDON_PREFIX = TeamSharedSyncProtocol and TeamSharedSyncProtocol.ADDON_PREFIX or "CTKZK_PSYNC"
+TeamSharedSyncListener.CONTROL_ADDON_PREFIX = TeamSharedSyncListener.ADDON_PREFIX
+TeamSharedSyncListener.ROUTE_ADDON_PREFIX = TeamSharedSyncProtocol and TeamSharedSyncProtocol.ROUTE_ADDON_PREFIX or "CTKZK_PTRJ"
 
 function TeamSharedSyncListener:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
+end
+
+function TeamSharedSyncListener:GetAddonPrefixes()
+    self.addonPrefixesBuffer = self.addonPrefixesBuffer or {}
+    local prefixes = self.addonPrefixesBuffer
+    prefixes[1] = self.CONTROL_ADDON_PREFIX
+    prefixes[2] = self.ROUTE_ADDON_PREFIX
+    for index = 3, #prefixes do
+        prefixes[index] = nil
+    end
+    return prefixes
 end
 
 function TeamSharedSyncListener:RegisterAddonPrefix()
     if self:IsFeatureEnabled() ~= true then
         return false
     end
-    if self.addonPrefixRegistered == true then
-        return true
+    if not HiddenSyncTransport or not HiddenSyncTransport.EnsureAddonPrefix then
+        return false
     end
 
-    return HiddenSyncTransport
-        and HiddenSyncTransport.EnsureAddonPrefix
-        and HiddenSyncTransport:EnsureAddonPrefix(self, self.ADDON_PREFIX)
-        or false
+    local controlReady = HiddenSyncTransport:EnsureAddonPrefix(self, self.CONTROL_ADDON_PREFIX) == true
+    local routeReady = HiddenSyncTransport:EnsureAddonPrefix(self, self.ROUTE_ADDON_PREFIX) == true
+    self.addonPrefixRegistered = controlReady == true and routeReady == true
+    return self.addonPrefixRegistered == true
+end
+
+local function ResolveAuditNoteForSend(sent, resultCode)
+    if sent == true then
+        return nil
+    end
+    return resultCode
 end
 
 local function SendSyncPayload(listener, syncState)
@@ -55,21 +75,24 @@ local function SendSyncPayload(listener, syncState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(listener.CONTROL_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = listener.CONTROL_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = listener.ADDON_PREFIX,
+            prefix = listener.CONTROL_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.MESSAGE_TYPE or "PHASE_AIRDROP",
             expansionID = syncState.expansionID,
             mapID = syncState.mapID,
             phaseID = syncState.phaseID,
             objectGUID = syncState.objectGUID,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -91,27 +114,33 @@ local function SendTrajectoryPayload(listener, routeState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(listener.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(listener.ROUTE_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = listener.ROUTE_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = listener.ADDON_PREFIX,
+            prefix = listener.ROUTE_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_MESSAGE_TYPE or "TRAJECTORY_ROUTE",
             mapID = routeState.mapID,
             routeKey = routeState.routeKey,
+            routeFamilyKey = routeState.routeFamilyKey,
+            landingKey = routeState.landingKey,
+            alertToken = routeState.alertToken,
             sampleCount = routeState.sampleCount,
             observationCount = routeState.observationCount,
             verificationCount = routeState.verificationCount,
             verifiedPredictionCount = routeState.verifiedPredictionCount,
             confidenceScore = routeState.confidenceScore,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
-    return sent
+    return sent, resultCode
 end
 
 function TeamSharedSyncListener:CanSendSharedSync()
@@ -198,18 +227,21 @@ function TeamSharedSyncListener:SendSyncRequest(requestState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(self.CONTROL_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = self.CONTROL_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = self.ADDON_PREFIX,
+            prefix = self.CONTROL_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.REQUEST_MESSAGE_TYPE or "SYNC_REQUEST",
             requestID = requestState and requestState.requestID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -244,18 +276,21 @@ function TeamSharedSyncListener:SendTrajectorySyncRequest(requestState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(self.CONTROL_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = self.CONTROL_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = self.ADDON_PREFIX,
+            prefix = self.CONTROL_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_REQUEST_MESSAGE_TYPE or "TRAJECTORY_REQUEST",
             requestID = requestState and requestState.requestID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -280,20 +315,23 @@ function TeamSharedSyncListener:SendTrajectoryAlertClaim(syncState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(self.CONTROL_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = self.CONTROL_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = self.ADDON_PREFIX,
+            prefix = self.CONTROL_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE or "TRAJECTORY_ALERT_CLAIM",
             mapID = syncState and syncState.mapID or nil,
-            routeKey = syncState and syncState.routeKey or nil,
+            alertToken = syncState and syncState.alertToken or nil,
             objectGUID = syncState and syncState.objectGUID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -318,20 +356,23 @@ function TeamSharedSyncListener:SendTrajectoryAlertAck(syncState)
         return false
     end
 
-    local sent = TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload
-        and TeamSharedSyncChannelService:SendPayload(self.ADDON_PREFIX, payload)
-        or false
+    local sent, resultCode = false, nil
+    if TeamSharedSyncChannelService and TeamSharedSyncChannelService.SendPayload then
+        sent, resultCode = TeamSharedSyncChannelService:SendPayload(self.CONTROL_ADDON_PREFIX, payload)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
-            protocol = "CTKZK_PSYNC",
+            protocol = self.CONTROL_ADDON_PREFIX,
             direction = "send",
             status = sent == true and "sent" or "failed",
-            prefix = self.ADDON_PREFIX,
+            prefix = self.CONTROL_ADDON_PREFIX,
             messageType = TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE or "TRAJECTORY_ALERT_ACK",
             mapID = syncState and syncState.mapID or nil,
-            routeKey = syncState and syncState.routeKey or nil,
+            alertToken = syncState and syncState.alertToken or nil,
             objectGUID = syncState and syncState.objectGUID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -383,7 +424,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
     if self:IsFeatureEnabled() ~= true then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = "blocked",
                 prefix = prefix,
@@ -395,10 +436,18 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
         end
         return false
     end
+    if not self.isInitialized then
+        self:Initialize()
+    else
+        self:RegisterAddonPrefix()
+        if TeamSharedSyncChannelService and TeamSharedSyncChannelService.EnsureTeamChannelReady then
+            TeamSharedSyncChannelService:EnsureTeamChannelReady()
+        end
+    end
     if self:CanReceiveSharedSync() ~= true then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = "blocked",
                 prefix = prefix,
@@ -409,9 +458,6 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
             })
         end
         return false
-    end
-    if not self.isInitialized then
-        self:Initialize()
     end
 
     self.channelContextBuffer = self.channelContextBuffer or {}
@@ -427,7 +473,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
         ) ~= true then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = "ignored",
                 prefix = prefix,
@@ -443,7 +489,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
     if TeamCommMapCache and TeamCommMapCache.IsSelfSender and TeamCommMapCache:IsSelfSender(self, sender) then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = "ignored",
                 prefix = prefix,
@@ -464,7 +510,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
     if not syncState then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = "ignored",
                 prefix = prefix,
@@ -479,7 +525,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
     local function RecordProcessed(status, note)
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
-                protocol = "CTKZK_PSYNC",
+                protocol = prefix or self.CONTROL_ADDON_PREFIX,
                 direction = "recv",
                 status = status,
                 prefix = prefix,
@@ -491,6 +537,9 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
                 mapID = syncState.mapID,
                 phaseID = syncState.phaseID,
                 routeKey = syncState.routeKey,
+                routeFamilyKey = syncState.routeFamilyKey,
+                landingKey = syncState.landingKey,
+                alertToken = syncState.alertToken,
                 objectGUID = syncState.objectGUID,
                 sampleCount = syncState.sampleCount,
                 observationCount = syncState.observationCount,

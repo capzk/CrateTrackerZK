@@ -85,6 +85,14 @@ local function ResolveObservationStart(state)
     return startX, startY
 end
 
+local function IncrementPredictionObservationCount(state)
+    if type(state) ~= "table" then
+        return 0
+    end
+    state.predictionObservationCount = math.max(0, math.floor(tonumber(state.predictionObservationCount) or 0)) + 1
+    return state.predictionObservationCount
+end
+
 local function UpdateCruiseLineEndpoint(state, startX, startY, endX, endY)
     if type(state) ~= "table"
         or type(startX) ~= "number"
@@ -116,13 +124,14 @@ local function BuildTraceSummaryMessage(targetMapData, state)
     local endX = FormatCoordinatePercent((state.endConfirmed == true and state.endX) or state.lastX or 0)
     local endY = FormatCoordinatePercent((state.endConfirmed == true and state.endY) or state.lastY or 0)
     return string.format(
-        "【%s】本次轨迹采样：起点 %s, %s -> 终点 %s, %s | 样本 %d | 点链 %d | start=%s | end=%s",
+        "【%s】本次轨迹采样：起点 %s, %s -> 终点 %s, %s | 样本 %d | 预测观测 %d | 点链 %d | start=%s | end=%s",
         mapName,
         startX,
         startY,
         endX,
         endY,
         math.floor(tonumber(state.sampleCount) or 0),
+        math.floor(tonumber(state.predictionObservationCount) or 0),
         #((state.sampledPoints) or {}),
         tostring(state.startConfirmed == true),
         tostring(state.endConfirmed == true)
@@ -299,6 +308,10 @@ local function RecordEndConfirmedTraceEvent(service, targetMapData, iconResult, 
         positionX = iconResult and iconResult.positionX or nil,
         positionY = iconResult and iconResult.positionY or nil,
         sampleCount = state and state.sampleCount or nil,
+        startSource = state and state.startSource or nil,
+        endSource = state and state.endSource or nil,
+        startConfirmed = state and state.startConfirmed == true,
+        endConfirmed = state and state.endConfirmed == true,
     }) == true
 end
 
@@ -420,36 +433,58 @@ local function BuildRouteStoredMessage(targetMapData, routeRecord, routeChanged,
     local inputRouteKey = type(storeMeta) == "table" and storeMeta.inputRouteKey or nil
     local storedRouteKey = type(storeMeta) == "table" and storeMeta.storedRouteKey or routeRecord.routeKey
 
-    if status == "created_new_route" then
+    if status == "created_canonical_route" then
         return string.format(
-            "【%s】轨迹已新增入库：route=%s | 状态=%s | 可信度=%d | 样本=%d | 记录=%d",
+            "【%s】规范轨迹已新增入库：route=%s | family=%s | landing=%s | 状态=%s | 可信度=%d | 样本=%d | 记录=%d | merged=%d",
             mapName,
             tostring(storedRouteKey or "unknown"),
+            tostring(storeMeta and storeMeta.routeFamilyKey or routeRecord.routeFamilyKey or "unknown"),
+            tostring(storeMeta and storeMeta.landingKey or routeRecord.landingKey or "unknown"),
             tostring(quality),
             confidence,
             math.floor(tonumber(routeRecord.sampleCount) or 0),
-            math.floor(tonumber(routeRecord.observationCount) or 0)
+            math.floor(tonumber(routeRecord.observationCount) or 0),
+            math.max(1, math.floor(tonumber(routeRecord.mergedRouteCount) or 1))
         )
     end
 
-    if status == "updated_identical_route" then
+    if status == "updated_canonical_route" then
         return string.format(
-            "【%s】轨迹与现有完整路线完全一致，已合并计数：incoming=%s | stored=%s | 状态=%s | 可信度=%d",
+            "【%s】轨迹已归并到既有规范路线：incoming=%s | stored=%s | family=%s | landing=%s | 状态=%s | 可信度=%d | merged=%d",
             mapName,
             tostring(inputRouteKey or "unknown"),
             tostring(storedRouteKey or "unknown"),
+            tostring(storeMeta and storeMeta.routeFamilyKey or routeRecord.routeFamilyKey or "unknown"),
+            tostring(storeMeta and storeMeta.landingKey or routeRecord.landingKey or "unknown"),
             tostring(quality),
-            confidence
+            confidence,
+            math.max(1, math.floor(tonumber(routeRecord.mergedRouteCount) or 1))
         )
     end
 
     return string.format(
-        "【%s】轨迹已匹配现有路线，无新增写入：route=%s | 状态=%s | 可信度=%d",
+        "【%s】轨迹已匹配现有规范路线，无新增写入：route=%s | family=%s | landing=%s | 状态=%s | 可信度=%d",
         mapName,
         tostring(storedRouteKey or routeRecord.routeKey or "unknown"),
+        tostring(storeMeta and storeMeta.routeFamilyKey or routeRecord.routeFamilyKey or "unknown"),
+        tostring(storeMeta and storeMeta.landingKey or routeRecord.landingKey or "unknown"),
         tostring(quality),
         confidence
     )
+end
+
+local function BuildObservationInputRouteKey(startX, startY, endX, endY)
+    local scale = AirdropTrajectoryStore and AirdropTrajectoryStore.COORDINATE_SCALE or 1000
+    local quantizedStartX = math.floor(((tonumber(startX) or 0) * scale) + 0.5)
+    local quantizedStartY = math.floor(((tonumber(startY) or 0) * scale) + 0.5)
+    local quantizedEndX = math.floor(((tonumber(endX) or 0) * scale) + 0.5)
+    local quantizedEndY = math.floor(((tonumber(endY) or 0) * scale) + 0.5)
+    return table.concat({
+        tostring(quantizedStartX),
+        tostring(quantizedStartY),
+        tostring(quantizedEndX),
+        tostring(quantizedEndY),
+    }, ":")
 end
 
 local function EmitRouteStoredDebugOutput(service, targetMapData, routeRecord, routeChanged, storeMeta)
@@ -509,6 +544,7 @@ function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, 
         firstSeenAt = currentTime,
         lastSeenAt = currentTime,
         sampleCount = 1,
+        predictionObservationCount = 0,
         announcedRouteKey = nil,
         missingSince = nil,
         uniqueMatchState = nil,
@@ -592,6 +628,7 @@ function AirdropTrajectorySamplingService:AppendObservedPoint(state, positionX, 
         y = pointY,
     }
     state.lastRecordedPointKey = pointKey
+    IncrementPredictionObservationCount(state)
     return true
 end
 
@@ -622,12 +659,12 @@ function AirdropTrajectorySamplingService:HandleDetectedCrate(service, targetMap
     state.lastSeenAt = tonumber(currentTime) or Utils:GetCurrentTimestamp()
     state.missingSince = nil
     self:AppendObservedPoint(state, endX, endY)
-    RecordEndConfirmedTraceEvent(service, targetMapData, iconResult, state, state.lastSeenAt)
-    EmitEndConfirmedDebugOutput(service, targetMapData, iconResult, state)
     state.endConfirmed = true
     state.endX = endX
     state.endY = endY
     state.endSource = "crate_vignette"
+    RecordEndConfirmedTraceEvent(service, targetMapData, iconResult, state, state.lastSeenAt)
+    EmitEndConfirmedDebugOutput(service, targetMapData, iconResult, state)
     if service and service.RememberRecentlyFinalizedObservation then
         service:RememberRecentlyFinalizedObservation(targetMapData.id, state.objectGUID, state.lastSeenAt)
     end
@@ -722,6 +759,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
     local routeRecord = nil
     local routeStoreMeta = nil
     if AirdropTrajectoryStore and AirdropTrajectoryStore.UpsertRoute then
+        local inputRouteKey = BuildObservationInputRouteKey(startX, startY, endX, endY)
         routeChanged, routeRecord, routeStoreMeta = AirdropTrajectoryStore:UpsertRoute(
             state.mapID,
             {
@@ -742,6 +780,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
                 eventStartedAt = state.firstSeenAt,
                 startConfirmed = state.startConfirmed == true,
                 endConfirmed = state.endConfirmed == true,
+                representativeLegacyRouteKey = inputRouteKey,
             },
             "local",
             finalizeTime
@@ -757,12 +796,12 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
             mapID = state.mapID,
             runtimeMapId = runtimeMapId,
             sourceObjectGUID = state.objectGUID,
-            sampleCount = routeRecord.sampleCount,
+            sampleCount = state.sampleCount,
             routeKey = routeStoreMeta and routeStoreMeta.storedRouteKey or routeRecord.routeKey,
-            startSource = routeRecord.startSource,
-            endSource = routeRecord.endSource,
-            startConfirmed = routeRecord.startConfirmed == true,
-            endConfirmed = routeRecord.endConfirmed == true,
+            startSource = state.startSource,
+            endSource = state.endSource,
+            startConfirmed = state.startConfirmed == true,
+            endConfirmed = state.endConfirmed == true,
             note = routeStoreMeta and routeStoreMeta.status or (routeChanged == true and "stored_immediately_on_end_confirm" or "matched_existing_route"),
         })
     end
@@ -928,11 +967,17 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
 
         local pendingShoutStart = service.pendingShoutStartByMap and service.pendingShoutStartByMap[runtimeMapId] or nil
         local pendingTimestamp = pendingShoutStart and tonumber(pendingShoutStart.timestamp) or nil
+        local pendingShoutHasIdentity = type(pendingShoutStart) == "table"
+            and type(pendingShoutStart.objectGUID) == "string"
+            and pendingShoutStart.objectGUID ~= ""
+            and type(pendingShoutStart.positionX) == "number"
+            and type(pendingShoutStart.positionY) == "number"
         local applySucceeded = false
         local applyReason = nil
         if type(pendingTimestamp) == "number"
             and (currentTime - pendingTimestamp) >= 0
             and (currentTime - pendingTimestamp) <= (service.SHOUT_START_CONFIRM_WINDOW or 60)
+            and pendingShoutHasIdentity == true
         then
             applySucceeded, applyReason = self:ApplyConfirmedStartFromShout(state, pendingShoutStart)
             if applySucceeded == true and service.pendingShoutStartByMap then
@@ -944,7 +989,9 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
                 service.pendingShoutStartByMap[runtimeMapId] = nil
             end
         end
-        if service and service.RecordTraceEvent and type(pendingTimestamp) == "number" then
+        if service and service.RecordTraceEvent
+            and type(pendingTimestamp) == "number"
+            and (applySucceeded == true or type(applyReason) == "string") then
             local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
             service:RecordTraceEvent({
                 recordedAt = currentTime,
@@ -973,6 +1020,7 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
     local moveConfirmDistance = service.MOVE_CONFIRM_DISTANCE or 0.0045
     local stationaryTolerance = service.STATIONARY_TOLERANCE or 0.006
     local sampleDelta = service.MIN_SAMPLE_DELTA or 0.0025
+    local cruiseProgressMargin = service.CRUISE_PROGRESS_MARGIN or 0.0035
 
     if state.movingStarted ~= true then
         local startAnchorDistance = ComputeDistance(state.startAnchorX, state.startAnchorY, positionX, positionY)
@@ -1013,17 +1061,18 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
         state.lastX = positionX
         state.lastY = positionY
         state.sampleCount = (tonumber(state.sampleCount) or 1) + 1
-        local startX, startY = ResolveObservationStart(state)
-        local currentCruiseLength = tonumber(state.cruiseLineLength) or 0
-        if type(startX) == "number" and type(startY) == "number" then
-            local newLength = ComputeDistance(startX, startY, positionX, positionY)
-            if newLength > currentCruiseLength then
-                UpdateCruiseLineEndpoint(state, startX, startY, positionX, positionY)
-            end
-        end
     else
         state.lastX = positionX
         state.lastY = positionY
+    end
+
+    local startX, startY = ResolveObservationStart(state)
+    local currentCruiseLength = tonumber(state.cruiseLineLength) or 0
+    if type(startX) == "number" and type(startY) == "number" then
+        local newLength = ComputeDistance(startX, startY, positionX, positionY)
+        if newLength > (currentCruiseLength + cruiseProgressMargin) then
+            UpdateCruiseLineEndpoint(state, startX, startY, positionX, positionY)
+        end
     end
 
     if state.endConfirmed ~= true then

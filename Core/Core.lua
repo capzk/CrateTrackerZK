@@ -46,6 +46,14 @@ function CrateTrackerZK:StopMapIconDetection()
     return TickerController:StopMapIconDetection(self)
 end
 
+function CrateTrackerZK:StartTrajectorySamplingTicker(interval)
+    return TickerController:StartTrajectorySamplingTicker(self, interval)
+end
+
+function CrateTrackerZK:StopTrajectorySamplingTicker()
+    return TickerController:StopTrajectorySamplingTicker(self)
+end
+
 function CrateTrackerZK:StartCleanupTicker()
     return TickerController:StartCleanupTicker(self)
 end

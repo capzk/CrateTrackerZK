@@ -135,7 +135,7 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
     local endX = FormatCoordinatePercent(route.endX);
     local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "%s#%d 起点 %s, %s -> 终点 %s, %s | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | 更新 %d",
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | merged %d | family=%s | landing=%s | alert=%s | 更新 %d",
         prefix,
         tonumber(routeIndex) or 0,
         startX,
@@ -148,6 +148,10 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
         verificationCount,
         math.floor(tonumber(route.sampleCount) or 0),
         math.floor(tonumber(route.observationCount) or 0),
+        math.max(1, math.floor(tonumber(route.mergedRouteCount) or 1)),
+        tostring(route.routeFamilyKey or "unknown"),
+        tostring(route.landingKey or "unknown"),
+        tostring(route.alertToken or "unknown"),
         math.floor(tonumber(route.updatedAt) or 0)
     );
 end
@@ -169,8 +173,12 @@ local function BuildTrajectoryExportLine(route)
     local endX = FormatCoordinatePercent(route.endX);
     local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "CTK_TRAJECTORY|mapID=%d|start=%s,%s|end=%s,%s|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|updated=%d",
+        "CTK_TRAJECTORY|mapID=%d|route=%s|family=%s|landing=%s|alert=%s|start=%s,%s|end=%s,%s|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|merged=%d|updated=%d",
         tonumber(route.mapID) or 0,
+        tostring(route.routeKey or "unknown"),
+        tostring(route.routeFamilyKey or "unknown"),
+        tostring(route.landingKey or "unknown"),
+        tostring(route.alertToken or "unknown"),
         startX,
         startY,
         endX,
@@ -183,6 +191,7 @@ local function BuildTrajectoryExportLine(route)
         verificationCount,
         math.floor(tonumber(route.sampleCount) or 0),
         math.floor(tonumber(route.observationCount) or 0),
+        math.max(1, math.floor(tonumber(route.mergedRouteCount) or 1)),
         math.floor(tonumber(route.updatedAt) or 0)
     );
 end
@@ -224,7 +233,7 @@ local function BuildTrackGroupLine(trackIndex, track, includeMapPrefix)
     local endX = FormatCoordinatePercent(track.endX);
     local endY = FormatCoordinatePercent(track.endY);
     return string.format(
-        "%s#%d 起点 %s, %s -> 终点 %s, %s | track=%s | angle=%s | offset=%s | 落点 %d | raw %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | route=%s | 更新 %d",
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | track=%s | angle=%s | offset=%s | 落点 %d | canon %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | route=%s | family=%s | alert=%s | 更新 %d",
         prefix,
         tonumber(trackIndex) or 0,
         startX,
@@ -242,6 +251,8 @@ local function BuildTrackGroupLine(trackIndex, track, includeMapPrefix)
         verificationCount,
         math.floor(tonumber(track.sampleCount) or 0),
         tostring(track.representativeRouteKey or track.routeKey or "unknown"),
+        tostring(track.routeFamilyKey or "unknown"),
+        tostring(track.alertToken or "unknown"),
         math.floor(tonumber(track.updatedAt) or 0)
     );
 end
@@ -255,7 +266,7 @@ local function BuildLandingClusterLine(track, landingCluster)
     local endX = FormatCoordinatePercent(landingCluster.endX);
     local endY = FormatCoordinatePercent(landingCluster.endY);
     return string.format(
-        "    落点#%d 终点 %s, %s | projection=%.3f | routes=%d | 验证 %d/%d | 样本 %d | route=%s",
+        "    落点#%d 终点 %s, %s | projection=%.3f | canon=%d | 验证 %d/%d | 样本 %d | route=%s | family=%s | landing=%s | alert=%s",
         math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
         endX,
         endY,
@@ -264,7 +275,10 @@ local function BuildLandingClusterLine(track, landingCluster)
         verifiedPredictionCount,
         verificationCount,
         math.floor(tonumber(landingCluster.sampleCount) or 0),
-        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown")
+        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown"),
+        tostring(landingCluster.routeFamilyKey or "unknown"),
+        tostring(landingCluster.landingKey or "unknown"),
+        tostring(landingCluster.alertToken or "unknown")
     );
 end
 
@@ -278,7 +292,7 @@ local function BuildTrackExportLine(track)
         and AirdropTrajectoryStore:GetPredictionConfidence(track)
         or 0;
     return string.format(
-        "CTK_TRACK|mapID=%d|trackKey=%s|start=%s,%s|end=%s,%s|angle=%.6f|offset=%.6f|landings=%d|rawRoutes=%d|verified=%d/%d|samples=%d|confidence=%d|updated=%d|route=%s",
+        "CTK_TRACK|mapID=%d|trackKey=%s|start=%s,%s|end=%s,%s|angle=%.6f|offset=%.6f|landings=%d|canonicalRoutes=%d|verified=%d/%d|samples=%d|confidence=%d|updated=%d|route=%s|family=%s|alert=%s",
         tonumber(track.mapID) or 0,
         tostring(track.trackKey or "unknown"),
         FormatCoordinatePercent(track.startX),
@@ -294,7 +308,9 @@ local function BuildTrackExportLine(track)
         math.floor(tonumber(track.sampleCount) or 0),
         confidence,
         math.floor(tonumber(track.updatedAt) or 0),
-        tostring(track.representativeRouteKey or track.routeKey or "unknown")
+        tostring(track.representativeRouteKey or track.routeKey or "unknown"),
+        tostring(track.routeFamilyKey or "unknown"),
+        tostring(track.alertToken or "unknown")
     );
 end
 
@@ -305,7 +321,7 @@ local function BuildLandingExportLine(track, landingCluster)
     local verificationCount = math.max(0, math.floor(tonumber(landingCluster.verificationCount) or 0));
     local verifiedPredictionCount = math.max(0, math.floor(tonumber(landingCluster.verifiedPredictionCount) or 0));
     return string.format(
-        "CTK_LANDING|mapID=%d|trackKey=%s|index=%d|end=%s,%s|projection=%.6f|routes=%d|verified=%d/%d|samples=%d|updated=%d|route=%s",
+        "CTK_LANDING|mapID=%d|trackKey=%s|index=%d|end=%s,%s|projection=%.6f|canonicalRoutes=%d|verified=%d/%d|samples=%d|updated=%d|route=%s|family=%s|landing=%s|alert=%s",
         tonumber(track.mapID) or 0,
         tostring(track.trackKey or "unknown"),
         math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
@@ -317,7 +333,10 @@ local function BuildLandingExportLine(track, landingCluster)
         verificationCount,
         math.floor(tonumber(landingCluster.sampleCount) or 0),
         math.floor(tonumber(landingCluster.updatedAt) or 0),
-        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown")
+        tostring(landingCluster.representativeRouteKey or landingCluster.routeKey or "unknown"),
+        tostring(landingCluster.routeFamilyKey or "unknown"),
+        tostring(landingCluster.landingKey or "unknown"),
+        tostring(landingCluster.alertToken or "unknown")
     );
 end
 
@@ -327,6 +346,16 @@ local function FormatAuditTime(timestamp)
         return "--:--:--"
     end
     return date("%H:%M:%S", value)
+end
+
+local function EscapeAuditPayload(payload)
+    if type(payload) ~= "string" or payload == "" then
+        return payload
+    end
+    return payload
+        :gsub("\r", "\\r")
+        :gsub("\n", "\\n")
+        :gsub("|", "<PIPE>")
 end
 
 local function BuildSyncAuditSummary(entries)
@@ -375,6 +404,9 @@ local function BuildSyncAuditLine(entry)
     if type(entry.messageType) == "string" and entry.messageType ~= "" then
         parts[#parts + 1] = "type=" .. entry.messageType
     end
+    if type(entry.resultCode) == "string" and entry.resultCode ~= "" then
+        parts[#parts + 1] = "result=" .. entry.resultCode
+    end
     if type(entry.sender) == "string" and entry.sender ~= "" then
         parts[#parts + 1] = "sender=" .. entry.sender
     end
@@ -399,6 +431,15 @@ local function BuildSyncAuditLine(entry)
     if type(entry.routeKey) == "string" and entry.routeKey ~= "" then
         parts[#parts + 1] = "route=" .. entry.routeKey
     end
+    if type(entry.routeFamilyKey) == "string" and entry.routeFamilyKey ~= "" then
+        parts[#parts + 1] = "family=" .. entry.routeFamilyKey
+    end
+    if type(entry.landingKey) == "string" and entry.landingKey ~= "" then
+        parts[#parts + 1] = "landing=" .. entry.landingKey
+    end
+    if type(entry.alertToken) == "string" and entry.alertToken ~= "" then
+        parts[#parts + 1] = "alert=" .. entry.alertToken
+    end
     if type(entry.sampleCount) == "number" then
         parts[#parts + 1] = "samples=" .. tostring(math.floor(entry.sampleCount))
     end
@@ -419,7 +460,7 @@ local function BuildSyncAuditLine(entry)
         parts[#parts + 1] = "note=" .. entry.note
     end
     if type(entry.payload) == "string" and entry.payload ~= "" then
-        parts[#parts + 1] = "payload=" .. entry.payload
+        parts[#parts + 1] = "payload=" .. tostring(EscapeAuditPayload(entry.payload) or "")
     end
 
     return table.concat(parts, " | ")
@@ -567,7 +608,7 @@ function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
     end
 
     if exportMode == true then
-        SendLocalDebugMessage(string.format("【%s】轨道导出：共 %d 条。", mapName, #tracks));
+        SendLocalDebugMessage(string.format("【%s】轨道导出（canonical 派生视图）：共 %d 条。", mapName, #tracks));
         for _, track in ipairs(tracks) do
             local trackExportLine = BuildTrackExportLine(track);
             if trackExportLine then
@@ -583,7 +624,7 @@ function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
         return true;
     end
 
-    SendLocalDebugMessage(string.format("【%s】轨道调试：共 %d 条。", mapName, #tracks));
+    SendLocalDebugMessage(string.format("【%s】轨道调试（canonical 派生视图）：共 %d 条。", mapName, #tracks));
     for index, track in ipairs(tracks) do
         local trackLine = BuildTrackGroupLine(index, track, false);
         if trackLine then
@@ -622,7 +663,7 @@ function Commands:PrintAllTrajectoryRoutes(exportMode)
     end
 
     if exportMode == true then
-        SendLocalDebugMessage(string.format("轨道导出（全部地图）：共 %d 条。", #tracks));
+        SendLocalDebugMessage(string.format("轨道导出（全部地图，canonical 派生视图）：共 %d 条。", #tracks));
         for _, track in ipairs(tracks) do
             local trackExportLine = BuildTrackExportLine(track);
             if trackExportLine then
@@ -638,7 +679,7 @@ function Commands:PrintAllTrajectoryRoutes(exportMode)
         return true;
     end
 
-    SendLocalDebugMessage(string.format("轨道调试（全部地图）：共 %d 条。", #tracks));
+    SendLocalDebugMessage(string.format("轨道调试（全部地图，canonical 派生视图）：共 %d 条。", #tracks));
     for index, track in ipairs(tracks) do
         local trackLine = BuildTrackGroupLine(index, track, true);
         if trackLine then

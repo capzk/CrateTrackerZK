@@ -381,9 +381,16 @@ function Notification:NotifyPhaseTeamAlert(mapName, previousPhaseID, currentPhas
     return false;
 end
 
-function Notification:SendTrajectoryPredictionTeamMessage(mapId, routeKey, objectGUID, endX, endY, eventTimestamp)
+function Notification:SendTrajectoryPredictionTeamMessage(mapId, alertToken, objectGUID, endX, endY, eventTimestamp)
     if NotificationTeamMessageService and NotificationTeamMessageService.SendTrajectoryPredictionTeamMessage then
-        return NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(self, mapId, routeKey, objectGUID, endX, endY, eventTimestamp);
+        return NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(self, mapId, alertToken, objectGUID, endX, endY, eventTimestamp);
+    end
+    return false;
+end
+
+function Notification:SendTrajectoryPredictionCandidatesTeamMessage(mapId, alertToken, objectGUID, candidates, eventTimestamp)
+    if NotificationTeamMessageService and NotificationTeamMessageService.SendTrajectoryPredictionCandidatesTeamMessage then
+        return NotificationTeamMessageService:SendTrajectoryPredictionCandidatesTeamMessage(self, mapId, alertToken, objectGUID, candidates, eventTimestamp);
     end
     return false;
 end

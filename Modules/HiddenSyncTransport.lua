@@ -16,6 +16,26 @@ local function NormalizeAddonCallResult(...)
     return select(1, ...)
 end
 
+local function ResolveSendResultName(result)
+    if type(result) == "number" and type(Enum) == "table" and type(Enum.SendAddonMessageResult) == "table" then
+        for key, value in pairs(Enum.SendAddonMessageResult) do
+            if value == result then
+                return key
+            end
+        end
+    end
+    if result == true or result == 0 then
+        return "Success"
+    end
+    if result == false then
+        return "GeneralError"
+    end
+    if result == nil then
+        return nil
+    end
+    return tostring(result)
+end
+
 local function IsInstanceLikeContent()
     local inInstance = IsInInstance and IsInInstance() or false
     if inInstance == true then
@@ -80,14 +100,10 @@ function HiddenSyncTransport:EnsureAddonPrefix(listener, prefix)
     if type(listener) ~= "table" or type(prefix) ~= "string" or prefix == "" then
         return false
     end
-    if listener.addonPrefixRegistered == true then
+    listener.registeredAddonPrefixes = type(listener.registeredAddonPrefixes) == "table" and listener.registeredAddonPrefixes or {}
+    if listener.registeredAddonPrefixes[prefix] == true then
         return true
     end
-    if listener.addonPrefixRegistrationAttempted == true then
-        return false
-    end
-
-    listener.addonPrefixRegistrationAttempted = true
 
     local registered = false
     if C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered then
@@ -125,31 +141,47 @@ function HiddenSyncTransport:EnsureAddonPrefix(listener, prefix)
         end
     end
 
-    listener.addonPrefixRegistered = registered == true
-    listener.addonPrefixRegistrationAttempted = listener.addonPrefixRegistered == true
-    return listener.addonPrefixRegistered == true
+    listener.registeredAddonPrefixes[prefix] = registered == true
+    if listener.ADDON_PREFIX == prefix then
+        listener.addonPrefixRegistered = registered == true
+        listener.addonPrefixRegistrationAttempted = registered == true
+    end
+    return listener.registeredAddonPrefixes[prefix] == true
 end
 
 function HiddenSyncTransport:SendAddonPayload(prefix, payload, distribution)
     if type(prefix) ~= "string" or prefix == "" then
-        return false
+        return false, "InvalidPrefix", nil
     end
     if type(payload) ~= "string" or payload == "" then
-        return false
+        return false, "InvalidPayload", nil
     end
     if type(distribution) ~= "string" or distribution == "" then
-        return false
+        return false, "InvalidDistribution", nil
     end
 
     local sendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
     if type(sendAddonMessage) ~= "function" then
-        return false
+        return false, "MissingSendFunction", nil
     end
 
-    local ok, result = pcall(function()
-        return NormalizeAddonCallResult(sendAddonMessage(prefix, payload, distribution))
+    local ok, primaryResult, secondaryResult = pcall(function()
+        return sendAddonMessage(prefix, payload, distribution)
     end)
-    return ok and (result == true or result == 0)
+    if ok ~= true then
+        return false, "LuaError", nil
+    end
+
+    local normalizedResult = NormalizeAddonCallResult(primaryResult, secondaryResult)
+    local resultName = ResolveSendResultName(normalizedResult)
+    local successValue = type(Enum) == "table"
+        and type(Enum.SendAddonMessageResult) == "table"
+        and Enum.SendAddonMessageResult.Success
+        or 0
+    local isSuccess = normalizedResult == true
+        or normalizedResult == 0
+        or normalizedResult == successValue
+    return isSuccess == true, resultName, normalizedResult
 end
 
 return HiddenSyncTransport

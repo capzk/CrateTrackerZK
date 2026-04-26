@@ -25,8 +25,8 @@ localeData["TimeRemaining"] = "【%s】距离战争物资空投还有：%s！！
 localeData["AutoTeamReportMessage"] = "当前【%s】距离战争物资空投还有：%s！！";
 localeData["SharedPhaseSyncApplied"] = "已成功获取【%s】当前位面的最新空投缓存数据。";
 localeData["PhaseTeamAlertMessage"] = "当前%s位面发生变化：%s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "【%s】已匹配空投轨迹，预测落点坐标：%s, %s";
-localeData["TrajectoryPredictionWaypointSet"] = "【%s】已在地图上标记预测落点：%s, %s";
+localeData["TrajectoryPredictionMatchedUnified"] = "[%s]空投位置已确定：%s";
+localeData["TrajectoryPredictionCandidatesAmbiguous"] = "[%s]当前存在多个可能落点:";
 localeData["UnknownPhaseValue"] = "未知";
 
 -- 位面检测提示

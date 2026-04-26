@@ -18,6 +18,30 @@ local function FormatCoordinatePercent(value)
     return string.format("%.1f", (tonumber(value) or 0) * 100)
 end
 
+local function BuildWorldMapCoordinateLink(mapId, endX, endY)
+    local uiMapID = tonumber(mapId)
+    local coordinateX = tonumber(endX)
+    local coordinateY = tonumber(endY)
+    if not uiMapID or type(coordinateX) ~= "number" or type(coordinateY) ~= "number" then
+        return nil
+    end
+
+    local encodedX = math.floor((coordinateX * 10000) + 0.5)
+    local encodedY = math.floor((coordinateY * 10000) + 0.5)
+    local displayText = type(MAP_PIN_HYPERLINK) == "string"
+        and MAP_PIN_HYPERLINK ~= ""
+        and MAP_PIN_HYPERLINK
+        or "|A:Waypoint-MapPin-ChatIcon:13:13:0:0|a 地图标记位置"
+    return string.format("\124cffffff00\124Hworldmap:%d:%d:%d\124h[%s]\124h\124r", uiMapID, encodedX, encodedY, displayText)
+end
+
+local function BuildCandidateEntry(mapId, index, endX, endY)
+    return {
+        label = tostring(index or "?"),
+        coordinateLink = BuildWorldMapCoordinateLink(mapId, endX, endY),
+    }
+end
+
 local function ResolveStandardVisibleChatType(notification)
     if type(notification) ~= "table"
         or not notification.IsTeamNotificationEnabled
@@ -160,11 +184,11 @@ function NotificationTeamMessageService:NotifyPhaseTeamAlert(notification, mapNa
         or false
 end
 
-function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(notification, mapId, routeKey, objectGUID, endX, endY, eventTimestamp)
+function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(notification, mapId, alertToken, objectGUID, endX, endY, eventTimestamp)
     if not notification.isInitialized then
         notification:Initialize()
     end
-    if type(mapId) ~= "number" or type(routeKey) ~= "string" or routeKey == "" then
+    if type(mapId) ~= "number" or type(alertToken) ~= "string" or alertToken == "" then
         return false
     end
     if type(objectGUID) ~= "string" or objectGUID == "" then
@@ -180,7 +204,7 @@ function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(noti
     end
 
     local currentTime = Utils:GetCurrentTimestamp()
-    local mapKey = "trajectory:" .. tostring(mapId) .. ":" .. routeKey
+    local mapKey = "trajectory:" .. tostring(mapId) .. ":" .. alertToken
     local eventContext = {
         mapKey = mapKey,
         eventTimestamp = tonumber(eventTimestamp) or currentTime,
@@ -199,19 +223,19 @@ function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(noti
         mapData = Data:GetMap(mapId)
     end
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
-    local endXText = FormatCoordinatePercent(endX)
-    local endYText = FormatCoordinatePercent(endY)
+    local coordinateLink = BuildWorldMapCoordinateLink(mapId, endX, endY)
     local message = NotificationQueryService and NotificationQueryService.BuildTrajectoryPredictionMessage
-        and NotificationQueryService:BuildTrajectoryPredictionMessage(
+        and NotificationQueryService.BuildTrajectoryPredictionTeamMessage
+        and NotificationQueryService:BuildTrajectoryPredictionTeamMessage(
             mapName,
-            endXText,
-            endYText
+            coordinateLink,
+            FormatCoordinatePercent(endX),
+            FormatCoordinatePercent(endY)
         )
         or string.format(
-            (L and L["TrajectoryPredictionMatched"]) or "[%s] Matched airdrop trajectory, predicted drop coordinates: %s, %s",
+            "【%s】飞行轨迹匹配成功，预测落点坐标：%s",
             mapName,
-            endXText,
-            endYText
+            tostring(coordinateLink or "")
         )
 
     local sent = NotificationOutputService
@@ -219,6 +243,75 @@ function NotificationTeamMessageService:SendTrajectoryPredictionTeamMessage(noti
         and NotificationOutputService:SendTeamMessage(message, visibleChatType, {
             logFailure = true,
             label = "发送轨迹预测团队消息失败",
+        }) == true
+        or false
+    if sent == true and notification.CommitVisibleAutoDispatch then
+        notification:CommitVisibleAutoDispatch(mapKey, eventContext, currentTime)
+    end
+    return sent == true
+end
+
+function NotificationTeamMessageService:SendTrajectoryPredictionCandidatesTeamMessage(notification, mapId, alertToken, objectGUID, candidates, eventTimestamp)
+    if not notification.isInitialized then
+        notification:Initialize()
+    end
+    if type(mapId) ~= "number" or type(alertToken) ~= "string" or alertToken == "" then
+        return false
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return false
+    end
+    if type(candidates) ~= "table" or #candidates ~= 2 then
+        return false
+    end
+    if not notification:IsTeamNotificationEnabled() then
+        return false
+    end
+
+    local visibleChatType = ResolveStandardVisibleChatType(notification)
+    if type(visibleChatType) ~= "string" or visibleChatType == "" then
+        return false
+    end
+
+    local currentTime = Utils:GetCurrentTimestamp()
+    local mapKey = "trajectory_candidates:" .. tostring(mapId) .. ":" .. alertToken
+    local eventContext = {
+        mapKey = mapKey,
+        eventTimestamp = tonumber(eventTimestamp) or currentTime,
+        objectGUID = objectGUID,
+    }
+
+    if notification.HasPlayerSentNotification and notification:HasPlayerSentNotification(mapKey, eventContext) then
+        return false
+    end
+    if notification.CanSendNotification and notification:CanSendNotification(mapKey, eventContext, currentTime) ~= true then
+        return false
+    end
+
+    local mapData = Data and Data.GetMapByMapID and Data:GetMapByMapID(mapId) or nil
+    if not mapData and Data and Data.GetMap then
+        mapData = Data:GetMap(mapId)
+    end
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
+    local candidateEntries = {
+        BuildCandidateEntry(mapId, 1, candidates[1].endX, candidates[1].endY),
+        BuildCandidateEntry(mapId, 2, candidates[2].endX, candidates[2].endY),
+    }
+    local message = NotificationQueryService
+        and NotificationQueryService.BuildTrajectoryPredictionCandidatesMessage
+        and NotificationQueryService:BuildTrajectoryPredictionCandidatesMessage(mapName, candidateEntries)
+        or string.format(
+            "【%s】当前轨迹存在多个可能落点，暂无法准确判断。 候选1：%s 候选2：%s",
+            mapName,
+            tostring(candidateEntries[1].coordinateLink or ""),
+            tostring(candidateEntries[2].coordinateLink or "")
+        )
+
+    local sent = NotificationOutputService
+        and NotificationOutputService.SendTeamMessage
+        and NotificationOutputService:SendTeamMessage(message, visibleChatType, {
+            logFailure = true,
+            label = "发送轨迹候选团队消息失败",
         }) == true
         or false
     if sent == true and notification.CommitVisibleAutoDispatch then

@@ -6,6 +6,7 @@ local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 
 local PHASE_TICK_INTERVAL = 10
 local DEFAULT_TEAM_SHARED_WARMUP_INTERVAL = 540
+local DEFAULT_TRAJECTORY_SAMPLE_INTERVAL = 0.25
 
 local function CanRunPhasePolling()
     if not CoreShared:IsAreaActive() or not Phase then
@@ -81,6 +82,7 @@ function TickerController:PauseLocalDetections(owner)
     owner = owner or CrateTrackerZK
 
     self:StopPhaseTicker(owner)
+    self:StopTrajectorySamplingTicker(owner)
 
     if owner.mapIconDetectionTicker then
         owner.mapIconDetectionTicker:Cancel()
@@ -132,6 +134,43 @@ function TickerController:StopMapIconDetection(owner)
     if owner.mapIconDetectionTicker then
         owner.mapIconDetectionTicker:Cancel()
         owner.mapIconDetectionTicker = nil
+    end
+    return true
+end
+
+function TickerController:StartTrajectorySamplingTicker(owner, interval)
+    owner = owner or CrateTrackerZK
+    if not AirdropTrajectoryService or not AirdropTrajectoryService.PollTrajectorySampling then
+        return false
+    end
+
+    if owner.trajectorySamplingTicker then
+        return true
+    end
+
+    interval = tonumber(interval) or tonumber(AirdropTrajectoryService.TRAJECTORY_SAMPLE_INTERVAL) or DEFAULT_TRAJECTORY_SAMPLE_INTERVAL
+    if interval <= 0 then
+        interval = DEFAULT_TRAJECTORY_SAMPLE_INTERVAL
+    end
+
+    owner.trajectorySamplingTicker = C_Timer.NewTicker(interval, function()
+        if not CoreShared:IsAddonEnabled() or not CoreShared:IsAreaActive() then
+            self:StopTrajectorySamplingTicker(owner)
+            return
+        end
+        local currentMapID = CoreShared:GetCurrentMapID()
+        if AirdropTrajectoryService and AirdropTrajectoryService.PollTrajectorySampling then
+            AirdropTrajectoryService:PollTrajectorySampling(currentMapID)
+        end
+    end)
+    return true
+end
+
+function TickerController:StopTrajectorySamplingTicker(owner)
+    owner = owner or CrateTrackerZK
+    if owner.trajectorySamplingTicker then
+        owner.trajectorySamplingTicker:Cancel()
+        owner.trajectorySamplingTicker = nil
     end
     return true
 end
@@ -279,6 +318,9 @@ function TickerController:ResumeAllDetections(owner)
     self:StartCleanupTicker(owner)
     self:StartAutoTeamReportTicker(owner)
     self:RefreshPhaseTicker(owner)
+    if AirdropTrajectoryService and AirdropTrajectoryService.RefreshSamplingTicker then
+        AirdropTrajectoryService:RefreshSamplingTicker(false, Utils:GetCurrentTimestamp())
+    end
 end
 
 return TickerController

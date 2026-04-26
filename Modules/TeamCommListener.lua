@@ -81,14 +81,15 @@ local function DecodePayloadField(value)
     return value
 end
 
+local function ResolveAuditNoteForSend(sent, resultCode)
+    if sent == true then
+        return nil
+    end
+    return resultCode
+end
+
 function TeamCommListener:RegisterAddonPrefix()
-    if self.addonPrefixRegistered == true then
-        return true;
-    end
     if self.CanReceiveHiddenSync and self:CanReceiveHiddenSync() ~= true then
-        return false;
-    end
-    if self.addonPrefixRegistrationAttempted == true then
         return false;
     end
 
@@ -281,10 +282,10 @@ function TeamCommListener:SendConfirmedSync(syncState, chatType)
         return false
     end
 
-    local sent = HiddenSyncTransport
-        and HiddenSyncTransport.SendAddonPayload
-        and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
-        or false
+    local sent, resultCode = false, nil
+    if HiddenSyncTransport and HiddenSyncTransport.SendAddonPayload then
+        sent, resultCode = HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
             protocol = "CTKZK_SYNC",
@@ -296,6 +297,8 @@ function TeamCommListener:SendConfirmedSync(syncState, chatType)
             mapID = syncState and syncState.mapID or nil,
             objectGUID = syncState and syncState.objectGUID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -315,10 +318,10 @@ function TeamCommListener:SendPhaseAlertClaim(syncState, chatType)
         return false
     end
 
-    local sent = HiddenSyncTransport
-        and HiddenSyncTransport.SendAddonPayload
-        and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
-        or false
+    local sent, resultCode = false, nil
+    if HiddenSyncTransport and HiddenSyncTransport.SendAddonPayload then
+        sent, resultCode = HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
             protocol = "CTKZK_SYNC",
@@ -331,6 +334,8 @@ function TeamCommListener:SendPhaseAlertClaim(syncState, chatType)
             mapID = syncState and syncState.mapID or nil,
             phaseID = syncState and syncState.phaseID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent
@@ -350,10 +355,10 @@ function TeamCommListener:SendPhaseAlertAck(syncState, chatType)
         return false
     end
 
-    local sent = HiddenSyncTransport
-        and HiddenSyncTransport.SendAddonPayload
-        and HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
-        or false
+    local sent, resultCode = false, nil
+    if HiddenSyncTransport and HiddenSyncTransport.SendAddonPayload then
+        sent, resultCode = HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
+    end
     if HiddenSyncAuditService and HiddenSyncAuditService.Record then
         HiddenSyncAuditService:Record({
             protocol = "CTKZK_SYNC",
@@ -366,6 +371,8 @@ function TeamCommListener:SendPhaseAlertAck(syncState, chatType)
             mapID = syncState and syncState.mapID or nil,
             phaseID = syncState and syncState.phaseID or nil,
             payload = payload,
+            resultCode = resultCode,
+            note = ResolveAuditNoteForSend(sent, resultCode),
         })
     end
     return sent

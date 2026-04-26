@@ -25,8 +25,8 @@ localeData["TimeRemaining"] = "[%s]War Supplies airdrop in: %s!!!";
 localeData["AutoTeamReportMessage"] = "Current[%s]War Supplies airdrop in: %s!!";
 localeData["SharedPhaseSyncApplied"] = "Acquired the latest shared airdrop info for the current phase in [%s].";
 localeData["PhaseTeamAlertMessage"] = "Current %s phase changed: %s ➡ %s";
-localeData["TrajectoryPredictionMatched"] = "[%s] Matched airdrop trajectory, predicted drop coordinates: %s, %s";
-localeData["TrajectoryPredictionWaypointSet"] = "[%s] Marked the predicted drop point on your map: %s, %s";
+localeData["TrajectoryPredictionMatchedUnified"] = "[%s] Drop location confirmed: %s";
+localeData["TrajectoryPredictionCandidatesAmbiguous"] = "[%s] Multiple possible drop points:";
 localeData["UnknownPhaseValue"] = "unknown";
 
 -- Phase Detection Alerts
