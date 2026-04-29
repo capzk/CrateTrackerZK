@@ -373,6 +373,7 @@ local function BuildLandingPredictionCandidate(state, trackCandidate, landingClu
         startDistance = ComputeDistance(observationStartX, observationStartY, predictionRoute.startX, predictionRoute.startY),
         observationCount = tonumber(landingCluster.observationCount) or 0,
         sampleCount = tonumber(landingCluster.sampleCount) or 0,
+        verificationCount = tonumber(landingCluster.verificationCount) or 0,
         confidenceScore = AirdropTrajectoryStore
             and AirdropTrajectoryStore.GetPredictionConfidence
             and AirdropTrajectoryStore:GetPredictionConfidence(landingCluster)
@@ -383,57 +384,6 @@ local function BuildLandingPredictionCandidate(state, trackCandidate, landingClu
         routeLength = tonumber(projectionContext.length) or 0,
         currentProjection = tonumber(trackCandidate.currentProjection) or 0,
     }
-end
-
-local function ComputeLandingRemainingOnTrack(landingCluster, currentTrackProjection)
-    local endProjection = type(landingCluster) == "table" and tonumber(landingCluster.endProjection) or nil
-    local projection = tonumber(currentTrackProjection)
-    if type(endProjection) ~= "number" or type(projection) ~= "number" then
-        return nil
-    end
-    return endProjection - projection
-end
-
-local function CanResolveNearestLandingAsFormal(service, candidate, currentTrackProjection, forwardLandingClusters, matchedSamples, predictionObservationCount, observationLine)
-    if type(service) ~= "table"
-        or type(candidate) ~= "table"
-        or type(forwardLandingClusters) ~= "table"
-        or #forwardLandingClusters < 2
-        or type(observationLine) ~= "table" then
-        return false
-    end
-
-    local firstRemainingOnTrack = ComputeLandingRemainingOnTrack(forwardLandingClusters[1], currentTrackProjection)
-    local secondRemainingOnTrack = ComputeLandingRemainingOnTrack(forwardLandingClusters[2], currentTrackProjection)
-    if type(firstRemainingOnTrack) ~= "number"
-        or type(secondRemainingOnTrack) ~= "number"
-        or firstRemainingOnTrack < 0
-        or secondRemainingOnTrack <= firstRemainingOnTrack then
-        return false
-    end
-
-    local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CONFIRM_STABLE_SAMPLES) or 2))
-    if (tonumber(matchedSamples) or 0) < requiredSamples
-        or math.max(0, math.floor(tonumber(predictionObservationCount) or 0)) < requiredSamples then
-        return false
-    end
-
-    local routeLength = tonumber(candidate.routeLength) or 0
-    local minProgress = math.max(
-        tonumber(service.MATCH_MIN_PROGRESS_ABSOLUTE) or 0.05,
-        routeLength * (tonumber(service.MATCH_MIN_PROGRESS_RATIO) or 0.20)
-    )
-    if (tonumber(observationLine.length) or 0) < minProgress
-        or (tonumber(candidate.projection) or 0) < minProgress
-        or ShouldRejectByRemainingDistance(service, candidate) == true then
-        return false
-    end
-
-    local minLead = math.max(
-        tonumber(service.MATCH_FIRST_LANDING_ADVANTAGE_ABSOLUTE) or 0.035,
-        routeLength * (tonumber(service.MATCH_FIRST_LANDING_ADVANTAGE_RATIO) or 0.10)
-    )
-    return (secondRemainingOnTrack - firstRemainingOnTrack) >= minLead
 end
 
 local function FormatDiagnosticNumber(value)
@@ -667,16 +617,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
 
     local matchedSamples = tonumber(uniqueState.matchedSamples) or 0
     local predictionObservationCount = math.max(0, math.floor(tonumber(state.predictionObservationCount) or 0))
-    if #forwardLandingClusters > 1
-        and CanResolveNearestLandingAsFormal(
-            service,
-            candidate,
-            trackCandidate.currentProjection,
-            forwardLandingClusters,
-            matchedSamples,
-            predictionObservationCount,
-            observationLine
-        ) ~= true then
+    if #forwardLandingClusters > 1 then
         local routeLength = tonumber(candidate.routeLength) or 0
         local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CANDIDATE_CONFIRM_STABLE_SAMPLES) or 1))
         local minProgress = math.max(
@@ -684,48 +625,63 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
             routeLength * (tonumber(service.MATCH_CANDIDATE_MIN_PROGRESS_RATIO) or 0.08)
         )
         local remainingRejected = ShouldRejectCandidateByRemainingDistance(service, candidate) == true
-        if #forwardLandingClusters == 2
-            and matchedSamples >= requiredSamples
+        if matchedSamples >= requiredSamples
             and predictionObservationCount >= requiredSamples
             and (tonumber(observationLine.length) or 0) >= minProgress
             and (tonumber(candidate.projection) or 0) >= minProgress
-            and remainingRejected ~= true
-            and AirdropTrajectoryAlertCoordinator
-            and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionCandidates then
-            local ambiguousAlertToken = BuildAmbiguousPredictionAlertToken(track, forwardLandingClusters[1], forwardLandingClusters[2])
-            if type(ambiguousAlertToken) == "string" and ambiguousAlertToken ~= "" then
-                local queued, reason = AirdropTrajectoryAlertCoordinator:HandleLocalPredictionCandidates(
+            and remainingRejected ~= true then
+            local candidateNotificationSent, candidateNotificationReason = false, "candidate_notify_unavailable"
+            if service.NotifyPredictionCandidates then
+                candidateNotificationSent, candidateNotificationReason = service:NotifyPredictionCandidates(
                     targetMapData,
-                    ambiguousAlertToken,
-                    iconResult.objectGUID,
-                    {
-                        forwardLandingClusters[1],
-                        forwardLandingClusters[2],
-                    },
-                    Utils:GetCurrentTimestamp()
-                )
-                RecordPredictionTrace(
-                    service,
-                    targetMapData,
-                    state,
-                    iconResult,
-                    queued == true and "prediction_candidates" or "prediction_skip",
-                    queued == true
-                        and string.format(
-                            "candidates_queued track=%s first=%s second=%s",
-                            tostring(track.trackKey or ""),
-                            tostring(forwardLandingClusters[1].representativeRouteKey or forwardLandingClusters[1].routeKey or ""),
-                            tostring(forwardLandingClusters[2].representativeRouteKey or forwardLandingClusters[2].routeKey or "")
-                        )
-                        or string.format("candidates_blocked reason=%s", tostring(reason or "unknown")),
-                    predictedRouteKey
+                    forwardLandingClusters,
+                    state
                 )
             end
+
+            local queued, reason = false, nil
+            if #forwardLandingClusters == 2
+                and AirdropTrajectoryAlertCoordinator
+                and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionCandidates then
+                local ambiguousAlertToken = BuildAmbiguousPredictionAlertToken(track, forwardLandingClusters[1], forwardLandingClusters[2])
+                if type(ambiguousAlertToken) == "string" and ambiguousAlertToken ~= "" then
+                    queued, reason = AirdropTrajectoryAlertCoordinator:HandleLocalPredictionCandidates(
+                        targetMapData,
+                        ambiguousAlertToken,
+                        iconResult.objectGUID,
+                        {
+                            forwardLandingClusters[1],
+                            forwardLandingClusters[2],
+                        },
+                        Utils:GetCurrentTimestamp()
+                    )
+                end
+            end
+
+            local candidateEventType = (candidateNotificationSent == true or queued == true)
+                and "prediction_candidates"
+                or "prediction_skip"
+
+            RecordPredictionTrace(
+                service,
+                targetMapData,
+                state,
+                iconResult,
+                candidateEventType,
+                string.format(
+                    "candidates local=%s(%s) team=%s(%s) track=%s count=%d",
+                    tostring(candidateNotificationSent == true),
+                    tostring(candidateNotificationReason or "unknown"),
+                    tostring(queued == true),
+                    tostring(reason or "not_requested"),
+                    tostring(track.trackKey or ""),
+                    #forwardLandingClusters
+                ),
+                predictedRouteKey
+            )
         else
             local blockReason = nil
-            if #forwardLandingClusters ~= 2 then
-                blockReason = string.format("candidates_unsupported forward=%d", #forwardLandingClusters)
-            elseif matchedSamples < requiredSamples then
+            if matchedSamples < requiredSamples then
                 blockReason = string.format("candidates_not_stable matched=%d required=%d", matchedSamples, requiredSamples)
             elseif predictionObservationCount < requiredSamples then
                 blockReason = string.format("candidates_observation_short obs=%d required=%d", predictionObservationCount, requiredSamples)
@@ -747,8 +703,6 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
                     FormatDiagnosticNumber(candidate.projection),
                     FormatDiagnosticNumber(candidate.routeLength)
                 )
-            elseif not (AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionCandidates) then
-                blockReason = "candidates_coordinator_unavailable"
             end
             RecordPredictionTrace(
                 service,
@@ -855,6 +809,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
             predictedRouteKey
         )
         state.announcedRouteKey = predictedRouteKey
+        state.announcedCandidateKey = nil
         state.predictedRouteKey = predictedRouteKey
         state.predictedEndX = predictionRoute.endX
         state.predictedEndY = predictionRoute.endY

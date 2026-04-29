@@ -8,6 +8,7 @@ local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
 local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
+local NotificationQueryService = BuildEnv("NotificationQueryService")
 local Data = BuildEnv("Data")
 local CrateTrackerZK = BuildEnv("CrateTrackerZK")
 local IconDetector = BuildEnv("IconDetector")
@@ -43,8 +44,6 @@ AirdropTrajectoryService.MATCH_CANDIDATE_MIN_REMAINING_ABSOLUTE = 0.03
 AirdropTrajectoryService.MATCH_CANDIDATE_MIN_REMAINING_RATIO = 0.08
 AirdropTrajectoryService.MATCH_LANDING_EXCLUSION_ABSOLUTE = 0.02
 AirdropTrajectoryService.MATCH_LANDING_EXCLUSION_RATIO = 0.05
-AirdropTrajectoryService.MATCH_FIRST_LANDING_ADVANTAGE_ABSOLUTE = 0.035
-AirdropTrajectoryService.MATCH_FIRST_LANDING_ADVANTAGE_RATIO = 0.10
 AirdropTrajectoryService.MATCH_START_DISTANCE_TOLERANCE = 0.08
 AirdropTrajectoryService.MATCH_AMBIGUITY_DISTANCE_MARGIN = 0.004
 AirdropTrajectoryService.MATCH_AMBIGUITY_START_MARGIN = 0.015
@@ -116,6 +115,56 @@ local function BuildPredictionMessage(targetMapData, route)
     end
 
     return string.format("【%s】飞行轨迹匹配成功，预测落点坐标：%s", mapName, tostring(coordinateLink or (FormatCoordinatePercent(route.endX or 0) .. ", " .. FormatCoordinatePercent(route.endY or 0))))
+end
+
+local function BuildCoordinateLink(targetMapData, x, y)
+    if type(targetMapData) ~= "table" then
+        return nil
+    end
+    if not C_Map or not C_Map.SetUserWaypoint or not UiMapPoint or not UiMapPoint.CreateFromCoordinates then
+        return nil
+    end
+
+    local mapID = tonumber(targetMapData.mapID)
+    local endX = tonumber(x)
+    local endY = tonumber(y)
+    if not mapID or type(endX) ~= "number" or type(endY) ~= "number" then
+        return nil
+    end
+
+    local encodedX = math.floor((endX * 10000) + 0.5)
+    local encodedY = math.floor((endY * 10000) + 0.5)
+    local displayText = type(MAP_PIN_HYPERLINK) == "string"
+        and MAP_PIN_HYPERLINK ~= ""
+        and MAP_PIN_HYPERLINK
+        or "|A:Waypoint-MapPin-ChatIcon:13:13:0:0|a 地图标记位置"
+    return string.format("\124cffffff00\124Hworldmap:%d:%d:%d\124h[%s]\124h\124r", mapID, encodedX, encodedY, displayText)
+end
+
+local function BuildPredictionCandidatesMessage(targetMapData, candidateRoutes)
+    if type(targetMapData) ~= "table" or type(candidateRoutes) ~= "table" or #candidateRoutes < 2 then
+        return nil
+    end
+
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
+    local candidateEntries = {}
+    for index, route in ipairs(candidateRoutes) do
+        if type(route) == "table" and type(route.endX) == "number" and type(route.endY) == "number" then
+            candidateEntries[#candidateEntries + 1] = {
+                label = tostring(index),
+                coordinateLink = BuildCoordinateLink(targetMapData, route.endX, route.endY)
+                    or string.format("%s, %s", FormatCoordinatePercent(route.endX), FormatCoordinatePercent(route.endY)),
+            }
+        end
+    end
+    if #candidateEntries < 2 then
+        return nil
+    end
+
+    if NotificationQueryService and NotificationQueryService.BuildTrajectoryPredictionCandidatesMessage then
+        return NotificationQueryService:BuildTrajectoryPredictionCandidatesMessage(mapName, candidateEntries)
+    end
+    return nil
 end
 
 local function SetPredictionWaypoint(targetMapData, route)
@@ -529,6 +578,50 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
     end
 
     return waypointSet == true
+end
+
+function AirdropTrajectoryService:NotifyPredictionCandidates(targetMapData, candidateRoutes, state)
+    local predictionEnabled = self.IsPredictionEnabled and self:IsPredictionEnabled() == true
+    if predictionEnabled ~= true then
+        return false, "prediction_disabled"
+    end
+    if type(targetMapData) ~= "table" or type(candidateRoutes) ~= "table" or #candidateRoutes < 2 or type(state) ~= "table" then
+        return false, "invalid_args"
+    end
+
+    local candidateSignatureParts = {}
+    for _, route in ipairs(candidateRoutes) do
+        candidateSignatureParts[#candidateSignatureParts + 1] = tostring(
+            type(route) == "table" and (route.representativeRouteKey or route.routeKey or route.alertToken or "")
+                or ""
+        )
+    end
+    local candidateSignature = table.concat(candidateSignatureParts, "|")
+    if candidateSignature == "" then
+        return false, "candidate_signature_missing"
+    end
+    if state.announcedCandidateKey == candidateSignature then
+        return false, "candidate_already_announced"
+    end
+
+    local message = BuildPredictionCandidatesMessage(targetMapData, candidateRoutes)
+    if type(message) ~= "string" or message == "" then
+        return false, "candidate_message_missing"
+    end
+
+    local sent = false
+    if NotificationOutputService and NotificationOutputService.SendLocalMessage then
+        sent = NotificationOutputService:SendLocalMessage(message) == true
+    elseif Logger and Logger.Info then
+        Logger:Info("Trajectory", "预测", message)
+        sent = true
+    end
+
+    if sent == true then
+        state.announcedCandidateKey = candidateSignature
+        return true, candidateSignature
+    end
+    return false, "candidate_notify_failed"
 end
 
 function AirdropTrajectoryService:TryMatchPrediction(targetMapData, state, iconResult)
