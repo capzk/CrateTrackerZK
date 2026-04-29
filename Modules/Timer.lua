@@ -39,11 +39,13 @@ TimerManager.detectionSources = {
 function TimerManager:Initialize()
     self.isInitialized = true;
     self.detectionState = self.detectionState or {};
+    self.pendingAuthoritativeShoutByMap = self.pendingAuthoritativeShoutByMap or {};
     self.persistentStateBuffer = self.persistentStateBuffer or {};
     self.iconDetectionBuffer = self.iconDetectionBuffer or {};
     self.CONFIRM_TIME = 2;          -- 初筛防抖
     self.MIN_STABLE_TIME = 5;       -- 最短稳定存活时间（秒），达标后才广播/持久化
     self.MAP_SWITCH_GUARD_TIME = 2; -- 配置地图切换后短暂延迟检测，作为地图归属过滤的兜底
+    self.AUTHORITATIVE_SHOUT_WINDOW = 120; -- shout 时间待确认窗口；超窗后不再作为当前事件权威时间
     self.mapSwitchGuardState = self.mapSwitchGuardState or {};
     
     -- 初始化UnifiedDataManager
@@ -115,6 +117,78 @@ local function ClearDetectionState(owner, mapId)
     return true
 end
 
+local function GetAuthoritativeShoutWindow(owner)
+    local configuredWindow = owner and tonumber(owner.AUTHORITATIVE_SHOUT_WINDOW) or nil
+    if type(configuredWindow) == "number" and configuredWindow > 0 then
+        return configuredWindow
+    end
+    return 120
+end
+
+function TimerManager:RegisterPendingAuthoritativeShout(targetMapData, timestamp, phaseId)
+    if type(targetMapData) ~= "table" or type(targetMapData.id) ~= "number" then
+        return false
+    end
+
+    local authoritativeTimestamp = tonumber(timestamp)
+    if type(authoritativeTimestamp) ~= "number" then
+        return false
+    end
+
+    self.pendingAuthoritativeShoutByMap = self.pendingAuthoritativeShoutByMap or {}
+    self.pendingAuthoritativeShoutByMap[targetMapData.id] = {
+        timestamp = authoritativeTimestamp,
+        phaseId = type(phaseId) == "string" and phaseId ~= "" and phaseId or nil,
+        registeredAt = Utils:GetCurrentTimestamp(),
+    }
+    return true
+end
+
+function TimerManager:GetValidPendingAuthoritativeShout(runtimeMapId, currentTime)
+    if type(runtimeMapId) ~= "number" then
+        return nil
+    end
+
+    local stateByMap = self.pendingAuthoritativeShoutByMap
+    local state = type(stateByMap) == "table" and stateByMap[runtimeMapId] or nil
+    if type(state) ~= "table" then
+        return nil
+    end
+
+    local now = tonumber(currentTime) or getCurrentTimestamp()
+    local timestamp = tonumber(state.timestamp)
+    local windowSeconds = GetAuthoritativeShoutWindow(self)
+    if type(timestamp) ~= "number"
+        or now < timestamp
+        or (now - timestamp) > windowSeconds then
+        self:DiscardPendingAuthoritativeShout(runtimeMapId, true)
+        return nil
+    end
+    return state
+end
+
+function TimerManager:ClearPendingAuthoritativeShout(runtimeMapId)
+    if type(runtimeMapId) ~= "number" or type(self.pendingAuthoritativeShoutByMap) ~= "table" then
+        return false
+    end
+    self.pendingAuthoritativeShoutByMap[runtimeMapId] = nil
+    return true
+end
+
+function TimerManager:DiscardPendingAuthoritativeShout(runtimeMapId, clearTemporaryTime)
+    if type(runtimeMapId) ~= "number" then
+        return false
+    end
+
+    local removed = self:ClearPendingAuthoritativeShout(runtimeMapId) == true
+    if clearTemporaryTime == true
+        and UnifiedDataManager
+        and UnifiedDataManager.ClearTemporaryTime then
+        UnifiedDataManager:ClearTemporaryTime(runtimeMapId)
+    end
+    return removed or clearTemporaryTime == true
+end
+
 local function IsMapSwitchGuardActive(owner, targetMapData, currentTime)
     if not owner or not targetMapData or targetMapData.id == nil then
         return false
@@ -167,6 +241,7 @@ function TimerManager:HandleMapContextChanged(currentMapID, targetMapData, curre
             AirdropTrajectoryService:HandleMapSwitch(oldMapId, now);
         end
         ClearDetectionState(self, oldMapId);
+        self:DiscardPendingAuthoritativeShout(oldMapId, true);
         self.mapSwitchGuardState = nil;
         return nil, nil;
     end
@@ -177,7 +252,9 @@ function TimerManager:HandleMapContextChanged(currentMapID, targetMapData, curre
             AirdropTrajectoryService:HandleMapSwitch(mapChangeState.oldMapId, now);
         end
         ClearDetectionState(self, mapChangeState.oldMapId);
+        self:DiscardPendingAuthoritativeShout(mapChangeState.oldMapId, true);
         ClearDetectionState(self, resolvedTargetMapData.id);
+        self:DiscardPendingAuthoritativeShout(resolvedTargetMapData.id, true);
         ActivateMapSwitchGuard(self, resolvedTargetMapData, now);
     end
 
@@ -207,6 +284,7 @@ end
 
 function TimerManager:DetectMapIcons(currentMapID)
     self.detectionState = self.detectionState or {}
+    self.pendingAuthoritativeShoutByMap = self.pendingAuthoritativeShoutByMap or {}
 
     if Area and Area.IsActive and not Area:IsActive() then
         return false;
@@ -241,6 +319,7 @@ function TimerManager:DetectMapIcons(currentMapID)
     if Data and Data.IsMapHidden and Data:IsMapHidden(targetMapData.expansionID, targetMapData.mapID) then
         -- 清除该地图的检测状态，避免残留
         self.detectionState[targetMapData.id] = nil;
+        self:DiscardPendingAuthoritativeShout(targetMapData.id, true);
         return false;
     end
 
@@ -338,29 +417,59 @@ function TimerManager:DetectMapIcons(currentMapID)
             return true;
         end
         
-        -- 选择事件时间：若存在未过期的团队消息临时时间且与检测时间接近，则优先采用该时间
-        local eventTimestamp = UnifiedDataManager:SelectEventTimestamp(
-            targetMapData.id,
-            detectionState.firstDetectedTime,
-            iconResult and iconResult.phaseID or nil,
-            objectGUID
-        );
-        local shouldSendNotification = ShouldSendNotification(eventTimestamp, currentTime);
+        -- 提醒消息按“本地实际发现时间”门控，避免权威时间较早时压掉中途进图玩家的提醒。
+        local notificationTimestamp = detectionState.firstDetectedTime;
+        local shouldSendNotification = ShouldSendNotification(notificationTimestamp, currentTime);
+
+        -- 只有权威时间（本地 shout 待确认 / 已共享权威时间）才允许进入持久化与隐藏同步。
+        local eventTimestamp = nil;
+        local hasAuthoritativeTime = false;
+        local authoritativeSource = nil;
+        local pendingAuthoritativeShout = self.GetValidPendingAuthoritativeShout
+            and self:GetValidPendingAuthoritativeShout(targetMapData.id, currentTime)
+            or nil;
+        if type(pendingAuthoritativeShout) == "table"
+            and type(pendingAuthoritativeShout.timestamp) == "number" then
+            eventTimestamp = pendingAuthoritativeShout.timestamp;
+            hasAuthoritativeTime = true;
+            authoritativeSource = UnifiedDataManager.TimeSource.NPC_SHOUT;
+        else
+            eventTimestamp, hasAuthoritativeTime, authoritativeSource = UnifiedDataManager:SelectEventTimestamp(
+                targetMapData.id,
+                detectionState.firstDetectedTime,
+                iconResult and iconResult.phaseID or nil,
+                objectGUID
+            );
+        end
+
+        if detectionState.confirmedWithoutAuthority == true and hasAuthoritativeTime ~= true then
+            return true;
+        end
         
-        -- 首次检测：根据事件时间决定是否发送团队消息
+        -- 首次检测：根据本地发现时间决定是否发送事件提醒。
         if shouldSendNotification and Notification and Notification.NotifyAirdropDetected then
             Notification:NotifyAirdropDetected(
                 mapDisplayName,
                 self.detectionSources.MAP_ICON,
                 {
                     mapKey = mapNotificationKey,
-                    eventTimestamp = eventTimestamp,
+                    eventTimestamp = notificationTimestamp,
                     objectGUID = objectGUID,
                 }
             );
         end
+
+        if hasAuthoritativeTime ~= true then
+            detectionState.confirmedWithoutAuthority = true;
+            detectionState.confirmedAt = currentTime;
+            detectionState.detectedObjectGUID = objectGUID;
+            return true;
+        end
         
         local phaseId = iconResult and iconResult.phaseID or nil;
+        local persistSource = authoritativeSource
+            or (UnifiedDataManager.TimeSource and UnifiedDataManager.TimeSource.NPC_SHOUT)
+            or self.detectionSources.TEAM_MESSAGE;
 
         local success = UnifiedDataManager and UnifiedDataManager.PersistConfirmedAirdropState
             and UnifiedDataManager:PersistConfirmedAirdropState(targetMapData.id, {
@@ -368,7 +477,7 @@ function TimerManager:DetectMapIcons(currentMapID)
                 currentAirdropObjectGUID = objectGUID,
                 currentAirdropTimestamp = eventTimestamp,
                 lastRefreshPhase = phaseId,
-                source = UnifiedDataManager.TimeSource.ICON_DETECTION,
+                source = persistSource,
                 phaseSource = UnifiedDataManager.PhaseSource.ICON_DETECTION,
             });
         
@@ -383,6 +492,7 @@ function TimerManager:DetectMapIcons(currentMapID)
             
             -- 清除临时时间，避免影响后续事件
             UnifiedDataManager:ClearTemporaryTime(targetMapData.id);
+            self:ClearPendingAuthoritativeShout(targetMapData.id);
             
             -- 清除检测状态
             self.detectionState[targetMapData.id] = nil;

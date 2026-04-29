@@ -853,6 +853,10 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
     end
 
     if state.startConfirmed == true and state.endConfirmed ~= true then
+        -- 这里故意采用最严格的完整性门禁：起点一旦确认，后续采样只要发生断链，
+        -- 就直接放弃本地观测，避免带缺口的半程路线进入正式库或共享链路污染 canonical 事实源。
+        -- 该设计优先保证“入库/共享数据绝对完整”，而不是追求单客户端尽量保留残缺样本；
+        -- 团队场景下若其他成员采到了完整路线，会再通过轨迹共享同步回来。
         state.continuityBroken = true
         if service and service.RecordTraceEvent then
             local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
@@ -972,18 +976,21 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
             and pendingShoutStart.objectGUID ~= ""
             and type(pendingShoutStart.positionX) == "number"
             and type(pendingShoutStart.positionY) == "number"
+        local pendingAgeSeconds = type(pendingTimestamp) == "number"
+            and (currentTime - pendingTimestamp)
+            or nil
         local applySucceeded = false
         local applyReason = nil
-        if type(pendingTimestamp) == "number"
-            and (currentTime - pendingTimestamp) >= 0
-            and (currentTime - pendingTimestamp) <= (service.SHOUT_START_CONFIRM_WINDOW or 60)
-            and pendingShoutHasIdentity == true
-        then
-            applySucceeded, applyReason = self:ApplyConfirmedStartFromShout(state, pendingShoutStart)
-            if applySucceeded == true and service.pendingShoutStartByMap then
-                service.pendingShoutStartByMap[runtimeMapId] = nil
+        if type(pendingAgeSeconds) == "number"
+            and pendingAgeSeconds >= 0
+            and pendingAgeSeconds <= (service.SHOUT_START_CONFIRM_WINDOW or 60) then
+            if pendingShoutHasIdentity == true then
+                applySucceeded, applyReason = self:ApplyConfirmedStartFromShout(state, pendingShoutStart)
+                if applySucceeded == true and service.pendingShoutStartByMap then
+                    service.pendingShoutStartByMap[runtimeMapId] = nil
+                end
             end
-        elseif type(pendingTimestamp) == "number" then
+        elseif type(pendingAgeSeconds) == "number" and pendingAgeSeconds > (service.SHOUT_START_CONFIRM_WINDOW or 60) then
             applyReason = "pending_shout_expired"
             if service.pendingShoutStartByMap then
                 service.pendingShoutStartByMap[runtimeMapId] = nil

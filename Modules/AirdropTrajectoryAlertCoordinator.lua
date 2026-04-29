@@ -269,6 +269,10 @@ local function ResolveMapName(mapID)
     return tostring(mapID)
 end
 
+local function IsAmbiguousAlertToken(alertToken)
+    return type(alertToken) == "string" and string.sub(alertToken, 1, 6) == "ambig:"
+end
+
 local function FindExistingCandidateStateForObject(self, mapID, objectGUID)
     if type(self) ~= "table"
         or type(mapID) ~= "number"
@@ -287,6 +291,29 @@ local function FindExistingCandidateStateForObject(self, mapID, objectGUID)
         end
     end
     return nil
+end
+
+local function CancelCandidateStatesForObject(self, mapID, objectGUID)
+    if type(self) ~= "table"
+        or type(mapID) ~= "number"
+        or type(objectGUID) ~= "string"
+        or objectGUID == ""
+        or type(self.eventStateByKey) ~= "table" then
+        return 0
+    end
+
+    local removedCount = 0
+    for eventKey, state in pairs(self.eventStateByKey) do
+        if type(state) == "table"
+            and state.alertMode == "candidates"
+            and tonumber(state.mapID) == mapID
+            and state.objectGUID == objectGUID then
+            CancelEvaluationTimer(state)
+            self.eventStateByKey[eventKey] = nil
+            removedCount = removedCount + 1
+        end
+    end
+    return removedCount
 end
 
 local function RecordCoordinationTrace(state, eventType, note)
@@ -467,6 +494,7 @@ function AirdropTrajectoryAlertCoordinator:HandleLocalPredictionMatched(targetMa
 
     local now = tonumber(detectedAt) or Utils:GetCurrentTimestamp()
     self:PruneExpiredState(now)
+    CancelCandidateStatesForObject(self, targetMapData.mapID, objectGUID)
 
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID)
     local state = AcquireEventState(self, targetMapData.mapID, route.alertToken, objectGUID, mapName, now)
@@ -604,6 +632,9 @@ function AirdropTrajectoryAlertCoordinator:HandleRemoteCoordination(syncState, s
     self:PruneExpiredState(now)
 
     local mapName = ResolveMapName(syncState.mapID)
+    if IsAmbiguousAlertToken(syncState.alertToken) ~= true then
+        CancelCandidateStatesForObject(self, syncState.mapID, syncState.objectGUID)
+    end
     local state = AcquireEventState(self, syncState.mapID, syncState.alertToken, syncState.objectGUID, mapName, now)
     if messageType == "TRAJECTORY_ALERT_CLAIM" then
         UpsertClaim(state, sender, syncState.timestamp, now)

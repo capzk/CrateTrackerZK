@@ -81,6 +81,22 @@ local function CancelTrajectoryShoutRetry(mapRuntimeId)
     return true;
 end
 
+function ShoutDetector:CancelAllTrajectoryShoutRetries()
+    local timers = self.trajectoryShoutRetryTimers
+    if type(timers) ~= "table" then
+        self.trajectoryShoutRetryTimers = {}
+        return 0
+    end
+
+    local cancelledCount = 0
+    for mapRuntimeId in pairs(timers) do
+        if CancelTrajectoryShoutRetry(mapRuntimeId) == true then
+            cancelledCount = cancelledCount + 1
+        end
+    end
+    return cancelledCount
+end
+
 local function ScheduleTrajectoryShoutRetry(targetMapData, shoutTimestamp)
     if type(targetMapData) ~= "table" or type(targetMapData.id) ~= "number" then
         return false;
@@ -175,12 +191,20 @@ local function OnShoutDetected(message)
         });
     end
 
-    -- 写入临时时间并刷新界面（用于即时显示）
-    if UnifiedDataManager and UnifiedDataManager.SetTime and UnifiedDataManager.TimeSource then
-        local currentPhaseId = UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
-        UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.TEAM_MESSAGE, currentPhaseId);
-    end
     local shoutIconResult = CaptureTrajectoryShoutIcon(currentMapID, targetMapData);
+
+    -- 喊话时间先进入“待确认权威时间”缓冲，后续只有在同地图事件被稳定确认后，
+    -- 才会以这份 shout 时间正式落盘和共享，避免中途断链污染持久化时间。
+    if UnifiedDataManager and UnifiedDataManager.TimeSource then
+        local currentPhaseId = UnifiedDataManager.GetCurrentPhase and UnifiedDataManager:GetCurrentPhase(targetMapData.id) or nil;
+        if TimerManager and TimerManager.RegisterPendingAuthoritativeShout then
+            TimerManager:RegisterPendingAuthoritativeShout(targetMapData, currentTime, currentPhaseId);
+        end
+        if UnifiedDataManager.SetTime then
+            -- 继续保留原有 UI 体验：喊话后立即以临时时间显示，待正式确认后再转为持久态显示。
+            UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.NPC_SHOUT, currentPhaseId);
+        end
+    end
     if AirdropTrajectoryService and AirdropTrajectoryService.HandleAirdropShout then
         AirdropTrajectoryService:HandleAirdropShout(targetMapData, currentTime, shoutIconResult);
     end

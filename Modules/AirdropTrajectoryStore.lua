@@ -1,4 +1,4 @@
--- AirdropTrajectoryStore.lua - 空投规范轨迹持久化存储与迁移归并
+-- AirdropTrajectoryStore.lua - 空投规范轨迹持久化存储与 canonical 归并
 
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
 local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryService")
@@ -38,15 +38,12 @@ local function CreateEmptyPersistentState()
         meta = {
             storageKind = "canonical",
             lastResetAt = Utils:GetCurrentTimestamp(),
-            migratedAt = nil,
-            migratedFromSchemaVersion = nil,
         },
-        migrationBackup = nil,
         maps = {},
     }
 end
 
-local function ClearLegacyPersistentBucket()
+local function ClearObsoletePersistentBuckets()
     local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil
     if type(db) == "table" then
         db.trajectoryData = nil
@@ -509,19 +506,6 @@ local function NormalizeBaseRouteRecord(routeState, source, currentTime)
     return normalized
 end
 
-local function NormalizeMigrationMemberRoute(routeState)
-    local normalized = NormalizeBaseRouteRecord(routeState, routeState and routeState.source, routeState and routeState.updatedAt)
-    if type(normalized) ~= "table" then
-        return nil
-    end
-
-    normalized.routeKey = type(routeState.routeKey) == "string" and routeState.routeKey ~= ""
-        and routeState.routeKey
-        or BuildRawObservationKey(routeState)
-    normalized.representativeLegacyRouteKey = normalized.routeKey
-    return FinalizeRouteReliability(normalized)
-end
-
 local function NormalizeCanonicalRouteRecord(routeState, source, currentTime)
     local normalized = NormalizeBaseRouteRecord(routeState, source, currentTime)
     if type(normalized) ~= "table" then
@@ -599,91 +583,6 @@ end
 
 local function CreateRouteRecord(route)
     return CopyRouteInto({}, route)
-end
-
-local function BuildCanonicalRouteFromMembers(mapID, memberRoutes)
-    if type(memberRoutes) ~= "table" or #memberRoutes == 0 then
-        return nil
-    end
-
-    local sortedMembers = {}
-    for _, memberRoute in ipairs(memberRoutes) do
-        sortedMembers[#sortedMembers + 1] = memberRoute
-    end
-    SortRoutesForDerivation(sortedMembers)
-    local representativeRoute = sortedMembers[1]
-    if type(representativeRoute) ~= "table" then
-        return nil
-    end
-
-    local routeFamilyKey = BuildRouteFamilyKey(representativeRoute)
-    local landingKey = BuildLandingKey(representativeRoute)
-    local routeKey = BuildCanonicalRouteKey(mapID, routeFamilyKey, landingKey)
-    local alertToken = BuildAlertToken(mapID, routeFamilyKey, landingKey)
-    if type(routeFamilyKey) ~= "string" or routeFamilyKey == ""
-        or type(landingKey) ~= "string" or landingKey == ""
-        or type(routeKey) ~= "string" or routeKey == ""
-        or type(alertToken) ~= "string" or alertToken == "" then
-        return nil
-    end
-
-    local canonicalRoute = {
-        routeKey = routeKey,
-        mapID = mapID,
-        startX = representativeRoute.startX,
-        startY = representativeRoute.startY,
-        endX = representativeRoute.endX,
-        endY = representativeRoute.endY,
-        routeFamilyKey = routeFamilyKey,
-        landingKey = landingKey,
-        alertToken = alertToken,
-        observationCount = 0,
-        sampleCount = 0,
-        verificationCount = 0,
-        verifiedPredictionCount = 0,
-        createdAt = math.huge,
-        updatedAt = 0,
-        source = "shared",
-        continuityConfirmed = false,
-        startSource = representativeRoute.startSource,
-        endSource = representativeRoute.endSource,
-        startConfirmed = representativeRoute.startConfirmed == true,
-        endConfirmed = representativeRoute.endConfirmed == true,
-        lastPredictionVerified = false,
-        mergedRouteCount = #sortedMembers,
-        representativeLegacyRouteKey = representativeRoute.representativeLegacyRouteKey or representativeRoute.routeKey or routeKey,
-    }
-
-    for _, memberRoute in ipairs(sortedMembers) do
-        canonicalRoute.observationCount = canonicalRoute.observationCount + math.max(1, math.floor(tonumber(memberRoute.observationCount) or 1))
-        canonicalRoute.sampleCount = math.max(canonicalRoute.sampleCount, math.max(2, math.floor(tonumber(memberRoute.sampleCount) or 2)))
-        canonicalRoute.verificationCount = math.max(
-            canonicalRoute.verificationCount,
-            math.max(0, math.floor(tonumber(memberRoute.verificationCount) or 0))
-        )
-        canonicalRoute.verifiedPredictionCount = math.max(
-            canonicalRoute.verifiedPredictionCount,
-            math.max(0, math.floor(tonumber(memberRoute.verifiedPredictionCount) or 0))
-        )
-        canonicalRoute.createdAt = math.min(
-            canonicalRoute.createdAt,
-            math.max(0, math.floor(tonumber(memberRoute.createdAt) or tonumber(memberRoute.updatedAt) or 0))
-        )
-        canonicalRoute.updatedAt = math.max(
-            canonicalRoute.updatedAt,
-            math.max(0, math.floor(tonumber(memberRoute.updatedAt) or 0))
-        )
-        canonicalRoute.continuityConfirmed = canonicalRoute.continuityConfirmed or memberRoute.continuityConfirmed == true
-        canonicalRoute.lastPredictionVerified = canonicalRoute.lastPredictionVerified or memberRoute.lastPredictionVerified == true
-        if canonicalRoute.source ~= "local" and memberRoute.source == "local" then
-            canonicalRoute.source = "local"
-        end
-    end
-
-    if canonicalRoute.createdAt == math.huge then
-        canonicalRoute.createdAt = math.max(0, math.floor(tonumber(representativeRoute.createdAt) or tonumber(representativeRoute.updatedAt) or 0))
-    end
-    return FinalizeRouteReliability(canonicalRoute)
 end
 
 local function CreateTrackGroupRecord(trackGroup)
@@ -955,20 +854,6 @@ local function BuildTrackGroupsFromRoutes(store, routes)
     end
 
     return trackGroups
-end
-
-local function BuildCanonicalRoutesFromLegacyRoutes(store, mapID, legacyRoutes)
-    local canonicalRoutes = {}
-    local trackGroups = BuildTrackGroupsFromRoutes(store, legacyRoutes)
-    for _, trackGroup in ipairs(trackGroups) do
-        for _, landingCluster in ipairs(trackGroup.landingClusters or {}) do
-            local canonicalRoute = BuildCanonicalRouteFromMembers(mapID, landingCluster.memberRoutes or {})
-            if type(canonicalRoute) == "table" then
-                canonicalRoutes[#canonicalRoutes + 1] = canonicalRoute
-            end
-        end
-    end
-    return canonicalRoutes
 end
 
 local function HasRouteChanged(existing, candidate)
@@ -1281,7 +1166,9 @@ local function ValidatePersistentState(db)
     if type(db) ~= "table" or tonumber(db.schemaVersion) ~= AirdropTrajectoryStore.DB_SCHEMA_VERSION then
         return false
     end
-    if type(db.meta) ~= "table" or type(db.maps) ~= "table" then
+    if type(db.meta) ~= "table"
+        or db.meta.storageKind ~= "canonical"
+        or type(db.maps) ~= "table" then
         return false
     end
 
@@ -1302,111 +1189,24 @@ local function ValidatePersistentState(db)
     return true
 end
 
-local function BuildMigratedPersistentState(store, legacyState)
-    local migratedState = CreateEmptyPersistentState()
-    local now = Utils:GetCurrentTimestamp()
-    migratedState.meta.lastResetAt = now
-    migratedState.meta.migratedAt = now
-    migratedState.meta.migratedFromSchemaVersion = tonumber(legacyState and legacyState.schemaVersion) or 0
-    migratedState.migrationBackup = DeepCopyTable(legacyState)
-
-    local legacyMaps = type(legacyState) == "table" and legacyState.maps or nil
-    if type(legacyMaps) ~= "table" then
-        return migratedState
-    end
-
-    for rawMapID, savedMapData in pairs(legacyMaps) do
-        local mapID = tonumber(rawMapID)
-        local savedRoutes = type(savedMapData) == "table" and savedMapData.routes or nil
-        if mapID and type(savedRoutes) == "table" then
-            local legacyRoutes = {}
-            for savedRouteKey, savedRoute in pairs(savedRoutes) do
-                local rawRoute = nil
-                if type(savedRoute) == "table" then
-                    rawRoute = DeepCopyTable(savedRoute)
-                    rawRoute.mapID = tonumber(rawRoute.mapID) or mapID
-                    rawRoute.routeKey = type(rawRoute.routeKey) == "string" and rawRoute.routeKey ~= ""
-                        and rawRoute.routeKey
-                        or (type(savedRouteKey) == "string" and savedRouteKey ~= "" and savedRouteKey or nil)
-                    rawRoute.representativeLegacyRouteKey = rawRoute.routeKey
-                end
-                local normalizedLegacyRoute = NormalizeMigrationMemberRoute(rawRoute)
-                if IsRouteRecordValid(normalizedLegacyRoute) == true
-                    and IsReliableRoute(normalizedLegacyRoute) == true then
-                    legacyRoutes[#legacyRoutes + 1] = normalizedLegacyRoute
-                end
-            end
-
-            if #legacyRoutes > 0 then
-                local runtimeBucket = {}
-                local canonicalRoutes = BuildCanonicalRoutesFromLegacyRoutes(store, mapID, legacyRoutes)
-                for _, canonicalRoute in ipairs(canonicalRoutes) do
-                    local normalizedCanonicalRoute = NormalizeCanonicalRouteRecord(canonicalRoute, canonicalRoute.source, canonicalRoute.updatedAt)
-                    if IsRouteRecordValid(normalizedCanonicalRoute) == true
-                        and IsReliableRoute(normalizedCanonicalRoute) == true then
-                        UpsertCanonicalRouteIntoBucket(store, runtimeBucket, normalizedCanonicalRoute)
-                    end
-                end
-
-                migratedState.maps[mapID] = { routes = {} }
-                for routeKey, route in pairs(runtimeBucket) do
-                    migratedState.maps[mapID].routes[routeKey] = {
-                        routeKey = route.routeKey,
-                        mapID = route.mapID,
-                        startX = route.startX,
-                        startY = route.startY,
-                        endX = route.endX,
-                        endY = route.endY,
-                        routeFamilyKey = route.routeFamilyKey,
-                        landingKey = route.landingKey,
-                        alertToken = route.alertToken,
-                        observationCount = route.observationCount,
-                        sampleCount = route.sampleCount,
-                        verificationCount = route.verificationCount,
-                        verifiedPredictionCount = route.verifiedPredictionCount,
-                        createdAt = route.createdAt,
-                        updatedAt = route.updatedAt,
-                        source = route.source,
-                        continuityConfirmed = route.continuityConfirmed == true,
-                        startSource = route.startSource,
-                        endSource = route.endSource,
-                        startConfirmed = route.startConfirmed == true,
-                        endConfirmed = route.endConfirmed == true,
-                        lastPredictionVerified = route.lastPredictionVerified == true,
-                        mergedRouteCount = route.mergedRouteCount,
-                        representativeLegacyRouteKey = route.representativeLegacyRouteKey,
-                    }
-                end
-            end
-        end
-    end
-
-    return migratedState
-end
-
-local function EnsureTrajectoryPersistentState(store)
+local function EnsureTrajectoryPersistentState()
     local db = EnsurePersistentRootTable()
-    ClearLegacyPersistentBucket()
+    ClearObsoletePersistentBuckets()
 
-    if ValidatePersistentState(db) == true then
-        db.schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION
-        db.meta.storageKind = "canonical"
-        if type(db.maps) ~= "table" then
-            db.maps = {}
-        end
-        return db
+    if ValidatePersistentState(db) ~= true then
+        -- 旧结构与损坏结构不再做迁移兼容，直接清空并进入当前 canonical schema。
+        CRATETRACKERZK_TRAJECTORY_DB = CreateEmptyPersistentState()
+        return CRATETRACKERZK_TRAJECTORY_DB
     end
 
-    local rebuildSource = nil
-    if tonumber(db.schemaVersion) == AirdropTrajectoryStore.DB_SCHEMA_VERSION
-        and type(db.migrationBackup) == "table" then
-        rebuildSource = db.migrationBackup
-    else
-        rebuildSource = DeepCopyTable(db)
-    end
-
-    local migratedState = BuildMigratedPersistentState(store, rebuildSource)
-    CRATETRACKERZK_TRAJECTORY_DB = migratedState
+    CRATETRACKERZK_TRAJECTORY_DB = {
+        schemaVersion = AirdropTrajectoryStore.DB_SCHEMA_VERSION,
+        meta = {
+            storageKind = "canonical",
+            lastResetAt = tonumber(db.meta and db.meta.lastResetAt) or Utils:GetCurrentTimestamp(),
+        },
+        maps = type(db.maps) == "table" and db.maps or {},
+    }
     return CRATETRACKERZK_TRAJECTORY_DB
 end
 
@@ -1507,7 +1307,7 @@ function AirdropTrajectoryStore:Initialize()
     self.routesByMap = {}
     self.trackGroupsByMap = {}
 
-    local trajectoryState = EnsureTrajectoryPersistentState(self)
+    local trajectoryState = EnsureTrajectoryPersistentState()
     local persistentBucket = trajectoryState.maps or {}
     LoadPersistentRoutesIntoRuntime(self, persistentBucket)
     return true
@@ -1579,7 +1379,7 @@ function AirdropTrajectoryStore:Reset()
 end
 
 function AirdropTrajectoryStore:IsUsingIndependentPersistentStore()
-    local trajectoryState = EnsureTrajectoryPersistentState(self)
+    local trajectoryState = EnsureTrajectoryPersistentState()
     return type(trajectoryState) == "table"
         and type(trajectoryState.maps) == "table"
         and type(trajectoryState.meta) == "table"
@@ -1590,7 +1390,7 @@ function AirdropTrajectoryStore:ClearPersistentData()
     CRATETRACKERZK_TRAJECTORY_DB = CreateEmptyPersistentState()
     self.routesByMap = {}
     self.trackGroupsByMap = {}
-    ClearLegacyPersistentBucket()
+    ClearObsoletePersistentBuckets()
     return true
 end
 

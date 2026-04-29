@@ -67,6 +67,11 @@ local function ShouldPersistIncomingConfirmedState(persistentState, incomingTime
     end
 
     local localTimestamp = GetConfirmedTimestamp(persistentState)
+    if (type(localGUID) ~= "string" or localGUID == "")
+        and type(localTimestamp) == "number"
+        and incomingTimestamp == localTimestamp then
+        return true
+    end
     if type(localTimestamp) == "number" and incomingTimestamp <= localTimestamp then
         return false
     end
@@ -162,7 +167,7 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
             currentAirdropTimestamp = syncTimestamp,
             currentAirdropObjectGUID = incomingGUID,
             lastRefreshPhase = phaseId,
-            source = UnifiedDataManager.TimeSource.TEAM_MESSAGE,
+            source = UnifiedDataManager.TimeSource.CONFIRMED_SYNC,
         })
 
     if not success then

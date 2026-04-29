@@ -30,6 +30,8 @@ end
 function RuntimeResetManager:ResetSharedRuntimeState()
     if TimerManager then
         TimerManager.detectionState = {};
+        TimerManager.pendingAuthoritativeShoutByMap = {};
+        TimerManager.mapSwitchGuardState = nil;
     end
 
     if MapTracker and MapTracker.Initialize then
@@ -70,6 +72,9 @@ function RuntimeResetManager:ResetSharedRuntimeState()
     end
     if TeamSharedSyncListener then
         TeamSharedSyncListener.isInitialized = false;
+    end
+    if ShoutDetector and ShoutDetector.CancelAllTrajectoryShoutRetries then
+        ShoutDetector:CancelAllTrajectoryShoutRetries();
     end
     if AirdropTrajectoryService and AirdropTrajectoryService.Reset then
         AirdropTrajectoryService:Reset();

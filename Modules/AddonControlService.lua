@@ -68,6 +68,10 @@ local function ResetSyncListeners()
 end
 
 local function ResetSharedSyncRuntimeState()
+    if TimerManager then
+        TimerManager.pendingAuthoritativeShoutByMap = {}
+        TimerManager.mapSwitchGuardState = nil
+    end
     if TeamSharedSyncStore and TeamSharedSyncStore.Reset then
         TeamSharedSyncStore:Reset()
     end
@@ -88,6 +92,9 @@ local function ResetSharedSyncRuntimeState()
     end
     if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.Reset then
         AirdropTrajectoryAlertCoordinator:Reset()
+    end
+    if ShoutDetector and ShoutDetector.CancelAllTrajectoryShoutRetries then
+        ShoutDetector:CancelAllTrajectoryShoutRetries()
     end
 end
 

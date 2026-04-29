@@ -200,6 +200,13 @@ end
 function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID)
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp()
     local record = manager and manager.GetValidTemporaryTime and manager:GetValidTemporaryTime(mapId) or nil
+    local function IsAuthoritativeSource(source)
+        return manager
+            and manager.IsAuthoritativeTimeSource
+            and manager:IsAuthoritativeTimeSource(source) == true
+            or false
+    end
+
     if record then
         if type(currentPhaseId) == "string"
             and currentPhaseId ~= ""
@@ -208,10 +215,33 @@ function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detecti
         end
     end
 
-    if record then
+    if record
+        and IsAuthoritativeSource(record.source) == true
+        and record.source ~= (manager and manager.TimeSource and manager.TimeSource.NPC_SHOUT or nil) then
         local delta = math.abs(fallback - record.timestamp)
         if delta <= (manager and manager.TEMPORARY_TIME_ADOPTION_WINDOW or 120) then
-            return record.timestamp, true
+            return record.timestamp, true, record.source
+        end
+    end
+
+    if manager and manager.GetPersistentTimeRecordInto then
+        manager.selectEventTimestampPersistentRecordBuffer = manager.selectEventTimestampPersistentRecordBuffer or {}
+        local persistentRecord = manager:GetPersistentTimeRecordInto(
+            mapId,
+            manager.selectEventTimestampPersistentRecordBuffer
+        )
+        if persistentRecord
+            and IsAuthoritativeSource(persistentRecord.source) == true
+            and type(persistentRecord.eventTimestamp) == "number" then
+            local persistentObjectGUID = type(persistentRecord.objectGUID) == "string" and persistentRecord.objectGUID or nil
+            if persistentObjectGUID == nil
+                or persistentObjectGUID == ""
+                or (type(detectedObjectGUID) == "string" and detectedObjectGUID ~= "" and persistentObjectGUID == detectedObjectGUID) then
+                local delta = math.abs(fallback - persistentRecord.eventTimestamp)
+                if delta <= (manager and manager.TEMPORARY_TIME_ADOPTION_WINDOW or 120) then
+                    return persistentRecord.eventTimestamp, true, persistentRecord.source
+                end
+            end
         end
     end
 
@@ -231,11 +261,11 @@ function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detecti
             and type(sharedRecord.objectGUID) == "string"
             and sharedRecord.objectGUID == detectedObjectGUID
             and type(sharedRecord.timestamp) == "number" then
-            return sharedRecord.timestamp, true
+            return sharedRecord.timestamp, true, sharedRecord.source or (manager and manager.TimeSource and manager.TimeSource.PUBLIC_CHANNEL_SYNC) or nil
         end
     end
 
-    return fallback, false
+    return fallback, false, nil
 end
 
 function UnifiedDataDisplayResolver:GetDisplayTimeInto(manager, mapId, currentTime, outDisplayTime, persistentRecordBuffer)

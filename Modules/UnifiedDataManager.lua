@@ -28,6 +28,8 @@ end
 
 -- 时间来源枚举
 UnifiedDataManager.TimeSource = {
+    NPC_SHOUT = "npc_shout",
+    CONFIRMED_SYNC = "confirmed_sync",
     TEAM_MESSAGE = "team_message",
     ICON_DETECTION = "icon_detection",
     PUBLIC_CHANNEL_SYNC = "public_channel_sync",
@@ -96,6 +98,13 @@ local function GetTrackedMapData(mapId)
         return nil;
     end
     return Data:GetMap(mapId);
+end
+
+local function IsAuthoritativeTimeSource(source)
+    return source == UnifiedDataManager.TimeSource.NPC_SHOUT
+        or source == UnifiedDataManager.TimeSource.CONFIRMED_SYNC
+        or source == UnifiedDataManager.TimeSource.PUBLIC_CHANNEL_SYNC
+        or source == UnifiedDataManager.TimeSource.TEAM_MESSAGE
 end
 
 local function GetPersistentTimeRecordInto(mapId, outRecord)
@@ -195,14 +204,22 @@ function UnifiedDataManager:SetTime(mapId, timestamp, source, phaseId)
     end
     
     -- 根据来源自动决定是临时时间还是持久化时间
-    if source == self.TimeSource.TEAM_MESSAGE then
+    if source == self.TimeSource.NPC_SHOUT
+        or source == self.TimeSource.TEAM_MESSAGE
+        or source == self.TimeSource.PUBLIC_CHANNEL_SYNC then
         return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
+    elseif source == self.TimeSource.CONFIRMED_SYNC then
+        return self:SetPersistentTime(mapId, timestamp, source, nil);
     elseif source == self.TimeSource.ICON_DETECTION then
         return self:SetPersistentTime(mapId, timestamp, source, nil);
     else
         -- 默认为临时时间
         return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
     end
+end
+
+function UnifiedDataManager:IsAuthoritativeTimeSource(source)
+    return IsAuthoritativeTimeSource(source)
 end
 
 -- 设置临时时间
@@ -359,14 +376,15 @@ function UnifiedDataManager:SynchronizeTrackedMaps()
 end
 
 -- 选择事件时间戳：
--- 1. 优先采用未过期且与检测时间相近的临时时间；
--- 2. 若当前位面存在同 objectGUID 的共享缓存记录，则采用共享缓存中的原始事件时间。
+-- 1. 优先采用未过期且与检测时间相近的权威临时时间；
+-- 2. 若本地已存在同事件或待补 GUID 的权威持久化时间，则继续沿用；
+-- 3. 若当前位面存在同 objectGUID 的共享缓存记录，则采用共享缓存中的原始事件时间。
 function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID)
     if UnifiedDataDisplayResolver and UnifiedDataDisplayResolver.SelectEventTimestamp then
         return UnifiedDataDisplayResolver:SelectEventTimestamp(self, mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID);
     end
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
-    return fallback, false;
+    return fallback, false, nil;
 end
 
 -- 设置持久化时间

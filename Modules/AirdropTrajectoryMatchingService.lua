@@ -385,6 +385,57 @@ local function BuildLandingPredictionCandidate(state, trackCandidate, landingClu
     }
 end
 
+local function ComputeLandingRemainingOnTrack(landingCluster, currentTrackProjection)
+    local endProjection = type(landingCluster) == "table" and tonumber(landingCluster.endProjection) or nil
+    local projection = tonumber(currentTrackProjection)
+    if type(endProjection) ~= "number" or type(projection) ~= "number" then
+        return nil
+    end
+    return endProjection - projection
+end
+
+local function CanResolveNearestLandingAsFormal(service, candidate, currentTrackProjection, forwardLandingClusters, matchedSamples, predictionObservationCount, observationLine)
+    if type(service) ~= "table"
+        or type(candidate) ~= "table"
+        or type(forwardLandingClusters) ~= "table"
+        or #forwardLandingClusters < 2
+        or type(observationLine) ~= "table" then
+        return false
+    end
+
+    local firstRemainingOnTrack = ComputeLandingRemainingOnTrack(forwardLandingClusters[1], currentTrackProjection)
+    local secondRemainingOnTrack = ComputeLandingRemainingOnTrack(forwardLandingClusters[2], currentTrackProjection)
+    if type(firstRemainingOnTrack) ~= "number"
+        or type(secondRemainingOnTrack) ~= "number"
+        or firstRemainingOnTrack < 0
+        or secondRemainingOnTrack <= firstRemainingOnTrack then
+        return false
+    end
+
+    local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CONFIRM_STABLE_SAMPLES) or 2))
+    if (tonumber(matchedSamples) or 0) < requiredSamples
+        or math.max(0, math.floor(tonumber(predictionObservationCount) or 0)) < requiredSamples then
+        return false
+    end
+
+    local routeLength = tonumber(candidate.routeLength) or 0
+    local minProgress = math.max(
+        tonumber(service.MATCH_MIN_PROGRESS_ABSOLUTE) or 0.05,
+        routeLength * (tonumber(service.MATCH_MIN_PROGRESS_RATIO) or 0.20)
+    )
+    if (tonumber(observationLine.length) or 0) < minProgress
+        or (tonumber(candidate.projection) or 0) < minProgress
+        or ShouldRejectByRemainingDistance(service, candidate) == true then
+        return false
+    end
+
+    local minLead = math.max(
+        tonumber(service.MATCH_FIRST_LANDING_ADVANTAGE_ABSOLUTE) or 0.035,
+        routeLength * (tonumber(service.MATCH_FIRST_LANDING_ADVANTAGE_RATIO) or 0.10)
+    )
+    return (secondRemainingOnTrack - firstRemainingOnTrack) >= minLead
+end
+
 local function FormatDiagnosticNumber(value)
     local numberValue = tonumber(value)
     if type(numberValue) ~= "number" then
@@ -501,9 +552,35 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
 
-    if IsTrackSelectionAmbiguous(service, currentTrackMatches) == true then
+    local viableTrackMatches = {}
+    for _, matched in ipairs(currentTrackMatches) do
+        local matchedTrack = type(matched) == "table" and matched.track or nil
+        local currentTrackProjection = tonumber(matched and matched.currentProjection) or 0
+        local forwardLandingClusters = GetForwardLandingClusters(service, matchedTrack, currentTrackProjection)
+        if #forwardLandingClusters > 0 then
+            matched.forwardLandingClusters = forwardLandingClusters
+            viableTrackMatches[#viableTrackMatches + 1] = matched
+        end
+    end
+
+    if #viableTrackMatches == 0 then
         local best = currentTrackMatches[1]
-        local second = currentTrackMatches[2]
+        state.uniqueMatchState = nil
+        RecordPredictionTrace(
+            service,
+            targetMapData,
+            state,
+            iconResult,
+            "prediction_skip",
+            string.format("forward_landing_missing track=%s", tostring(best and best.track and best.track.trackKey or "")),
+            tostring(best and best.track and best.track.trackKey or "")
+        )
+        return false
+    end
+
+    if IsTrackSelectionAmbiguous(service, viableTrackMatches) == true then
+        local best = viableTrackMatches[1]
+        local second = viableTrackMatches[2]
         RecordPredictionTrace(
             service,
             targetMapData,
@@ -522,28 +599,14 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
 
-    local trackCandidate = currentTrackMatches[1]
+    local trackCandidate = viableTrackMatches[1]
     local track = trackCandidate.track
     if type(track) ~= "table" then
         state.uniqueMatchState = nil
         return false
     end
 
-    local currentTrackProjection = tonumber(trackCandidate.currentProjection) or 0
-    local forwardLandingClusters = GetForwardLandingClusters(service, track, currentTrackProjection)
-    if #forwardLandingClusters == 0 then
-        state.uniqueMatchState = nil
-        RecordPredictionTrace(
-            service,
-            targetMapData,
-            state,
-            iconResult,
-            "prediction_skip",
-            string.format("forward_landing_missing track=%s", tostring(track.trackKey or "")),
-            tostring(track.trackKey or "")
-        )
-        return false
-    end
+    local forwardLandingClusters = trackCandidate.forwardLandingClusters or {}
 
     local candidate = BuildLandingPredictionCandidate(state, trackCandidate, forwardLandingClusters[1], observationLine)
     local route = candidate and candidate.route
@@ -602,9 +665,18 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         uniqueState.routeLength = candidate.routeLength
     end
 
-    if #forwardLandingClusters > 1 then
-        local matchedSamples = tonumber(uniqueState.matchedSamples) or 0
-        local predictionObservationCount = math.max(0, math.floor(tonumber(state.predictionObservationCount) or 0))
+    local matchedSamples = tonumber(uniqueState.matchedSamples) or 0
+    local predictionObservationCount = math.max(0, math.floor(tonumber(state.predictionObservationCount) or 0))
+    if #forwardLandingClusters > 1
+        and CanResolveNearestLandingAsFormal(
+            service,
+            candidate,
+            trackCandidate.currentProjection,
+            forwardLandingClusters,
+            matchedSamples,
+            predictionObservationCount,
+            observationLine
+        ) ~= true then
         local routeLength = tonumber(candidate.routeLength) or 0
         local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CANDIDATE_CONFIRM_STABLE_SAMPLES) or 1))
         local minProgress = math.max(
@@ -691,8 +763,6 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
         return false
     end
 
-    local matchedSamples = tonumber(uniqueState.matchedSamples) or 0
-    local predictionObservationCount = math.max(0, math.floor(tonumber(state.predictionObservationCount) or 0))
     local routeLength = tonumber(uniqueState.routeLength) or 0
     local requiredSamples = math.max(1, math.floor(tonumber(service.MATCH_CONFIRM_STABLE_SAMPLES) or 2))
     local minProgress = math.max(

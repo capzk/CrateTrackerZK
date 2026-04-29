@@ -211,7 +211,14 @@ local function EnqueueRoute(owner, routeState, delaySeconds)
         owner.pendingRouteByKey[routeKey] = queueItem
     else
         queueItem.routeState = routeState
-        queueItem.nextEligibleAt = math.min(tonumber(queueItem.nextEligibleAt) or nextEligibleAt, nextEligibleAt)
+        local existingNextEligibleAt = tonumber(queueItem.nextEligibleAt)
+        if type(existingNextEligibleAt) == "number" and existingNextEligibleAt > now then
+            -- 已进入退避或等待窗口的 route 不要被新的入队请求提前唤醒，
+            -- 否则会破坏节流保护并造成无意义的重试风暴。
+            queueItem.nextEligibleAt = math.max(existingNextEligibleAt, nextEligibleAt)
+        else
+            queueItem.nextEligibleAt = nextEligibleAt
+        end
     end
 
     if owner.broadcastQueueMembership[routeKey] ~= true then
@@ -477,7 +484,7 @@ function AirdropTrajectorySyncService:HandleSyncRequest(syncState, sender)
 
     return self:QueueFullBroadcast(
         NormalizeJitterDelay(self.RESPONSE_JITTER_MIN, self.RESPONSE_JITTER_MAX),
-        false
+        true
     )
 end
 
