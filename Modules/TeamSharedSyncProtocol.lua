@@ -1,6 +1,7 @@
 -- TeamSharedSyncProtocol.lua - 团队共享缓存同步协议
 
 local TeamSharedSyncProtocol = BuildEnv("TeamSharedSyncProtocol")
+local AirdropEventService = BuildEnv("AirdropEventService")
 
 TeamSharedSyncProtocol.ADDON_PREFIX = "CTKZK_PSYNC"
 TeamSharedSyncProtocol.ROUTE_ADDON_PREFIX = "CTKZK_PTRJ"
@@ -35,6 +36,16 @@ local function DecodePayloadField(value)
     return value
 end
 
+local function NormalizeTimeType(timeType, source)
+    if AirdropEventService and AirdropEventService.NormalizeTimeType then
+        return AirdropEventService:NormalizeTimeType(timeType, source)
+    end
+    if timeType == "icon_detection" or source == "icon_detection" then
+        return "icon_detection"
+    end
+    return "npc_shout"
+end
+
 function TeamSharedSyncProtocol:IsSupportedPrefix(prefix)
     return prefix == self.ADDON_PREFIX or prefix == self.ROUTE_ADDON_PREFIX
 end
@@ -49,6 +60,7 @@ function TeamSharedSyncProtocol:BuildPayload(syncState)
     local phaseID = DecodePayloadField(EncodePayloadField(syncState.phaseID))
     local timestamp = tonumber(syncState.timestamp)
     local objectGUID = DecodePayloadField(EncodePayloadField(syncState.objectGUID))
+    local timeType = DecodePayloadField(EncodePayloadField(NormalizeTimeType(syncState.timeType, syncState.source)))
 
     if type(expansionID) ~= "string" or expansionID == "" then
         return nil
@@ -66,6 +78,18 @@ function TeamSharedSyncProtocol:BuildPayload(syncState)
         return nil
     end
 
+    if AirdropEventService and AirdropEventService.IsShoutTimeType and AirdropEventService:IsShoutTimeType(timeType) == true then
+        return table.concat({
+            self.MESSAGE_TYPE,
+            tostring(self.PROTOCOL_VERSION),
+            EncodePayloadField(expansionID),
+            tostring(math.floor(mapID)),
+            EncodePayloadField(phaseID),
+            tostring(math.floor(timestamp)),
+            EncodePayloadField(objectGUID),
+        }, "|")
+    end
+
     return table.concat({
         self.MESSAGE_TYPE,
         tostring(self.PROTOCOL_VERSION),
@@ -74,6 +98,7 @@ function TeamSharedSyncProtocol:BuildPayload(syncState)
         EncodePayloadField(phaseID),
         tostring(math.floor(timestamp)),
         EncodePayloadField(objectGUID),
+        EncodePayloadField(timeType),
     }, "|")
 end
 
@@ -230,6 +255,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     outState.phaseID = nil
     outState.timestamp = nil
     outState.objectGUID = nil
+    outState.timeType = nil
     outState.routeKey = nil
     outState.routeFamilyKey = nil
     outState.landingKey = nil
@@ -429,10 +455,15 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         return outState
     end
 
-    local parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
-        payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
+    local parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText, timeTypeText =
+        payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)|([^|]*)$")
     if prefix ~= self.ADDON_PREFIX then
         return nil
+    end
+    if parsedMessageType == nil then
+        parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
+        timeTypeText = nil
     end
 
     local protocolVersion = tonumber(versionText)
@@ -441,10 +472,42 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     local phaseID = DecodePayloadField(phaseIDText)
     local timestamp = tonumber(timestampText)
     local objectGUID = DecodePayloadField(objectGUIDText)
+    local timeType = DecodePayloadField(timeTypeText)
 
-    if parsedMessageType ~= self.MESSAGE_TYPE or protocolVersion ~= self.PROTOCOL_VERSION then
+    if parsedMessageType ~= self.MESSAGE_TYPE then
         return nil
     end
+    if protocolVersion ~= self.PROTOCOL_VERSION then
+        return nil
+    end
+    if type(expansionID) ~= "string" or expansionID == "" then
+        return nil
+    end
+    if not mapID or mapID <= 0 then
+        return nil
+    end
+    if type(phaseID) ~= "string" or phaseID == "" then
+        return nil
+    end
+    if not timestamp or timestamp <= 0 then
+        return nil
+    end
+    if type(objectGUID) ~= "string" or objectGUID == "" then
+        return nil
+    end
+
+    if type(timeType) ~= "string" or timeType == "" then
+        parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
+        protocolVersion = tonumber(versionText)
+        expansionID = DecodePayloadField(expansionIDText)
+        mapID = tonumber(mapIDText)
+        phaseID = DecodePayloadField(phaseIDText)
+        timestamp = tonumber(timestampText)
+        objectGUID = DecodePayloadField(objectGUIDText)
+        timeType = nil
+    end
+
     if type(expansionID) ~= "string" or expansionID == "" then
         return nil
     end
@@ -466,6 +529,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     outState.phaseID = phaseID
     outState.timestamp = timestamp
     outState.objectGUID = objectGUID
+    outState.timeType = NormalizeTimeType(timeType, nil)
     outState.messageType = parsedMessageType
     return outState
 end

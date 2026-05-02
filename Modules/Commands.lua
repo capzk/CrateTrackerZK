@@ -425,6 +425,12 @@ local function BuildSyncAuditLine(entry)
     if type(entry.phaseID) == "string" and entry.phaseID ~= "" then
         parts[#parts + 1] = "phase=" .. entry.phaseID
     end
+    if type(entry.timeType) == "string" and entry.timeType ~= "" then
+        parts[#parts + 1] = "timeType=" .. entry.timeType
+    end
+    if type(entry.objectGUID) == "string" and entry.objectGUID ~= "" then
+        parts[#parts + 1] = "objectGUID=" .. entry.objectGUID
+    end
     if type(entry.requestID) == "string" and entry.requestID ~= "" then
         parts[#parts + 1] = "request=" .. entry.requestID
     end
@@ -571,6 +577,9 @@ function Commands:BuildTrajectoryTraceEventLine(entry)
     if type(entry.sampleCount) == "number" then
         parts[#parts + 1] = "samples=" .. tostring(math.floor(entry.sampleCount));
     end
+    if type(entry.observationCount) == "number" then
+        parts[#parts + 1] = "obs=" .. tostring(math.floor(entry.observationCount));
+    end
     if type(entry.startConfirmed) == "boolean" or type(entry.endConfirmed) == "boolean" then
         parts[#parts + 1] = string.format(
             "start=%s(%s)",
@@ -583,8 +592,100 @@ function Commands:BuildTrajectoryTraceEventLine(entry)
             tostring(entry.endSource or "nil")
         );
     end
+    if type(entry.trackKey) == "string" and entry.trackKey ~= "" then
+        parts[#parts + 1] = "track=" .. entry.trackKey;
+    end
+    if type(entry.bestDestinationKey) == "string" and entry.bestDestinationKey ~= "" then
+        parts[#parts + 1] = "bestDest=" .. entry.bestDestinationKey;
+    end
+    if type(entry.secondDestinationKey) == "string" and entry.secondDestinationKey ~= "" then
+        parts[#parts + 1] = "secondDest=" .. entry.secondDestinationKey;
+    end
     if type(entry.routeKey) == "string" and entry.routeKey ~= "" then
         parts[#parts + 1] = "route=" .. entry.routeKey;
+    end
+    if type(entry.bestRouteKey) == "string" and entry.bestRouteKey ~= "" then
+        parts[#parts + 1] = "bestRoute=" .. entry.bestRouteKey;
+    end
+    if type(entry.firstRouteKey) == "string" and entry.firstRouteKey ~= "" then
+        parts[#parts + 1] = "first=" .. entry.firstRouteKey;
+    end
+    if type(entry.secondRouteKey) == "string" and entry.secondRouteKey ~= "" then
+        parts[#parts + 1] = "second=" .. entry.secondRouteKey;
+    end
+    if type(entry.candidateCount) == "number" then
+        parts[#parts + 1] = "cand=" .. tostring(math.floor(entry.candidateCount));
+    end
+    if type(entry.candidateConfirmObservations) == "number" then
+        parts[#parts + 1] = "candSeen=" .. tostring(math.floor(entry.candidateConfirmObservations));
+    end
+    if type(entry.totalRouteCount) == "number" then
+        parts[#parts + 1] = "routes=" .. tostring(math.floor(entry.totalRouteCount));
+    end
+    if type(entry.rejectedByStart) == "number"
+        or type(entry.rejectedByDirection) == "number"
+        or type(entry.rejectedByCorridor) == "number"
+        or type(entry.rejectedByProjection) == "number" then
+        parts[#parts + 1] = string.format(
+            "reject[s=%d d=%d c=%d p=%d]",
+            math.floor(tonumber(entry.rejectedByStart) or 0),
+            math.floor(tonumber(entry.rejectedByDirection) or 0),
+            math.floor(tonumber(entry.rejectedByCorridor) or 0),
+            math.floor(tonumber(entry.rejectedByProjection) or 0)
+        );
+    end
+    if type(entry.selectionScore) == "number" then
+        parts[#parts + 1] = string.format("score=%.2f", entry.selectionScore);
+    end
+    if type(entry.bestScore) == "number" then
+        parts[#parts + 1] = string.format("best=%.2f", entry.bestScore);
+    end
+    if type(entry.secondScore) == "number" then
+        parts[#parts + 1] = string.format("second=%.2f", entry.secondScore);
+    end
+    if type(entry.scoreRatio) == "number" then
+        parts[#parts + 1] = string.format("ratio=%.2f", entry.scoreRatio);
+    end
+    if type(entry.scoreMargin) == "number" then
+        parts[#parts + 1] = string.format("delta=%.2f", entry.scoreMargin);
+    end
+    if type(entry.selectionScoreMargin) == "number" then
+        parts[#parts + 1] = string.format("margin=%.2f", entry.selectionScoreMargin);
+    end
+    if type(entry.landingSelectionScore) == "number" then
+        parts[#parts + 1] = string.format("lscore=%.2f", entry.landingSelectionScore);
+    end
+    if type(entry.secondLandingSelectionScore) == "number" then
+        parts[#parts + 1] = string.format("lscore2=%.2f", entry.secondLandingSelectionScore);
+    end
+    if type(entry.stableWins) == "number" then
+        parts[#parts + 1] = "stableWins=" .. tostring(math.floor(entry.stableWins));
+    end
+    if type(entry.stableSeconds) == "number" then
+        parts[#parts + 1] = string.format("stableSec=%.1f", entry.stableSeconds);
+    end
+    if type(entry.projection) == "number" then
+        parts[#parts + 1] = string.format("proj=%.3f", entry.projection);
+    end
+    if type(entry.observationLength) == "number" then
+        parts[#parts + 1] = string.format("line=%.3f", entry.observationLength);
+    end
+    if type(entry.remainingDistance) == "number" then
+        parts[#parts + 1] = string.format("remain=%.3f", entry.remainingDistance);
+    end
+    if type(entry.observationStartX) == "number" and type(entry.observationStartY) == "number" then
+        parts[#parts + 1] = string.format(
+            "obsStart=%s,%s",
+            FormatCoordinatePercent(entry.observationStartX),
+            FormatCoordinatePercent(entry.observationStartY)
+        );
+    end
+    if type(entry.observationEndX) == "number" and type(entry.observationEndY) == "number" then
+        parts[#parts + 1] = string.format(
+            "obsEnd=%s,%s",
+            FormatCoordinatePercent(entry.observationEndX),
+            FormatCoordinatePercent(entry.observationEndY)
+        );
     end
     if type(entry.note) == "string" and entry.note ~= "" then
         parts[#parts + 1] = "note=" .. entry.note;

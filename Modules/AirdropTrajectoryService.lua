@@ -32,16 +32,44 @@ AirdropTrajectoryService.MATCH_TRACK_ANGLE_THRESHOLD = 0.06
 AirdropTrajectoryService.MATCH_TRACK_DISTANCE_THRESHOLD = 0.012
 AirdropTrajectoryService.MATCH_TRACK_AMBIGUITY_DISTANCE_MARGIN = 0.004
 AirdropTrajectoryService.MATCH_TRACK_AMBIGUITY_ANGLE_MARGIN = 0.01
+AirdropTrajectoryService.MATCH_TRACK_MIN_SELECTION_SCORE = 55
+AirdropTrajectoryService.MATCH_TRACK_SELECTION_SCORE_MARGIN = 6
+AirdropTrajectoryService.TRACK_LOCK_MIN_SCORE = 58
+AirdropTrajectoryService.TRACK_LOCK_MIN_MARGIN = 8
+AirdropTrajectoryService.TRACK_LOCK_MIN_WINS = 3
+AirdropTrajectoryService.TRACK_LOCK_MIN_PROGRESS_ABSOLUTE = 0.04
+AirdropTrajectoryService.TRACK_LOCK_MIN_PROGRESS_RATIO = 0.12
+AirdropTrajectoryService.TRACK_UNLOCK_MISS_LIMIT = 3
+AirdropTrajectoryService.TRACK_SWITCH_MIN_SCORE = 68
+AirdropTrajectoryService.TRACK_SWITCH_MIN_MARGIN = 12
+AirdropTrajectoryService.TRACK_SWITCH_MIN_WINS = 3
+AirdropTrajectoryService.TRACK_SWITCH_MAX_PROGRESS_RATIO = 0.45
+AirdropTrajectoryService.MATCH_MULTI_LANDING_FORMAL_LEAD_ABSOLUTE = 0.06
+AirdropTrajectoryService.MATCH_MULTI_LANDING_FORMAL_LEAD_RATIO = 0.18
+AirdropTrajectoryService.MATCH_MULTI_LANDING_FORMAL_DOMINANCE_RATIO = 0.68
+AirdropTrajectoryService.LANDING_LOCK_MIN_SCORE = 62
+AirdropTrajectoryService.LANDING_LOCK_MIN_MARGIN = 4
 AirdropTrajectoryService.MATCH_CONFIRM_STABLE_SAMPLES = 2
+AirdropTrajectoryService.LANDING_FORMAL_STABLE_WINS = 2
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_ABSOLUTE = 0.05
 AirdropTrajectoryService.MATCH_MIN_PROGRESS_RATIO = 0.20
 AirdropTrajectoryService.MATCH_MIN_REMAINING_ABSOLUTE = 0.04
 AirdropTrajectoryService.MATCH_MIN_REMAINING_RATIO = 0.15
-AirdropTrajectoryService.MATCH_CANDIDATE_CONFIRM_STABLE_SAMPLES = 1
-AirdropTrajectoryService.MATCH_CANDIDATE_MIN_PROGRESS_ABSOLUTE = 0.03
-AirdropTrajectoryService.MATCH_CANDIDATE_MIN_PROGRESS_RATIO = 0.08
+AirdropTrajectoryService.MATCH_CANDIDATE_CONFIRM_STABLE_SAMPLES = 2
+AirdropTrajectoryService.MATCH_CANDIDATE_HYSTERESIS_SECONDS = 4
+AirdropTrajectoryService.MATCH_CANDIDATE_MIN_SAMPLE_COUNT = 4
+AirdropTrajectoryService.MATCH_CANDIDATE_MIN_PROGRESS_ABSOLUTE = 0.05
+AirdropTrajectoryService.MATCH_CANDIDATE_MIN_PROGRESS_RATIO = 0.18
 AirdropTrajectoryService.MATCH_CANDIDATE_MIN_REMAINING_ABSOLUTE = 0.03
 AirdropTrajectoryService.MATCH_CANDIDATE_MIN_REMAINING_RATIO = 0.08
+AirdropTrajectoryService.LANDING_CANDIDATE_STABLE_WINS = 2
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_OBSERVATION_COUNT = 5
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_SAMPLE_COUNT = 5
+AirdropTrajectoryService.LANDING_CANDIDATE_HYSTERESIS_SECONDS = 2.5
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_PROGRESS_ABSOLUTE = 0.06
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_PROGRESS_RATIO = 0.20
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_TRACK_SCORE = 54
+AirdropTrajectoryService.LANDING_CANDIDATE_MIN_TRACK_MARGIN = 3
 AirdropTrajectoryService.MATCH_LANDING_EXCLUSION_ABSOLUTE = 0.02
 AirdropTrajectoryService.MATCH_LANDING_EXCLUSION_RATIO = 0.05
 AirdropTrajectoryService.MATCH_START_DISTANCE_TOLERANCE = 0.08
@@ -66,7 +94,7 @@ AirdropTrajectoryService.TRAJECTORY_SAMPLE_INTERVAL = 0.25
 AirdropTrajectoryService.TRACE_DEBUG_SETTING_KEY = "trajectoryTraceDebugEnabled"
 AirdropTrajectoryService.PREDICTION_ENABLED_SETTING_KEY = "trajectoryPredictionEnabled"
 AirdropTrajectoryService.LEGACY_MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
-AirdropTrajectoryService.MAX_TRACE_EVENTS = 30
+AirdropTrajectoryService.MAX_TRACE_EVENTS = 120
 
 local function NormalizeTraceText(value)
     if type(value) ~= "string" or value == "" then
@@ -192,6 +220,32 @@ local function SetPredictionWaypoint(targetMapData, route)
         C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     end
     return true
+end
+
+local function ShouldSuppressLocalTrajectoryMessages()
+    return AirdropTrajectoryAlertCoordinator
+        and AirdropTrajectoryAlertCoordinator.IsSettingEnabled
+        and AirdropTrajectoryAlertCoordinator:IsSettingEnabled() == true
+end
+
+local function BuildStableCandidateSignature(candidateRoutes)
+    if type(candidateRoutes) ~= "table" or #candidateRoutes < 2 then
+        return nil
+    end
+
+    local signatureParts = {}
+    for _, route in ipairs(candidateRoutes) do
+        signatureParts[#signatureParts + 1] = tostring(
+            type(route) == "table" and (route.representativeRouteKey or route.routeKey or route.alertToken or "")
+                or ""
+        )
+    end
+    table.sort(signatureParts)
+    local signature = table.concat(signatureParts, "|")
+    if signature == "" then
+        return nil
+    end
+    return signature
 end
 
 function AirdropTrajectoryService:Initialize()
@@ -410,7 +464,38 @@ function AirdropTrajectoryService:RecordTraceEvent(event)
         positionX = NormalizeTraceNumber(event.positionX),
         positionY = NormalizeTraceNumber(event.positionY),
         sampleCount = NormalizeTraceNumber(event.sampleCount),
+        observationCount = NormalizeTraceNumber(event.observationCount),
         routeKey = NormalizeTraceText(event.routeKey),
+        trackKey = NormalizeTraceText(event.trackKey),
+        firstRouteKey = NormalizeTraceText(event.firstRouteKey),
+        secondRouteKey = NormalizeTraceText(event.secondRouteKey),
+        candidateCount = NormalizeTraceNumber(event.candidateCount),
+        selectionScore = NormalizeTraceNumber(event.selectionScore),
+        selectionScoreMargin = NormalizeTraceNumber(event.selectionScoreMargin),
+        landingSelectionScore = NormalizeTraceNumber(event.landingSelectionScore),
+        secondLandingSelectionScore = NormalizeTraceNumber(event.secondLandingSelectionScore),
+        stableWins = NormalizeTraceNumber(event.stableWins),
+        stableSeconds = NormalizeTraceNumber(event.stableSeconds),
+        projection = NormalizeTraceNumber(event.projection),
+        observationLength = NormalizeTraceNumber(event.observationLength),
+        remainingDistance = NormalizeTraceNumber(event.remainingDistance),
+        bestDestinationKey = NormalizeTraceText(event.bestDestinationKey),
+        secondDestinationKey = NormalizeTraceText(event.secondDestinationKey),
+        bestScore = NormalizeTraceNumber(event.bestScore),
+        secondScore = NormalizeTraceNumber(event.secondScore),
+        scoreRatio = NormalizeTraceNumber(event.scoreRatio),
+        scoreMargin = NormalizeTraceNumber(event.scoreMargin),
+        bestRouteKey = NormalizeTraceText(event.bestRouteKey),
+        totalRouteCount = NormalizeTraceNumber(event.totalRouteCount),
+        rejectedByStart = NormalizeTraceNumber(event.rejectedByStart),
+        rejectedByDirection = NormalizeTraceNumber(event.rejectedByDirection),
+        rejectedByCorridor = NormalizeTraceNumber(event.rejectedByCorridor),
+        rejectedByProjection = NormalizeTraceNumber(event.rejectedByProjection),
+        observationStartX = NormalizeTraceNumber(event.observationStartX),
+        observationStartY = NormalizeTraceNumber(event.observationStartY),
+        observationEndX = NormalizeTraceNumber(event.observationEndX),
+        observationEndY = NormalizeTraceNumber(event.observationEndY),
+        candidateConfirmObservations = NormalizeTraceNumber(event.candidateConfirmObservations),
         startSource = NormalizeTraceText(event.startSource),
         endSource = NormalizeTraceText(event.endSource),
         startConfirmed = event.startConfirmed == nil and nil or event.startConfirmed == true,
@@ -566,6 +651,9 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
 
     local message = BuildPredictionMessage(targetMapData, route)
     local waypointSet = SetPredictionWaypoint(targetMapData, route)
+    if ShouldSuppressLocalTrajectoryMessages() == true then
+        return true
+    end
     local sentMessage = false
 
     if type(message) == "string" and message ~= "" and NotificationOutputService and NotificationOutputService.SendLocalMessage then
@@ -588,25 +676,21 @@ function AirdropTrajectoryService:NotifyPredictionCandidates(targetMapData, cand
     if type(targetMapData) ~= "table" or type(candidateRoutes) ~= "table" or #candidateRoutes < 2 or type(state) ~= "table" then
         return false, "invalid_args"
     end
-
-    local candidateSignatureParts = {}
-    for _, route in ipairs(candidateRoutes) do
-        candidateSignatureParts[#candidateSignatureParts + 1] = tostring(
-            type(route) == "table" and (route.representativeRouteKey or route.routeKey or route.alertToken or "")
-                or ""
-        )
-    end
-    local candidateSignature = table.concat(candidateSignatureParts, "|")
-    if candidateSignature == "" then
+    local candidateSignature = BuildStableCandidateSignature(candidateRoutes)
+    if type(candidateSignature) ~= "string" or candidateSignature == "" then
         return false, "candidate_signature_missing"
     end
-    if state.announcedCandidateKey == candidateSignature then
+    local announcedCandidateKey = state.localCandidateAlertKey or state.announcedCandidateKey
+    if announcedCandidateKey == candidateSignature then
         return false, "candidate_already_announced"
     end
 
     local message = BuildPredictionCandidatesMessage(targetMapData, candidateRoutes)
     if type(message) ~= "string" or message == "" then
         return false, "candidate_message_missing"
+    end
+    if ShouldSuppressLocalTrajectoryMessages() == true then
+        return false, "candidate_local_suppressed_team_alert"
     end
 
     local sent = false
@@ -618,7 +702,10 @@ function AirdropTrajectoryService:NotifyPredictionCandidates(targetMapData, cand
     end
 
     if sent == true then
+        state.localCandidateAlertKey = candidateSignature
+        state.localCandidateAlertSent = true
         state.announcedCandidateKey = candidateSignature
+        state.candidateAlertSent = true
         return true, candidateSignature
     end
     return false, "candidate_notify_failed"

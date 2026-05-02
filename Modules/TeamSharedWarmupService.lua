@@ -2,6 +2,7 @@
 -- 注意：本服务只广播运行时备用缓存候选数据，不写长期持久化，也不影响主 CTKZK_SYNC。
 
 local TeamSharedWarmupService = BuildEnv("TeamSharedWarmupService")
+local AirdropEventService = BuildEnv("AirdropEventService")
 
 local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local Data = BuildEnv("Data")
@@ -98,7 +99,17 @@ local function ResolvePersistentPhaseID(state)
     return nil
 end
 
-local function UpsertCandidate(candidateByKey, expansionID, mapID, phaseID, timestamp, objectGUID, source)
+local function NormalizeTimeType(timeType, source)
+    if AirdropEventService and AirdropEventService.NormalizeTimeType then
+        return AirdropEventService:NormalizeTimeType(timeType, source)
+    end
+    if timeType == "icon_detection" or source == "icon_detection" then
+        return "icon_detection"
+    end
+    return "npc_shout"
+end
+
+local function UpsertCandidate(candidateByKey, expansionID, mapID, phaseID, timestamp, objectGUID, source, timeType)
     if type(candidateByKey) ~= "table"
         or type(expansionID) ~= "string"
         or type(mapID) ~= "number"
@@ -113,11 +124,25 @@ local function UpsertCandidate(candidateByKey, expansionID, mapID, phaseID, time
 
     local key = BuildCandidateKey(expansionID, mapID, phaseID)
     local existing = candidateByKey[key]
+    local normalizedTimeType = NormalizeTimeType(timeType, source)
     if existing then
-        if timestamp < existing.timestamp then
+        local shouldReplace = AirdropEventService
+            and AirdropEventService.ShouldReplaceStoredEvent
+            and AirdropEventService:ShouldReplaceStoredEvent(
+                existing.timestamp,
+                existing.objectGUID,
+                existing.timeType,
+                timestamp,
+                objectGUID,
+                normalizedTimeType
+            ) == true
+        if shouldReplace ~= true then
             return false
         end
-        if timestamp == existing.timestamp and existing.source == "persistent" and source ~= "persistent" then
+        if timestamp == existing.timestamp
+            and existing.timeType == normalizedTimeType
+            and existing.source == "persistent"
+            and source ~= "persistent" then
             return false
         end
     end
@@ -129,6 +154,7 @@ local function UpsertCandidate(candidateByKey, expansionID, mapID, phaseID, time
         timestamp = math.floor(timestamp),
         objectGUID = objectGUID,
         source = source,
+        timeType = normalizedTimeType,
     }
     return true
 end
@@ -378,7 +404,8 @@ function TeamSharedWarmupService:CollectPersistentCandidates(candidateByKey, cur
                     phaseID,
                     timestamp,
                     objectGUID,
-                    "persistent"
+                    "persistent",
+                    persistentState and persistentState.timeType
                 ) then
                 count = count + 1
             end
@@ -413,7 +440,8 @@ function TeamSharedWarmupService:CollectSharedCandidates(candidateByKey, current
                 record.phaseID,
                 record.timestamp,
                 record.objectGUID,
-                "shared"
+                "shared",
+                record.timeType
             ) then
                 count = count + 1
             end

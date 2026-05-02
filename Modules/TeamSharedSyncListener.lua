@@ -90,6 +90,7 @@ local function SendSyncPayload(listener, syncState)
             mapID = syncState.mapID,
             phaseID = syncState.phaseID,
             objectGUID = syncState.objectGUID,
+            timeType = syncState.timeType,
             payload = payload,
             resultCode = resultCode,
             note = ResolveAuditNoteForSend(sent, resultCode),
@@ -536,6 +537,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
                 expansionID = syncState.expansionID,
                 mapID = syncState.mapID,
                 phaseID = syncState.phaseID,
+                timeType = syncState.timeType,
                 routeKey = syncState.routeKey,
                 routeFamilyKey = syncState.routeFamilyKey,
                 landingKey = syncState.landingKey,
@@ -605,7 +607,8 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
             syncState.timestamp,
             syncState.objectGUID,
             sender,
-            currentTime
+            currentTime,
+            syncState.timeType
         )
     end
     if changed ~= true or type(record) ~= "table" then

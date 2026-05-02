@@ -203,6 +203,16 @@ local function BuildCanonicalRouteKey(mapID, routeFamilyKey, landingKey)
     }, ":")
 end
 
+local function BuildStableTrackKey(mapID, routeFamilyKey, representativeRouteKey)
+    if type(routeFamilyKey) == "string" and routeFamilyKey ~= "" then
+        return table.concat({
+            tostring(tonumber(mapID) or 0),
+            routeFamilyKey,
+        }, ":")
+    end
+    return tostring(tonumber(mapID) or 0) .. ":" .. tostring(representativeRouteKey or "unknown")
+end
+
 local function BuildAlertToken(mapID, routeFamilyKey, landingKey)
     if type(routeFamilyKey) ~= "string" or routeFamilyKey == ""
         or type(landingKey) ~= "string" or landingKey == "" then
@@ -726,7 +736,11 @@ local function BuildTrackGroupAggregate(trackGroup)
     end
 
     aggregated.routeKey = trackGroup.representativeRoute.routeKey
-    aggregated.trackKey = tostring(trackGroup.mapID or aggregated.mapID or "0") .. ":" .. tostring(trackGroup.representativeRoute.routeKey or "unknown")
+    aggregated.trackKey = BuildStableTrackKey(
+        trackGroup.mapID or aggregated.mapID or 0,
+        trackGroup.representativeRoute.routeFamilyKey or aggregated.routeFamilyKey,
+        trackGroup.representativeRoute.routeKey
+    )
     aggregated.representativeRouteKey = trackGroup.representativeRoute.routeKey
     aggregated.representativeRoute = CreateRouteRecord(trackGroup.representativeRoute)
     aggregated.rawRouteCount = math.max(1, math.floor(tonumber(trackGroup.rawRouteCount) or #(trackGroup.memberRoutes or {})))
@@ -753,6 +767,80 @@ local function BuildTrackGroupAggregate(trackGroup)
     end
     aggregated.landingClusterCount = #aggregated.landingClusters
     return aggregated
+end
+
+local function BuildPredictionLineAggregate(trackGroup)
+    if type(trackGroup) ~= "table" or type(trackGroup.representativeRoute) ~= "table" then
+        return nil
+    end
+
+    local representativeRoute = trackGroup.representativeRoute
+    local lineKey = BuildStableTrackKey(
+        trackGroup.mapID or representativeRoute.mapID or 0,
+        representativeRoute.routeFamilyKey,
+        representativeRoute.routeKey
+    )
+    if type(lineKey) ~= "string" or lineKey == "" then
+        return nil
+    end
+
+    local line = {
+        lineKey = lineKey,
+        mapID = representativeRoute.mapID,
+        routeFamilyKey = representativeRoute.routeFamilyKey,
+        representativeRouteKey = representativeRoute.routeKey,
+        startX = representativeRoute.startX,
+        startY = representativeRoute.startY,
+        angle = tonumber(trackGroup.angle),
+        ux = tonumber(trackGroup.ux),
+        uy = tonumber(trackGroup.uy),
+        nx = tonumber(trackGroup.nx),
+        ny = tonumber(trackGroup.ny),
+        offset = tonumber(trackGroup.offset),
+        landings = {},
+        verifiedPredictionCount = 0,
+        observationCount = 0,
+        sampleCount = 0,
+        confidenceScore = 0,
+        updatedAt = 0,
+    }
+
+    for index, landingCluster in ipairs(trackGroup.landingClusters or {}) do
+        local representativeLanding = type(landingCluster.representativeRoute) == "table"
+            and landingCluster.representativeRoute
+            or nil
+        local endProjection = tonumber(landingCluster.endProjection)
+        if type(representativeLanding) == "table" and type(endProjection) == "number" then
+            local landing = CreateRouteRecord(representativeLanding)
+            if type(landing) == "table" then
+                landing.proj = endProjection
+                landing.lineKey = lineKey
+                landing.routeKey = representativeLanding.routeKey
+                landing.clusterIndex = index
+                landing.trackKey = lineKey
+                line.landings[#line.landings + 1] = landing
+                line.verifiedPredictionCount = math.max(line.verifiedPredictionCount, tonumber(landing.verifiedPredictionCount) or 0)
+                line.observationCount = line.observationCount + math.max(1, math.floor(tonumber(landing.observationCount) or 1))
+                line.sampleCount = math.max(line.sampleCount, math.max(2, math.floor(tonumber(landing.sampleCount) or 2)))
+                line.confidenceScore = math.max(line.confidenceScore, tonumber(landing.confidenceScore) or 0)
+                line.updatedAt = math.max(line.updatedAt, tonumber(landing.updatedAt) or 0)
+            end
+        end
+    end
+
+    table.sort(line.landings, function(left, right)
+        local leftProjection = tonumber(left and left.proj) or math.huge
+        local rightProjection = tonumber(right and right.proj) or math.huge
+        if leftProjection ~= rightProjection then
+            return leftProjection < rightProjection
+        end
+        return tostring(left and left.routeKey or "") < tostring(right and right.routeKey or "")
+    end)
+
+    if #line.landings == 0 then
+        return nil
+    end
+    return line
 end
 
 local function BuildTrackGroupsFromRoutes(store, routes)
@@ -1227,6 +1315,7 @@ local function BuildTrackGroupCacheForMap(self, mapID)
         return {
             trackGroups = {},
             predictionTracks = {},
+            predictionLines = {},
         }
     end
 
@@ -1240,6 +1329,7 @@ local function BuildTrackGroupCacheForMap(self, mapID)
         local emptyCache = {
             trackGroups = {},
             predictionTracks = {},
+            predictionLines = {},
         }
         self.trackGroupsByMap[mapID] = emptyCache
         return emptyCache
@@ -1254,17 +1344,31 @@ local function BuildTrackGroupCacheForMap(self, mapID)
 
     local rawTrackGroups = BuildTrackGroupsFromRoutes(self, canonicalRoutes)
     local aggregatedTrackGroups = {}
+    local predictionLines = {}
     for _, trackGroup in ipairs(rawTrackGroups) do
         local aggregatedTrackGroup = BuildTrackGroupAggregate(trackGroup)
         if type(aggregatedTrackGroup) == "table" then
             aggregatedTrackGroups[#aggregatedTrackGroups + 1] = aggregatedTrackGroup
         end
+        local predictionLine = BuildPredictionLineAggregate(trackGroup)
+        if type(predictionLine) == "table" then
+            predictionLines[#predictionLines + 1] = predictionLine
+        end
     end
     SortTrackGroups(aggregatedTrackGroups)
+    table.sort(predictionLines, function(left, right)
+        local leftUpdatedAt = tonumber(left and left.updatedAt) or 0
+        local rightUpdatedAt = tonumber(right and right.updatedAt) or 0
+        if leftUpdatedAt ~= rightUpdatedAt then
+            return leftUpdatedAt > rightUpdatedAt
+        end
+        return tostring(left and left.lineKey or "") < tostring(right and right.lineKey or "")
+    end)
 
     local cache = {
         trackGroups = aggregatedTrackGroups,
         predictionTracks = aggregatedTrackGroups,
+        predictionLines = predictionLines,
     }
     self.trackGroupsByMap[mapID] = cache
     return cache
@@ -1439,6 +1543,15 @@ function AirdropTrajectoryStore:GetPredictionTrackReferences(mapID)
 
     local cache = BuildTrackGroupCacheForMap(self, mapID)
     return cache.predictionTracks or {}
+end
+
+function AirdropTrajectoryStore:GetPredictionLineReferences(mapID)
+    if type(mapID) ~= "number" then
+        return {}
+    end
+
+    local cache = BuildTrackGroupCacheForMap(self, mapID)
+    return cache.predictionLines or {}
 end
 
 function AirdropTrajectoryStore:GetTrackGroups(mapID)

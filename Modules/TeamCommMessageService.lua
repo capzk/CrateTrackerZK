@@ -55,28 +55,29 @@ local function GetConfirmedTimestamp(state)
     return tonumber(state.currentAirdropTimestamp or state.lastRefresh)
 end
 
-local function ShouldPersistIncomingConfirmedState(persistentState, incomingTimestamp, incomingGUID)
+local function ShouldPersistIncomingConfirmedState(persistentState, incomingTimestamp, incomingGUID, incomingTimeType)
     if type(persistentState) ~= "table" then
         return true
     end
 
     local localGUID = persistentState.currentAirdropObjectGUID
+    local localTimestamp = GetConfirmedTimestamp(persistentState)
+    local localTimeType = persistentState.timeType
+    if AirdropEventService and AirdropEventService.ShouldReplaceStoredEvent then
+        return AirdropEventService:ShouldReplaceStoredEvent(
+            localTimestamp,
+            localGUID,
+            localTimeType,
+            incomingTimestamp,
+            incomingGUID,
+            incomingTimeType
+        ) == true
+    end
+
     if HasSameObjectGUID(localGUID, incomingGUID) then
-        local localTimestamp = GetConfirmedTimestamp(persistentState)
         return type(localTimestamp) ~= "number" or incomingTimestamp < localTimestamp
     end
-
-    local localTimestamp = GetConfirmedTimestamp(persistentState)
-    if (type(localGUID) ~= "string" or localGUID == "")
-        and type(localTimestamp) == "number"
-        and incomingTimestamp == localTimestamp then
-        return true
-    end
-    if type(localTimestamp) == "number" and incomingTimestamp <= localTimestamp then
-        return false
-    end
-
-    return true
+    return type(localTimestamp) ~= "number" or incomingTimestamp > localTimestamp
 end
 
 local function ExtractPhaseIDFromObjectGUID(objectGUID)
@@ -139,6 +140,10 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
 
     local syncTimestamp = tonumber(syncState and syncState.timestamp)
     local incomingGUID = syncState and syncState.objectGUID or nil
+    local incomingTimeType = AirdropEventService
+        and AirdropEventService.NormalizeTimeType
+        and AirdropEventService:NormalizeTimeType(syncState and syncState.timeType, syncState and syncState.source)
+        or (syncState and syncState.timeType) or "npc_shout"
     if not syncTimestamp then
         return false
     end
@@ -155,7 +160,7 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
     -- 确认状态采用“同事件最早时间优先、跨事件仅接受更新事件”的规则：
     -- 1. 同 objectGUID 视为同一空投事件，若收到更早时间则允许回写修正；
     -- 2. 不同 objectGUID 只有时间更晚时才允许覆盖为新事件。
-    if not ShouldPersistIncomingConfirmedState(context.persistentState, syncTimestamp, incomingGUID) then
+    if not ShouldPersistIncomingConfirmedState(context.persistentState, syncTimestamp, incomingGUID, incomingTimeType) then
         return true
     end
 
@@ -166,6 +171,7 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
             lastRefresh = syncTimestamp,
             currentAirdropTimestamp = syncTimestamp,
             currentAirdropObjectGUID = incomingGUID,
+            currentAirdropTimeType = incomingTimeType,
             lastRefreshPhase = phaseId,
             source = UnifiedDataManager.TimeSource.CONFIRMED_SYNC,
         })

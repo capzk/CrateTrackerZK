@@ -202,7 +202,13 @@ local function OnShoutDetected(message)
         end
         if UnifiedDataManager.SetTime then
             -- 继续保留原有 UI 体验：喊话后立即以临时时间显示，待正式确认后再转为持久态显示。
-            UnifiedDataManager:SetTime(targetMapData.id, currentTime, UnifiedDataManager.TimeSource.NPC_SHOUT, currentPhaseId);
+            UnifiedDataManager:SetTime(
+                targetMapData.id,
+                currentTime,
+                UnifiedDataManager.TimeSource.NPC_SHOUT,
+                currentPhaseId,
+                UnifiedDataManager.TimeType and UnifiedDataManager.TimeType.NPC_SHOUT or "npc_shout"
+            );
         end
     end
     if AirdropTrajectoryService and AirdropTrajectoryService.HandleAirdropShout then
@@ -256,10 +262,10 @@ local function BuildShoutMatchers()
     ShoutDetector.compiledShouts = {};
     ShoutDetector.compiledLocale = GetLocale and GetLocale() or nil;
 
-    if not Localization or not Localization.GetAirdropShouts then
+    if not Localization or not Localization.GetCurrentLocaleAirdropShouts then
         return 0;
     end
-    local shouts = Localization:GetAirdropShouts();
+    local shouts = Localization:GetCurrentLocaleAirdropShouts();
     if not shouts or #shouts == 0 then
         return 0;
     end

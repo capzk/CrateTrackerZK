@@ -85,7 +85,7 @@
     <Script file="Modules/ShoutDetector.lua"/>
     <Script file="Modules/AirdropTrajectoryGeometryService.lua"/>
     <Script file="Modules/AirdropTrajectorySamplingService.lua"/>
-    <Script file="Modules/AirdropTrajectoryMatchingService.lua"/>
+    <Script file="Modules/TrajectoryPrediction/AirdropTrajectoryMatchingService.lua"/>
     <Script file="Modules/AirdropTrajectoryService.lua"/>
     <Script file="Modules/MapTracker.lua"/>
     <Script file="Modules/PhaseProbeService.lua"/>

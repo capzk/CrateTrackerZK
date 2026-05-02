@@ -175,6 +175,14 @@ function Localization:GetAirdropShouts()
     return nil;
 end
 
+function Localization:GetCurrentLocaleAirdropShouts()
+    local L = GetL();
+    if L and L.AirdropShouts and type(L.AirdropShouts) == "table" and #L.AirdropShouts > 0 then
+        return L.AirdropShouts;
+    end
+    return nil;
+end
+
 function Localization:FormatMapID(mapID)
     if not mapID or type(mapID) ~= "number" then return "" end;
     return "Map " .. tostring(mapID);

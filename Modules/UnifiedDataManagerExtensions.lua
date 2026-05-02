@@ -337,7 +337,9 @@ function UnifiedDataManager:OnSharedDisplayActivated(mapId, phaseId, sharedRecor
             mapId,
             sharedRecord.timestamp,
             self.TimeSource.PUBLIC_CHANNEL_SYNC,
-            type(phaseId) == "string" and phaseId ~= "" and phaseId or sharedRecord.phaseID
+            type(phaseId) == "string" and phaseId ~= "" and phaseId or sharedRecord.phaseID,
+            sharedRecord.timeType,
+            sharedRecord.objectGUID
         );
     end
     self:NotifySharedDisplayApplied(mapId, sharedRecord);

@@ -17,6 +17,7 @@ local StateBuckets = BuildEnv("StateBuckets");
 local TimeStateStore = BuildEnv("TimeStateStore");
 local UnifiedDataDisplayResolver = BuildEnv("UnifiedDataDisplayResolver");
 local UnifiedPhaseDisplayService = BuildEnv("UnifiedPhaseDisplayService");
+local AirdropEventService = BuildEnv("AirdropEventService");
 
 if not Data then
     Data = BuildEnv('Data')
@@ -33,6 +34,11 @@ UnifiedDataManager.TimeSource = {
     TEAM_MESSAGE = "team_message",
     ICON_DETECTION = "icon_detection",
     PUBLIC_CHANNEL_SYNC = "public_channel_sync",
+}
+
+UnifiedDataManager.TimeType = AirdropEventService and AirdropEventService.TimeType or {
+    NPC_SHOUT = "npc_shout",
+    ICON_DETECTION = "icon_detection",
 }
 
 -- 位面来源枚举
@@ -105,6 +111,16 @@ local function IsAuthoritativeTimeSource(source)
         or source == UnifiedDataManager.TimeSource.CONFIRMED_SYNC
         or source == UnifiedDataManager.TimeSource.PUBLIC_CHANNEL_SYNC
         or source == UnifiedDataManager.TimeSource.TEAM_MESSAGE
+end
+
+local function NormalizeEventTimeType(timeType, source)
+    if AirdropEventService and AirdropEventService.NormalizeTimeType then
+        return AirdropEventService:NormalizeTimeType(timeType, source);
+    end
+    if timeType == UnifiedDataManager.TimeType.ICON_DETECTION or source == UnifiedDataManager.TimeSource.ICON_DETECTION then
+        return UnifiedDataManager.TimeType.ICON_DETECTION;
+    end
+    return UnifiedDataManager.TimeType.NPC_SHOUT;
 end
 
 local function GetPersistentTimeRecordInto(mapId, outRecord)
@@ -197,7 +213,7 @@ function UnifiedDataManager:GetOrCreatePhaseData(mapId, isTemporary, expansionID
 end
 
 -- 统一时间设置接口
-function UnifiedDataManager:SetTime(mapId, timestamp, source, phaseId)
+function UnifiedDataManager:SetTime(mapId, timestamp, source, phaseId, timeType)
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -207,14 +223,18 @@ function UnifiedDataManager:SetTime(mapId, timestamp, source, phaseId)
     if source == self.TimeSource.NPC_SHOUT
         or source == self.TimeSource.TEAM_MESSAGE
         or source == self.TimeSource.PUBLIC_CHANNEL_SYNC then
-        return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
+        return self:SetTemporaryTime(mapId, timestamp, source, phaseId, timeType);
     elseif source == self.TimeSource.CONFIRMED_SYNC then
-        return self:SetPersistentTime(mapId, timestamp, source, nil);
+        return self:SetPersistentTime(mapId, timestamp, source, nil, {
+            currentAirdropTimeType = timeType,
+        });
     elseif source == self.TimeSource.ICON_DETECTION then
-        return self:SetPersistentTime(mapId, timestamp, source, nil);
+        return self:SetPersistentTime(mapId, timestamp, source, nil, {
+            currentAirdropTimeType = timeType,
+        });
     else
         -- 默认为临时时间
-        return self:SetTemporaryTime(mapId, timestamp, source, phaseId);
+        return self:SetTemporaryTime(mapId, timestamp, source, phaseId, timeType);
     end
 end
 
@@ -223,7 +243,7 @@ function UnifiedDataManager:IsAuthoritativeTimeSource(source)
 end
 
 -- 设置临时时间
-function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source, phaseId)
+function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source, phaseId, timeType, objectGUID)
     if not self.isInitialized then
         Logger:Error("UnifiedDataManager", "错误", "UnifiedDataManager未初始化");
         return false;
@@ -237,7 +257,17 @@ function UnifiedDataManager:SetTemporaryTime(mapId, timestamp, source, phaseId)
     end
 
     if TimeStateStore and TimeStateStore.SetTemporary then
-        TimeStateStore:SetTemporary(self, mapId, timestamp, source, Utils:GetCurrentTimestamp(), expansionID, phaseId);
+        TimeStateStore:SetTemporary(
+            self,
+            mapId,
+            timestamp,
+            source,
+            Utils:GetCurrentTimestamp(),
+            expansionID,
+            phaseId,
+            NormalizeEventTimeType(timeType, source),
+            objectGUID
+        );
     end
     
     return true;
@@ -281,11 +311,12 @@ function UnifiedDataManager:GetPersistentTimeRecordInto(mapId, outRecord)
     end
 
     if type(record.source) ~= "string" then
-        record.source = self.TimeSource.ICON_DETECTION;
+        record.source = self.TimeSource.NPC_SHOUT;
     end
     if type(record.eventTimestamp) ~= "number" then
         record.eventTimestamp = record.timestamp;
     end
+    record.timeType = NormalizeEventTimeType(record.timeType, record.source);
     return record;
 end
 
@@ -308,11 +339,12 @@ function UnifiedDataManager:GetPersistentAirdropStateInto(mapId, outState)
     end
 
     if type(state.source) ~= "string" then
-        state.source = self.TimeSource.ICON_DETECTION;
+        state.source = self.TimeSource.NPC_SHOUT;
     end
     if type(state.currentAirdropTimestamp) ~= "number" then
         state.currentAirdropTimestamp = state.lastRefresh;
     end
+    state.timeType = NormalizeEventTimeType(state.timeType, state.source);
     return state;
 end
 
@@ -384,7 +416,7 @@ function UnifiedDataManager:SelectEventTimestamp(mapId, detectionTimestamp, curr
         return UnifiedDataDisplayResolver:SelectEventTimestamp(self, mapId, detectionTimestamp, currentPhaseId, detectedObjectGUID);
     end
     local fallback = detectionTimestamp or Utils:GetCurrentTimestamp();
-    return fallback, false, nil;
+    return fallback, self.TimeSource.ICON_DETECTION, NormalizeEventTimeType(nil, self.TimeSource.ICON_DETECTION);
 end
 
 -- 设置持久化时间
@@ -399,6 +431,7 @@ function UnifiedDataManager:SetPersistentTime(mapId, timestamp, source, phaseId,
         lastRefreshSource = source,
         currentAirdropObjectGUID = metadata and metadata.currentAirdropObjectGUID or nil,
         currentAirdropTimestamp = metadata and (metadata.currentAirdropTimestamp or metadata.eventTimestamp) or timestamp,
+        currentAirdropTimeType = NormalizeEventTimeType(metadata and metadata.currentAirdropTimeType, source),
     };
     if metadata and metadata.persistPhaseState == true then
         persistState.lastRefreshPhase = metadata.lastRefreshPhase;
@@ -530,6 +563,7 @@ function UnifiedDataManager:PersistConfirmedAirdropState(mapId, state)
         {
             currentAirdropObjectGUID = state.currentAirdropObjectGUID,
             currentAirdropTimestamp = state.currentAirdropTimestamp or timestamp,
+            currentAirdropTimeType = state.currentAirdropTimeType or state.timeType,
             persistPhaseState = true,
             lastRefreshPhase = phaseId or false,
         }

@@ -93,6 +93,14 @@ local function IncrementPredictionObservationCount(state)
     return state.predictionObservationCount
 end
 
+local function BumpPredictionEvidenceRevision(state)
+    if type(state) ~= "table" then
+        return 0
+    end
+    state.predictionEvidenceRevision = math.max(0, math.floor(tonumber(state.predictionEvidenceRevision) or 0)) + 1
+    return state.predictionEvidenceRevision
+end
+
 local function UpdateCruiseLineEndpoint(state, startX, startY, endX, endY)
     if type(state) ~= "table"
         or type(startX) ~= "number"
@@ -545,9 +553,21 @@ function AirdropTrajectorySamplingService:CreateObservationState(targetMapData, 
         lastSeenAt = currentTime,
         sampleCount = 1,
         predictionObservationCount = 0,
+        predictionEvidenceRevision = 0,
         announcedRouteKey = nil,
+        localCandidateAlertSent = false,
+        localCandidateAlertKey = nil,
+        candidateAlertSent = false,
+        teamCandidateAlertQueued = false,
+        teamCandidateAlertSent = false,
+        candidatePairState = {
+            firstPairKey = nil,
+            latestPairKey = nil,
+            multiplePairsObserved = false,
+            firstObservedObservationCount = nil,
+            latestObservedObservationCount = nil,
+        },
         missingSince = nil,
-        uniqueMatchState = nil,
         predictedRouteKey = nil,
         predictedEndX = nil,
         predictedEndY = nil,
@@ -629,6 +649,7 @@ function AirdropTrajectorySamplingService:AppendObservedPoint(state, positionX, 
     }
     state.lastRecordedPointKey = pointKey
     IncrementPredictionObservationCount(state)
+    BumpPredictionEvidenceRevision(state)
     return true
 end
 
@@ -1055,7 +1076,6 @@ function AirdropTrajectorySamplingService:HandleDetectedIcon(service, targetMapD
             state.endY = positionY
             state.endConfirmed = false
             UpdateCruiseLineEndpoint(state, state.startX, state.startY, positionX, positionY)
-            state.uniqueMatchState = nil
             if state.sampleCount < 2 then
                 state.sampleCount = 2
             end

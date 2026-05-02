@@ -2,6 +2,7 @@
 
 local UnifiedDataDisplayResolver = BuildEnv("UnifiedDataDisplayResolver")
 local AppContext = BuildEnv("AppContext")
+local AirdropEventService = BuildEnv("AirdropEventService")
 local Data = BuildEnv("Data")
 local TimeStateStore = BuildEnv("TimeStateStore")
 local Utils = BuildEnv("Utils")
@@ -81,6 +82,7 @@ local function AssignDisplayTime(outDisplayTime, record, isPersistent)
     outDisplayTime.time = record.timestamp
     outDisplayTime.source = record.source
     outDisplayTime.isPersistent = isPersistent == true
+    outDisplayTime.timeType = record.timeType
     return outDisplayTime
 end
 
@@ -92,6 +94,7 @@ local function ResetDisplayTime(outDisplayTime)
     outDisplayTime.time = nil
     outDisplayTime.source = nil
     outDisplayTime.isPersistent = nil
+    outDisplayTime.timeType = nil
     return outDisplayTime
 end
 
@@ -109,10 +112,34 @@ local function ActivateSharedDisplay(manager, mapId, currentPhaseID, sharedRecor
     outDisplayTime.time = sharedRecord.timestamp
     outDisplayTime.source = sharedRecord.source or manager.TimeSource.PUBLIC_CHANNEL_SYNC
     outDisplayTime.isPersistent = false
+    outDisplayTime.timeType = sharedRecord.timeType
     if manager and manager.OnSharedDisplayActivated then
         manager:OnSharedDisplayActivated(mapId, currentPhaseID, sharedRecord)
     end
     return outDisplayTime
+end
+
+local function BuildEventTimeCandidate(timestamp, source, timeType, objectGUID)
+    if AirdropEventService and AirdropEventService.BuildEventTimeCandidate then
+        return AirdropEventService:BuildEventTimeCandidate(timestamp, source, timeType, objectGUID)
+    end
+    local resolvedTimestamp = tonumber(timestamp)
+    if type(resolvedTimestamp) ~= "number" then
+        return nil
+    end
+    return {
+        timestamp = resolvedTimestamp,
+        source = source,
+        timeType = timeType,
+        objectGUID = objectGUID,
+    }
+end
+
+local function SelectPreferredSameEventCandidate(currentCandidate, incomingCandidate)
+    if AirdropEventService and AirdropEventService.SelectPreferredSameEventCandidate then
+        return AirdropEventService:SelectPreferredSameEventCandidate(currentCandidate, incomingCandidate)
+    end
+    return currentCandidate or incomingCandidate
 end
 
 local function SelectLatestLocalDisplayRecord(tempRecord, persistentRecord)
@@ -212,15 +239,30 @@ function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detecti
             and currentPhaseId ~= ""
             and not CanUseTemporaryRecordForPhase(manager, mapId, currentPhaseId, record) then
             record = nil
+        elseif type(record.objectGUID) == "string"
+            and record.objectGUID ~= ""
+            and type(detectedObjectGUID) == "string"
+            and detectedObjectGUID ~= ""
+            and record.objectGUID ~= detectedObjectGUID then
+            record = nil
         end
     end
 
+    local selectedCandidate = nil
     if record
         and IsAuthoritativeSource(record.source) == true
         and record.source ~= (manager and manager.TimeSource and manager.TimeSource.NPC_SHOUT or nil) then
         local delta = math.abs(fallback - record.timestamp)
         if delta <= (manager and manager.TEMPORARY_TIME_ADOPTION_WINDOW or 120) then
-            return record.timestamp, true, record.source
+            selectedCandidate = SelectPreferredSameEventCandidate(
+                selectedCandidate,
+                BuildEventTimeCandidate(
+                    record.timestamp,
+                    record.source,
+                    record.timeType,
+                    record.objectGUID or detectedObjectGUID
+                )
+            )
         end
     end
 
@@ -239,7 +281,15 @@ function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detecti
                 or (type(detectedObjectGUID) == "string" and detectedObjectGUID ~= "" and persistentObjectGUID == detectedObjectGUID) then
                 local delta = math.abs(fallback - persistentRecord.eventTimestamp)
                 if delta <= (manager and manager.TEMPORARY_TIME_ADOPTION_WINDOW or 120) then
-                    return persistentRecord.eventTimestamp, true, persistentRecord.source
+                    selectedCandidate = SelectPreferredSameEventCandidate(
+                        selectedCandidate,
+                        BuildEventTimeCandidate(
+                            persistentRecord.eventTimestamp,
+                            persistentRecord.source,
+                            persistentRecord.timeType,
+                            persistentObjectGUID or detectedObjectGUID
+                        )
+                    )
                 end
             end
         end
@@ -261,11 +311,22 @@ function UnifiedDataDisplayResolver:SelectEventTimestamp(manager, mapId, detecti
             and type(sharedRecord.objectGUID) == "string"
             and sharedRecord.objectGUID == detectedObjectGUID
             and type(sharedRecord.timestamp) == "number" then
-            return sharedRecord.timestamp, true, sharedRecord.source or (manager and manager.TimeSource and manager.TimeSource.PUBLIC_CHANNEL_SYNC) or nil
+            selectedCandidate = SelectPreferredSameEventCandidate(
+                selectedCandidate,
+                BuildEventTimeCandidate(
+                    sharedRecord.timestamp,
+                    sharedRecord.source or (manager and manager.TimeSource and manager.TimeSource.PUBLIC_CHANNEL_SYNC) or nil,
+                    sharedRecord.timeType,
+                    sharedRecord.objectGUID
+                )
+            )
         end
     end
 
-    return fallback, false, nil
+    if type(selectedCandidate) == "table" and type(selectedCandidate.timestamp) == "number" then
+        return selectedCandidate.timestamp, selectedCandidate.source, selectedCandidate.timeType
+    end
+    return fallback, manager and manager.TimeSource and manager.TimeSource.ICON_DETECTION or nil, manager and manager.TimeType and manager.TimeType.ICON_DETECTION or nil
 end
 
 function UnifiedDataDisplayResolver:GetDisplayTimeInto(manager, mapId, currentTime, outDisplayTime, persistentRecordBuffer)

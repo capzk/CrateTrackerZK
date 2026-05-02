@@ -71,7 +71,7 @@ function TimeStateStore:ClearTemporary(manager, mapId, expansionID)
     end
 end
 
-function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime, expansionID, phaseId)
+function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime, expansionID, phaseId, timeType, objectGUID)
     local timeData = self:GetOrCreate(manager, mapId, expansionID)
     local temporaryTime = timeData.temporaryTime
     if not temporaryTime then
@@ -82,6 +82,8 @@ function TimeStateStore:SetTemporary(manager, mapId, timestamp, source, setTime,
     temporaryTime.source = source
     temporaryTime.setTime = setTime or Utils:GetCurrentTimestamp()
     temporaryTime.phaseId = type(phaseId) == "string" and phaseId ~= "" and phaseId or nil
+    temporaryTime.timeType = type(timeType) == "string" and timeType ~= "" and timeType or nil
+    temporaryTime.objectGUID = type(objectGUID) == "string" and objectGUID ~= "" and objectGUID or nil
     return timeData
 end
 

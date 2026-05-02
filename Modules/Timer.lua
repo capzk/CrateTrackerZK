@@ -369,21 +369,50 @@ function TimerManager:DetectMapIcons(currentMapID)
         and UnifiedDataManager:GetPersistentAirdropStateInto(targetMapData.id, AcquirePersistentStateBuffer(self))
         or nil;
     local persistentObjectGUID = persistentState and persistentState.currentAirdropObjectGUID or nil;
+    local persistentTimestamp = persistentState and (persistentState.currentAirdropTimestamp or persistentState.lastRefresh) or nil;
+    local persistentTimeType = persistentState and persistentState.timeType or nil;
     local hasSameObjectGUID = AirdropEventService and AirdropEventService.HasSameObjectGUID
         and AirdropEventService:HasSameObjectGUID(persistentObjectGUID, objectGUID)
         or (persistentObjectGUID and persistentObjectGUID == objectGUID);
     local hasDifferentObjectGUID = AirdropEventService and AirdropEventService.HasDifferentObjectGUID
         and AirdropEventService:HasDifferentObjectGUID(persistentObjectGUID, objectGUID)
         or (persistentObjectGUID and persistentObjectGUID ~= objectGUID);
+    local detectionState = self.detectionState[targetMapData.id];
+    local localEventCandidateTimestamp = detectionState and detectionState.firstDetectedTime or currentTime;
 
-    if hasSameObjectGUID then
+    local pendingAuthoritativeShout = self.GetValidPendingAuthoritativeShout
+        and self:GetValidPendingAuthoritativeShout(targetMapData.id, currentTime)
+        or nil;
+    local hasBetterPendingShout = type(pendingAuthoritativeShout) == "table"
+        and type(pendingAuthoritativeShout.timestamp) == "number"
+        and AirdropEventService
+        and AirdropEventService.ShouldReplaceStoredEvent
+        and AirdropEventService:ShouldReplaceStoredEvent(
+            persistentTimestamp,
+            persistentObjectGUID,
+            persistentTimeType,
+            pendingAuthoritativeShout.timestamp,
+            objectGUID,
+            UnifiedDataManager.TimeType and UnifiedDataManager.TimeType.NPC_SHOUT or "npc_shout"
+        ) == true;
+    local hasBetterLocalIconCandidate = AirdropEventService
+        and AirdropEventService.ShouldReplaceStoredEvent
+        and AirdropEventService:ShouldReplaceStoredEvent(
+            persistentTimestamp,
+            persistentObjectGUID,
+            persistentTimeType,
+            localEventCandidateTimestamp,
+            objectGUID,
+            UnifiedDataManager.TimeType and UnifiedDataManager.TimeType.ICON_DETECTION or "icon_detection"
+        ) == true;
+
+    if hasSameObjectGUID and hasBetterPendingShout ~= true and hasBetterLocalIconCandidate ~= true then
         return true;
     elseif hasDifferentObjectGUID then
         -- 新空投事件：清除通知记录（但若刚被喊话触发，则保留去重状态）
         ResetNotificationStateForNewEvent(mapNotificationKey, currentTime);
     end
     
-    local detectionState = self.detectionState[targetMapData.id];
     if not detectionState then
         -- 首次检测
         self.detectionState[targetMapData.id] = AirdropEventService
@@ -421,29 +450,21 @@ function TimerManager:DetectMapIcons(currentMapID)
         local notificationTimestamp = detectionState.firstDetectedTime;
         local shouldSendNotification = ShouldSendNotification(notificationTimestamp, currentTime);
 
-        -- 只有权威时间（本地 shout 待确认 / 已共享权威时间）才允许进入持久化与隐藏同步。
         local eventTimestamp = nil;
-        local hasAuthoritativeTime = false;
         local authoritativeSource = nil;
-        local pendingAuthoritativeShout = self.GetValidPendingAuthoritativeShout
-            and self:GetValidPendingAuthoritativeShout(targetMapData.id, currentTime)
-            or nil;
+        local eventTimeType = nil;
         if type(pendingAuthoritativeShout) == "table"
             and type(pendingAuthoritativeShout.timestamp) == "number" then
             eventTimestamp = pendingAuthoritativeShout.timestamp;
-            hasAuthoritativeTime = true;
             authoritativeSource = UnifiedDataManager.TimeSource.NPC_SHOUT;
+            eventTimeType = UnifiedDataManager.TimeType and UnifiedDataManager.TimeType.NPC_SHOUT or "npc_shout";
         else
-            eventTimestamp, hasAuthoritativeTime, authoritativeSource = UnifiedDataManager:SelectEventTimestamp(
+            eventTimestamp, authoritativeSource, eventTimeType = UnifiedDataManager:SelectEventTimestamp(
                 targetMapData.id,
                 detectionState.firstDetectedTime,
                 iconResult and iconResult.phaseID or nil,
                 objectGUID
             );
-        end
-
-        if detectionState.confirmedWithoutAuthority == true and hasAuthoritativeTime ~= true then
-            return true;
         end
         
         -- 首次检测：根据本地发现时间决定是否发送事件提醒。
@@ -458,24 +479,37 @@ function TimerManager:DetectMapIcons(currentMapID)
                 }
             );
         end
-
-        if hasAuthoritativeTime ~= true then
-            detectionState.confirmedWithoutAuthority = true;
-            detectionState.confirmedAt = currentTime;
-            detectionState.detectedObjectGUID = objectGUID;
-            return true;
-        end
         
         local phaseId = iconResult and iconResult.phaseID or nil;
         local persistSource = authoritativeSource
-            or (UnifiedDataManager.TimeSource and UnifiedDataManager.TimeSource.NPC_SHOUT)
-            or self.detectionSources.TEAM_MESSAGE;
+            or (UnifiedDataManager.TimeSource and UnifiedDataManager.TimeSource.ICON_DETECTION)
+            or self.detectionSources.MAP_ICON;
+        local resolvedTimeType = eventTimeType
+            or (UnifiedDataManager.TimeType and UnifiedDataManager.TimeType.ICON_DETECTION)
+            or "icon_detection";
+        local shouldPersistEvent = AirdropEventService == nil
+            or AirdropEventService.ShouldReplaceStoredEvent == nil
+            or AirdropEventService:ShouldReplaceStoredEvent(
+                persistentTimestamp,
+                persistentObjectGUID,
+                persistentTimeType,
+                eventTimestamp,
+                objectGUID,
+                resolvedTimeType
+            ) == true;
+        if shouldPersistEvent ~= true then
+            UnifiedDataManager:ClearTemporaryTime(targetMapData.id);
+            self:ClearPendingAuthoritativeShout(targetMapData.id);
+            self.detectionState[targetMapData.id] = nil;
+            return true;
+        end
 
         local success = UnifiedDataManager and UnifiedDataManager.PersistConfirmedAirdropState
             and UnifiedDataManager:PersistConfirmedAirdropState(targetMapData.id, {
                 lastRefresh = eventTimestamp,
                 currentAirdropObjectGUID = objectGUID,
                 currentAirdropTimestamp = eventTimestamp,
+                currentAirdropTimeType = resolvedTimeType,
                 lastRefreshPhase = phaseId,
                 source = persistSource,
                 phaseSource = UnifiedDataManager.PhaseSource.ICON_DETECTION,
@@ -487,6 +521,7 @@ function TimerManager:DetectMapIcons(currentMapID)
                     mapID = targetMapData.mapID,
                     timestamp = eventTimestamp,
                     objectGUID = objectGUID,
+                    timeType = resolvedTimeType,
                 });
             end
             

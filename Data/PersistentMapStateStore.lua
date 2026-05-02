@@ -4,6 +4,7 @@ local PersistentMapStateStore = BuildEnv("PersistentMapStateStore")
 local AppContext = BuildEnv("AppContext")
 local Utils = BuildEnv("Utils")
 local Logger = BuildEnv("Logger")
+local AirdropEventService = BuildEnv("AirdropEventService")
 
 local function EnsurePersistentState()
     if AppContext and AppContext.EnsurePersistentState then
@@ -36,6 +37,19 @@ local function SanitizeTimestamp(ts)
     return ts
 end
 
+local function NormalizeTimeType(timeType, source)
+    if AirdropEventService and AirdropEventService.NormalizeTimeType then
+        return AirdropEventService:NormalizeTimeType(timeType, source)
+    end
+    if timeType == "icon_detection" then
+        return "icon_detection"
+    end
+    if source == "icon_detection" then
+        return "icon_detection"
+    end
+    return "npc_shout"
+end
+
 local function GetSavedRecordByMapData(mapData)
     if type(mapData) ~= "table"
         or type(mapData.expansionID) ~= "string"
@@ -59,6 +73,7 @@ local function PopulatePersistentSnapshot(outSnapshot, mapData, savedData)
     outSnapshot.lastRefreshSource = type(savedData and savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil
     outSnapshot.currentAirdropObjectGUID = type(savedData and savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil
     outSnapshot.currentAirdropTimestamp = SanitizeTimestamp(savedData and savedData.currentAirdropTimestamp) or nil
+    outSnapshot.currentAirdropTimeType = NormalizeTimeType(savedData and savedData.currentAirdropTimeType, savedData and savedData.lastRefreshSource)
     outSnapshot.lastRefreshPhase = type(savedData and savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil
     return outSnapshot
 end
@@ -73,6 +88,7 @@ local function PopulatePersistentTimeRecord(outRecord, savedData)
     outRecord.phaseId = nil
     outRecord.objectGUID = nil
     outRecord.eventTimestamp = nil
+    outRecord.timeType = nil
 
     if type(savedData) ~= "table" then
         return nil
@@ -88,6 +104,7 @@ local function PopulatePersistentTimeRecord(outRecord, savedData)
     outRecord.phaseId = type(savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil
     outRecord.objectGUID = type(savedData.currentAirdropObjectGUID) == "string" and savedData.currentAirdropObjectGUID or nil
     outRecord.eventTimestamp = SanitizeTimestamp(savedData.currentAirdropTimestamp) or lastRefresh
+    outRecord.timeType = NormalizeTimeType(savedData.currentAirdropTimeType, outRecord.source)
     return outRecord
 end
 
@@ -101,6 +118,7 @@ local function PopulatePersistentAirdropState(outState, mapData, savedData)
     outState.lastRefresh = nil
     outState.currentAirdropObjectGUID = nil
     outState.currentAirdropTimestamp = nil
+    outState.timeType = nil
     outState.lastRefreshPhase = nil
     outState.source = nil
 
@@ -118,6 +136,7 @@ local function PopulatePersistentAirdropState(outState, mapData, savedData)
         and savedData.currentAirdropObjectGUID
         or nil
     outState.currentAirdropTimestamp = SanitizeTimestamp(savedData.currentAirdropTimestamp) or lastRefresh
+    outState.timeType = NormalizeTimeType(savedData.currentAirdropTimeType, savedData.lastRefreshSource)
     outState.lastRefreshPhase = type(savedData.lastRefreshPhase) == "string" and savedData.lastRefreshPhase or nil
     outState.source = type(savedData.lastRefreshSource) == "string" and savedData.lastRefreshSource or nil
     return outState
@@ -183,6 +202,7 @@ function PersistentMapStateStore:SaveSnapshot(mapData, snapshot)
         lastRefreshSource = type(snapshot and snapshot.lastRefreshSource) == "string" and snapshot.lastRefreshSource or nil,
         currentAirdropObjectGUID = type(snapshot and snapshot.currentAirdropObjectGUID) == "string" and snapshot.currentAirdropObjectGUID or nil,
         currentAirdropTimestamp = SanitizeTimestamp(snapshot and snapshot.currentAirdropTimestamp) or nil,
+        currentAirdropTimeType = NormalizeTimeType(snapshot and snapshot.currentAirdropTimeType, snapshot and snapshot.lastRefreshSource),
         lastRefreshPhase = type(snapshot and snapshot.lastRefreshPhase) == "string" and snapshot.lastRefreshPhase or nil,
     }
 
@@ -225,6 +245,7 @@ function PersistentMapStateStore:PersistAirdropState(mapData, state)
         lastRefreshSource = state.lastRefreshSource ~= nil and state.lastRefreshSource or (currentRecord and currentRecord.lastRefreshSource),
         currentAirdropObjectGUID = state.currentAirdropObjectGUID ~= nil and state.currentAirdropObjectGUID or (currentRecord and currentRecord.currentAirdropObjectGUID),
         currentAirdropTimestamp = state.currentAirdropTimestamp ~= nil and state.currentAirdropTimestamp or (currentRecord and currentRecord.currentAirdropTimestamp),
+        currentAirdropTimeType = state.currentAirdropTimeType ~= nil and state.currentAirdropTimeType or (currentRecord and currentRecord.currentAirdropTimeType),
         lastRefreshPhase = lastRefreshPhase,
     })
 end

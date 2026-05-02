@@ -13,13 +13,16 @@ local HiddenSyncAuditService = BuildEnv("HiddenSyncAuditService");
 local HiddenSyncTransport = BuildEnv("HiddenSyncTransport");
 local TeamCommMapCache = BuildEnv("TeamCommMapCache");
 local TeamCommMessageService = BuildEnv("TeamCommMessageService");
+local AirdropEventService = BuildEnv("AirdropEventService");
 
 TeamCommListener.isInitialized = false;
 TeamCommListener.ADDON_PREFIX = "CTKZK_SYNC";
 TeamCommListener.ADDON_MESSAGE_TYPE_AIRDROP = "AIRDROP";
 TeamCommListener.ADDON_MESSAGE_TYPE_PHASE_CLAIM = "PHASE_CLAIM";
 TeamCommListener.ADDON_MESSAGE_TYPE_PHASE_ACK = "PHASE_ACK";
-TeamCommListener.ADDON_PROTOCOL_VERSION = 2;
+TeamCommListener.ADDON_PROTOCOL_VERSION = 3;
+TeamCommListener.LEGACY_AIRDROP_PROTOCOL_VERSION = 2;
+TeamCommListener.PHASE_ALERT_PROTOCOL_VERSION = 2;
 TeamCommListener.addonPrefixRegistered = false;
 TeamCommListener.addonPrefixRegistrationAttempted = false;
 TeamCommListener.playerName = nil;
@@ -36,6 +39,7 @@ local function ResetSyncStateBuffer(outState)
     outState.phaseID = nil
     outState.timestamp = nil
     outState.objectGUID = nil
+    outState.timeType = nil
     return outState
 end
 
@@ -99,11 +103,12 @@ function TeamCommListener:RegisterAddonPrefix()
     return false;
 end
 
-function TeamCommListener:BuildAirdropPayload(syncState)
+function TeamCommListener:BuildAirdropPayload(syncState, protocolVersion)
     if type(syncState) ~= "table" then
         return nil
     end
 
+    local resolvedProtocolVersion = tonumber(protocolVersion) or self.ADDON_PROTOCOL_VERSION
     local mapID = tonumber(syncState.mapID)
     local timestamp = tonumber(syncState.timestamp)
     local objectGUID = syncState.objectGUID
@@ -115,12 +120,31 @@ function TeamCommListener:BuildAirdropPayload(syncState)
         return nil
     end
 
+    if resolvedProtocolVersion == self.LEGACY_AIRDROP_PROTOCOL_VERSION then
+        return table.concat({
+            self.ADDON_MESSAGE_TYPE_AIRDROP,
+            tostring(self.LEGACY_AIRDROP_PROTOCOL_VERSION),
+            tostring(math.floor(mapID)),
+            tostring(math.floor(timestamp)),
+            EncodePayloadField(objectGUID),
+        }, "|")
+    end
+
+    local timeType = AirdropEventService
+        and AirdropEventService.NormalizeTimeType
+        and AirdropEventService:NormalizeTimeType(syncState.timeType, syncState.source)
+        or syncState.timeType
+    if type(timeType) ~= "string" or timeType == "" then
+        return nil
+    end
+
     return table.concat({
         self.ADDON_MESSAGE_TYPE_AIRDROP,
-        tostring(self.ADDON_PROTOCOL_VERSION),
+        tostring(resolvedProtocolVersion),
         tostring(math.floor(mapID)),
         tostring(math.floor(timestamp)),
         EncodePayloadField(objectGUID),
+        EncodePayloadField(timeType),
     }, "|")
 end
 
@@ -146,7 +170,7 @@ function TeamCommListener:BuildPhaseAlertPayload(syncState, messageType)
 
     return table.concat({
         messageType,
-        tostring(self.ADDON_PROTOCOL_VERSION),
+        tostring(self.PHASE_ALERT_PROTOCOL_VERSION),
         EncodePayloadField(expansionID),
         tostring(math.floor(mapID)),
         EncodePayloadField(phaseID),
@@ -166,14 +190,37 @@ function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
 
     local messageType = payload:match("^([^|]+)|")
     if messageType == self.ADDON_MESSAGE_TYPE_AIRDROP then
-        local parsedMessageType, protocolVersionText, mapIDText, timestampText, objectGUIDText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
+        local parsedMessageType, protocolVersionText, mapIDText, timestampText, objectGUIDText, timeTypeText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)|([^|]*)$")
         local protocolVersion = tonumber(protocolVersionText)
         local mapID = tonumber(mapIDText)
         local timestamp = tonumber(timestampText)
         local objectGUID = DecodePayloadField(objectGUIDText)
+        if parsedMessageType == self.ADDON_MESSAGE_TYPE_AIRDROP
+            and protocolVersion == self.ADDON_PROTOCOL_VERSION
+            and mapID
+            and timestamp
+            and type(objectGUID) == "string"
+            and objectGUID ~= "" then
+            outState.messageType = parsedMessageType
+            outState.mapID = mapID
+            outState.timestamp = timestamp
+            outState.objectGUID = objectGUID
+            outState.timeType = AirdropEventService
+                and AirdropEventService.NormalizeTimeType
+                and AirdropEventService:NormalizeTimeType(DecodePayloadField(timeTypeText), nil)
+                or DecodePayloadField(timeTypeText)
+            return outState
+        end
+
+        parsedMessageType, protocolVersionText, mapIDText, timestampText, objectGUIDText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
+        protocolVersion = tonumber(protocolVersionText)
+        mapID = tonumber(mapIDText)
+        timestamp = tonumber(timestampText)
+        objectGUID = DecodePayloadField(objectGUIDText)
         if parsedMessageType ~= self.ADDON_MESSAGE_TYPE_AIRDROP
-            or protocolVersion ~= self.ADDON_PROTOCOL_VERSION
+            or protocolVersion ~= self.LEGACY_AIRDROP_PROTOCOL_VERSION
             or not mapID
             or not timestamp then
             return nil
@@ -186,6 +233,13 @@ function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
         outState.mapID = mapID
         outState.timestamp = timestamp
         outState.objectGUID = objectGUID
+        -- 旧 payload 不携带 timeType，无法区分 shout 与 icon。
+        -- 为避免把更老客户端发来的 icon 事件误抬升成 shout 权威，
+        -- 接收端一律按更保守的 icon_detection 处理。
+        outState.timeType = AirdropEventService
+            and AirdropEventService.TimeType
+            and AirdropEventService.TimeType.ICON_DETECTION
+            or "icon_detection"
         return outState
     end
 
@@ -199,7 +253,7 @@ function TeamCommListener:ParseAddonPayloadInto(prefix, payload, outState)
         local phaseID = DecodePayloadField(phaseIDText)
         local timestamp = tonumber(timestampText)
         if parsedMessageType ~= messageType
-            or protocolVersion ~= self.ADDON_PROTOCOL_VERSION
+            or protocolVersion ~= self.PHASE_ALERT_PROTOCOL_VERSION
             or type(expansionID) ~= "string"
             or expansionID == ""
             or not mapID
@@ -243,6 +297,7 @@ function TeamCommListener:SendConfirmedSync(syncState, chatType)
                 messageType = syncState and self.ADDON_MESSAGE_TYPE_AIRDROP or nil,
                 mapID = syncState and syncState.mapID or nil,
                 objectGUID = syncState and syncState.objectGUID or nil,
+                timeType = syncState and syncState.timeType or nil,
             })
         end
         return false
@@ -258,13 +313,23 @@ function TeamCommListener:SendConfirmedSync(syncState, chatType)
                 messageType = syncState and self.ADDON_MESSAGE_TYPE_AIRDROP or nil,
                 mapID = syncState and syncState.mapID or nil,
                 objectGUID = syncState and syncState.objectGUID or nil,
+                timeType = syncState and syncState.timeType or nil,
             })
         end
         return false
     end
 
     local distribution = HiddenSyncTransport and HiddenSyncTransport.ResolveDistribution and HiddenSyncTransport:ResolveDistribution(chatType) or nil
-    local payload = self:BuildAirdropPayload(syncState)
+    local timeType = AirdropEventService
+        and AirdropEventService.NormalizeTimeType
+        and AirdropEventService:NormalizeTimeType(syncState and syncState.timeType, syncState and syncState.source)
+        or (syncState and syncState.timeType)
+        or "npc_shout"
+    local legacyPayload = nil
+    if AirdropEventService and AirdropEventService.IsShoutTimeType and AirdropEventService:IsShoutTimeType(timeType) == true then
+        legacyPayload = self:BuildAirdropPayload(syncState, self.LEGACY_AIRDROP_PROTOCOL_VERSION)
+    end
+    local payload = self:BuildAirdropPayload(syncState, self.ADDON_PROTOCOL_VERSION)
     if not distribution or type(payload) ~= "string" or payload == "" then
         if HiddenSyncAuditService and HiddenSyncAuditService.Record then
             HiddenSyncAuditService:Record({
@@ -276,32 +341,45 @@ function TeamCommListener:SendConfirmedSync(syncState, chatType)
                 distribution = distribution,
                 mapID = syncState and syncState.mapID or nil,
                 objectGUID = syncState and syncState.objectGUID or nil,
+                timeType = timeType,
                 payload = payload,
             })
         end
         return false
     end
 
-    local sent, resultCode = false, nil
-    if HiddenSyncTransport and HiddenSyncTransport.SendAddonPayload then
-        sent, resultCode = HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, payload, distribution)
+    local sentAny = false
+    local function SendAndAuditAirdropPayload(singlePayload)
+        local sent, resultCode = false, nil
+        if HiddenSyncTransport and HiddenSyncTransport.SendAddonPayload then
+            sent, resultCode = HiddenSyncTransport:SendAddonPayload(self.ADDON_PREFIX, singlePayload, distribution)
+        end
+        if HiddenSyncAuditService and HiddenSyncAuditService.Record then
+            HiddenSyncAuditService:Record({
+                protocol = "CTKZK_SYNC",
+                direction = "send",
+                status = sent == true and "sent" or "failed",
+                prefix = self.ADDON_PREFIX,
+                messageType = self.ADDON_MESSAGE_TYPE_AIRDROP,
+                distribution = distribution,
+                mapID = syncState and syncState.mapID or nil,
+                objectGUID = syncState and syncState.objectGUID or nil,
+                timeType = timeType,
+                payload = singlePayload,
+                resultCode = resultCode,
+                note = ResolveAuditNoteForSend(sent, resultCode),
+            })
+        end
+        if sent == true then
+            sentAny = true
+        end
     end
-    if HiddenSyncAuditService and HiddenSyncAuditService.Record then
-        HiddenSyncAuditService:Record({
-            protocol = "CTKZK_SYNC",
-            direction = "send",
-            status = sent == true and "sent" or "failed",
-            prefix = self.ADDON_PREFIX,
-            messageType = self.ADDON_MESSAGE_TYPE_AIRDROP,
-            distribution = distribution,
-            mapID = syncState and syncState.mapID or nil,
-            objectGUID = syncState and syncState.objectGUID or nil,
-            payload = payload,
-            resultCode = resultCode,
-            note = ResolveAuditNoteForSend(sent, resultCode),
-        })
+
+    if type(legacyPayload) == "string" and legacyPayload ~= "" then
+        SendAndAuditAirdropPayload(legacyPayload)
     end
-    return sent
+    SendAndAuditAirdropPayload(payload)
+    return sentAny
 end
 
 function TeamCommListener:SendPhaseAlertClaim(syncState, chatType)
@@ -450,6 +528,7 @@ function TeamCommListener:HandleAddonEvent(event, prefix, payload, chatType, sen
             mapID = syncState.mapID,
             phaseID = syncState.phaseID,
             objectGUID = syncState.objectGUID,
+            timeType = syncState.timeType,
             payload = payload,
         })
     end

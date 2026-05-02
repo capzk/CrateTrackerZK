@@ -66,6 +66,7 @@ function HiddenSyncAuditService:Record(event)
         expansionID = NormalizeText(event.expansionID),
         mapID = tonumber(event.mapID),
         phaseID = NormalizeText(event.phaseID),
+        timeType = NormalizeText(event.timeType),
         routeKey = NormalizeText(event.routeKey),
         routeFamilyKey = NormalizeText(event.routeFamilyKey),
         landingKey = NormalizeText(event.landingKey),

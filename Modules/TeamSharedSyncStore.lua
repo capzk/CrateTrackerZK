@@ -2,6 +2,7 @@
 -- 注意：这里只保存共享补充信息，不作为本地可靠事实源，也不写长期持久化。
 
 local TeamSharedSyncStore = BuildEnv("TeamSharedSyncStore")
+local AirdropEventService = BuildEnv("AirdropEventService")
 
 TeamSharedSyncStore.FEATURE_ENABLED = true
 TeamSharedSyncStore.RECORD_TTL = 10800
@@ -46,6 +47,16 @@ local function IsTimestampWithinAcceptableWindow(timestamp, currentTime)
     return type(timestamp) == "number"
         and timestamp > oldestAllowed
         and timestamp <= newestAllowed
+end
+
+local function NormalizeTimeType(timeType, source)
+    if AirdropEventService and AirdropEventService.NormalizeTimeType then
+        return AirdropEventService:NormalizeTimeType(timeType, source)
+    end
+    if timeType == "icon_detection" or source == "icon_detection" then
+        return "icon_detection"
+    end
+    return "npc_shout"
 end
 
 local function SelectOldestPhaseRecord(mapBucket, currentTime)
@@ -127,6 +138,7 @@ function TeamSharedSyncStore:GetRecordInto(expansionID, mapID, phaseID, outRecor
     outRecord.timestamp = record.timestamp
     outRecord.objectGUID = record.objectGUID
     outRecord.source = record.source
+    outRecord.timeType = NormalizeTimeType(record.timeType, record.source)
     outRecord.sender = record.sender
     outRecord.receivedAt = record.receivedAt
     outRecord.expiresAt = record.expiresAt
@@ -181,6 +193,7 @@ function TeamSharedSyncStore:GetLatestRecordForMapInto(expansionID, mapID, outRe
     outRecord.timestamp = latestRecord.timestamp
     outRecord.objectGUID = latestRecord.objectGUID
     outRecord.source = latestRecord.source
+    outRecord.timeType = NormalizeTimeType(latestRecord.timeType, latestRecord.source)
     outRecord.sender = latestRecord.sender
     outRecord.receivedAt = latestRecord.receivedAt
     outRecord.expiresAt = latestRecord.expiresAt
@@ -211,6 +224,7 @@ function TeamSharedSyncStore:AppendActiveRecords(outRecords, currentTime)
                                 timestamp = record.timestamp,
                                 objectGUID = record.objectGUID,
                                 source = record.source,
+                                timeType = NormalizeTimeType(record.timeType, record.source),
                                 sender = record.sender,
                                 receivedAt = record.receivedAt,
                                 expiresAt = record.expiresAt,
@@ -232,7 +246,7 @@ function TeamSharedSyncStore:AppendActiveRecords(outRecords, currentTime)
     return outRecords
 end
 
-function TeamSharedSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt)
+function TeamSharedSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp, objectGUID, sender, receivedAt, timeType)
     if self:IsFeatureEnabled() ~= true then
         return false, nil
     end
@@ -251,11 +265,22 @@ function TeamSharedSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp
     local now = receivedAt or Utils:GetCurrentTimestamp()
     local mapBucket = EnsureMapBucket(expansionID, mapID)
     local existingRecord = mapBucket[phaseID]
+    local normalizedTimeType = NormalizeTimeType(timeType, "public_channel_sync")
     if existingRecord and not IsExpired(existingRecord, now) then
-        if existingRecord.objectGUID == objectGUID then
+        if AirdropEventService and AirdropEventService.ShouldReplaceStoredEvent then
+            if AirdropEventService:ShouldReplaceStoredEvent(
+                existingRecord.timestamp,
+                existingRecord.objectGUID,
+                existingRecord.timeType,
+                timestamp,
+                objectGUID,
+                normalizedTimeType
+            ) ~= true then
+                return false, existingRecord
+            end
+        elseif existingRecord.objectGUID == objectGUID then
             return false, existingRecord
-        end
-        if type(existingRecord.timestamp) == "number" and timestamp <= existingRecord.timestamp then
+        elseif type(existingRecord.timestamp) == "number" and timestamp <= existingRecord.timestamp then
             return false, existingRecord
         end
     end
@@ -267,6 +292,7 @@ function TeamSharedSyncStore:UpsertRecord(expansionID, mapID, phaseID, timestamp
         timestamp = timestamp,
         objectGUID = objectGUID,
         source = "public_channel_sync",
+        timeType = normalizedTimeType,
         sender = sender,
         receivedAt = now,
         expiresAt = now + self.RECORD_TTL,
