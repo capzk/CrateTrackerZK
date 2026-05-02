@@ -244,6 +244,11 @@ local function ResolveCoordinationContext()
     }, nil
 end
 
+function AirdropTrajectoryAlertCoordinator:CanSendVisibleTrajectoryAlerts()
+    local context = ResolveCoordinationContext()
+    return type(context) == "table"
+end
+
 local function BuildTrajectoryAlertSyncState(state)
     return {
         mapID = state and state.mapID or nil,

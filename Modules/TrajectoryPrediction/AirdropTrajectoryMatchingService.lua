@@ -432,9 +432,29 @@ local function ApplyFormalPrediction(service, targetMapData, state, iconResult, 
     end
 
     local notified = service.NotifyPrediction and service:NotifyPrediction(targetMapData, decision.route) == true or false
-    if notified ~= true then
+    local queuedForTeam = false
+    local teamReason = nil
+    if service.IsPredictionTestEnabled
+        and service:IsPredictionTestEnabled() == true
+        and AirdropTrajectoryAlertCoordinator
+        and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionMatched then
+        queuedForTeam, teamReason = AirdropTrajectoryAlertCoordinator:HandleLocalPredictionMatched(
+            targetMapData,
+            decision.route,
+            iconResult.objectGUID,
+            Utils:GetCurrentTimestamp()
+        )
+    end
+
+    if notified ~= true and queuedForTeam ~= true then
         RecordPredictionEvent(service, targetMapData, state, iconResult, "prediction_wait", {
-            reason = string.format("formal_notify_failed route=%s", tostring(decision.routeKey)),
+            reason = string.format(
+                "formal_notify_failed route=%s local=%s team=%s(%s)",
+                tostring(decision.routeKey),
+                tostring(notified == true),
+                tostring(queuedForTeam == true),
+                tostring(teamReason or "not_requested")
+            ),
             routeKey = decision.routeKey,
             bestDestinationKey = decision.bestDestinationKey,
             secondDestinationKey = decision.secondDestinationKey,
@@ -462,17 +482,12 @@ local function ApplyFormalPrediction(service, targetMapData, state, iconResult, 
     }
 
     RecordPredictionEvent(service, targetMapData, state, iconResult, "prediction_formal", decision)
-
-    if service.IsPredictionTestEnabled
-        and service:IsPredictionTestEnabled() == true
-        and AirdropTrajectoryAlertCoordinator
-        and AirdropTrajectoryAlertCoordinator.HandleLocalPredictionMatched then
-        AirdropTrajectoryAlertCoordinator:HandleLocalPredictionMatched(
-            targetMapData,
-            decision.route,
-            iconResult.objectGUID,
-            Utils:GetCurrentTimestamp()
-        )
+    if queuedForTeam == true then
+        state.teamFormalPrediction = {
+            routeKey = decision.routeKey,
+            queued = true,
+            visibleSent = false,
+        }
     end
     return true
 end

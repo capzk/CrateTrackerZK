@@ -222,12 +222,6 @@ local function SetPredictionWaypoint(targetMapData, route)
     return true
 end
 
-local function ShouldSuppressLocalTrajectoryMessages()
-    return AirdropTrajectoryAlertCoordinator
-        and AirdropTrajectoryAlertCoordinator.IsSettingEnabled
-        and AirdropTrajectoryAlertCoordinator:IsSettingEnabled() == true
-end
-
 local function BuildStableCandidateSignature(candidateRoutes)
     if type(candidateRoutes) ~= "table" or #candidateRoutes < 2 then
         return nil
@@ -635,6 +629,15 @@ function AirdropTrajectoryService:ArmMidFlightSampling(targetMapData, iconResult
     if type(state) ~= "table" then
         return false
     end
+    local pendingShoutStart = self.pendingShoutStartByMap and self.pendingShoutStartByMap[runtimeMapId] or nil
+    if type(pendingShoutStart) == "table"
+        and AirdropTrajectorySamplingService
+        and AirdropTrajectorySamplingService.ApplyConfirmedStartFromShout then
+        local applied = AirdropTrajectorySamplingService:ApplyConfirmedStartFromShout(state, pendingShoutStart) == true
+        if applied == true and self.pendingShoutStartByMap then
+            self.pendingShoutStartByMap[runtimeMapId] = nil
+        end
+    end
     if AirdropTrajectorySamplingService.AppendObservedPoint then
         AirdropTrajectorySamplingService:AppendObservedPoint(state, iconResult.positionX, iconResult.positionY)
     end
@@ -651,9 +654,6 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
 
     local message = BuildPredictionMessage(targetMapData, route)
     local waypointSet = SetPredictionWaypoint(targetMapData, route)
-    if ShouldSuppressLocalTrajectoryMessages() == true then
-        return true
-    end
     local sentMessage = false
 
     if type(message) == "string" and message ~= "" and NotificationOutputService and NotificationOutputService.SendLocalMessage then
@@ -688,9 +688,6 @@ function AirdropTrajectoryService:NotifyPredictionCandidates(targetMapData, cand
     local message = BuildPredictionCandidatesMessage(targetMapData, candidateRoutes)
     if type(message) ~= "string" or message == "" then
         return false, "candidate_message_missing"
-    end
-    if ShouldSuppressLocalTrajectoryMessages() == true then
-        return false, "candidate_local_suppressed_team_alert"
     end
 
     local sent = false
