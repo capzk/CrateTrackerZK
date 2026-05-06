@@ -77,6 +77,7 @@ function HiddenSyncAuditService:Record(event)
         verificationCount = tonumber(event.verificationCount),
         verifiedPredictionCount = tonumber(event.verifiedPredictionCount),
         confidenceScore = tonumber(event.confidenceScore),
+        trajectoryType = NormalizeText(event.trajectoryType),
         payload = NormalizeText(event.payload),
         note = NormalizeText(event.note),
     }

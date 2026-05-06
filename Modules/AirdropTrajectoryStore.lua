@@ -7,6 +7,7 @@ local AppContext = BuildEnv("AppContext")
 AirdropTrajectoryStore.COORDINATE_SCALE = 1000
 AirdropTrajectoryStore.IDENTITY_COORDINATE_SCALE = 100
 AirdropTrajectoryStore.MIN_ROUTE_LENGTH = 0.02
+AirdropTrajectoryStore.MIN_FRAGMENT_LENGTH = 0.015
 AirdropTrajectoryStore.MAX_ROUTES_PER_MAP = 200
 AirdropTrajectoryStore.DB_SCHEMA_VERSION = 3
 AirdropTrajectoryStore.TRACK_ANGLE_THRESHOLD = 0.06
@@ -226,12 +227,35 @@ local function BuildAlertToken(mapID, routeFamilyKey, landingKey)
     }, ":")
 end
 
-local function IsReliableRoute(route)
+local function ResolveTrajectoryType(route)
+    if type(route) ~= "table" then
+        return "fragment"
+    end
+    if route.trajectoryType == "complete" or route.trajectoryType == "fragment" then
+        return route.trajectoryType
+    end
+    return "fragment"
+end
+
+local function IsCompleteRoute(route)
     return type(route) == "table"
         and route.startConfirmed == true
         and route.endConfirmed == true
         and route.startSource == "npc_shout"
         and route.endSource == "crate_vignette"
+        and ResolveTrajectoryType(route) == "complete"
+end
+
+local function CanPromoteToComplete(route)
+    return type(route) == "table"
+        and route.startConfirmed == true
+        and route.endConfirmed == true
+        and route.startSource == "npc_shout"
+        and route.endSource == "crate_vignette"
+end
+
+local function IsReliableRoute(route)
+    return IsCompleteRoute(route) == true
 end
 
 local function FinalizeRouteReliability(route)
@@ -292,7 +316,10 @@ local function IsRouteRecordValid(route)
         return false
     end
 
-    return length >= (AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02)
+    local minimumLength = ResolveTrajectoryType(route) == "complete"
+        and (AirdropTrajectoryStore.MIN_ROUTE_LENGTH or 0.02)
+        or (AirdropTrajectoryStore.MIN_FRAGMENT_LENGTH or 0.015)
+    return length >= minimumLength
 end
 
 local function CompareRepresentativePriority(left, right)
@@ -511,7 +538,15 @@ local function NormalizeBaseRouteRecord(routeState, source, currentTime)
         verifiedPredictionCount = math.max(0, math.floor(tonumber(routeState.verifiedPredictionCount) or 0)),
         lastPredictionVerified = routeState.lastPredictionVerified == true,
         mergedRouteCount = math.max(1, math.floor(tonumber(routeState.mergedRouteCount) or 1)),
+        trajectoryType = routeState.trajectoryType == "complete" and "complete" or "fragment",
     }
+
+    if normalized.startConfirmed == true
+        and normalized.endConfirmed == true
+        and normalized.startSource == "npc_shout"
+        and normalized.endSource == "crate_vignette" then
+        normalized.trajectoryType = "complete"
+    end
 
     return normalized
 end
@@ -588,6 +623,7 @@ local function CopyRouteInto(outRoute, route)
     outRoute.mergedRouteCount = route.mergedRouteCount
     outRoute.representativeLegacyRouteKey = route.representativeLegacyRouteKey
     outRoute.confidenceScore = route.confidenceScore
+    outRoute.trajectoryType = ResolveTrajectoryType(route)
     return outRoute
 end
 
@@ -679,6 +715,7 @@ local function BuildAggregatedRepresentativeRoute(representativeRoute, memberRou
     aggregated.verifiedPredictionCount = 0
     aggregated.lastPredictionVerified = false
     aggregated.mergedRouteCount = 0
+    aggregated.trajectoryType = ResolveTrajectoryType(representativeRoute)
 
     for _, memberRoute in ipairs(memberRoutes) do
         aggregated.observationCount = aggregated.observationCount + math.max(1, math.floor(tonumber(memberRoute.observationCount) or 1))
@@ -692,6 +729,9 @@ local function BuildAggregatedRepresentativeRoute(representativeRoute, memberRou
             aggregated.source = "local"
         end
         aggregated.continuityConfirmed = aggregated.continuityConfirmed or memberRoute.continuityConfirmed == true
+        if ResolveTrajectoryType(memberRoute) == "complete" then
+            aggregated.trajectoryType = "complete"
+        end
         aggregated.verificationCount = aggregated.verificationCount + math.max(0, math.floor(tonumber(memberRoute.verificationCount) or 0))
         aggregated.verifiedPredictionCount = aggregated.verifiedPredictionCount + math.max(0, math.floor(tonumber(memberRoute.verifiedPredictionCount) or 0))
         aggregated.lastPredictionVerified = aggregated.lastPredictionVerified or memberRoute.lastPredictionVerified == true
@@ -847,7 +887,7 @@ local function BuildTrackGroupsFromRoutes(store, routes)
     local trackGroups = {}
     local sortedRoutes = {}
     for _, route in ipairs(routes or {}) do
-        if IsReliableRoute(route) == true then
+        if IsCompleteRoute(route) == true then
             sortedRoutes[#sortedRoutes + 1] = route
         end
     end
@@ -975,10 +1015,18 @@ local function HasRouteChanged(existing, candidate)
         or (existing.lastPredictionVerified == true) ~= (candidate.lastPredictionVerified == true)
         or existing.mergedRouteCount ~= candidate.mergedRouteCount
         or existing.representativeLegacyRouteKey ~= candidate.representativeLegacyRouteKey
+        or ResolveTrajectoryType(existing) ~= ResolveTrajectoryType(candidate)
 end
 
 local function BuildMergedCanonicalRoute(existing, candidate)
-    local preferCandidate = CompareRepresentativePriority(candidate, existing)
+    local existingIsComplete = IsCompleteRoute(existing) == true
+    local candidateIsComplete = IsCompleteRoute(candidate) == true
+    local preferCandidate = nil
+    if existingIsComplete ~= candidateIsComplete then
+        preferCandidate = candidateIsComplete == true
+    else
+        preferCandidate = CompareRepresentativePriority(candidate, existing)
+    end
     local merged = CreateRouteRecord(preferCandidate == true and candidate or existing)
     if type(merged) ~= "table" then
         return CreateRouteRecord(existing)
@@ -1018,6 +1066,23 @@ local function BuildMergedCanonicalRoute(existing, candidate)
     )
     merged.continuityConfirmed = existing.continuityConfirmed == true or candidate.continuityConfirmed == true
     merged.lastPredictionVerified = existing.lastPredictionVerified == true or candidate.lastPredictionVerified == true
+    merged.startConfirmed = existing.startConfirmed == true or candidate.startConfirmed == true
+    merged.endConfirmed = existing.endConfirmed == true or candidate.endConfirmed == true
+    if merged.startSource ~= "npc_shout" and (existing.startSource == "npc_shout" or candidate.startSource == "npc_shout") then
+        merged.startSource = "npc_shout"
+    elseif type(merged.startSource) ~= "string" or merged.startSource == "" then
+        merged.startSource = existing.startSource or candidate.startSource
+    end
+    if merged.endSource ~= "crate_vignette" and (existing.endSource == "crate_vignette" or candidate.endSource == "crate_vignette") then
+        merged.endSource = "crate_vignette"
+    elseif type(merged.endSource) ~= "string" or merged.endSource == "" then
+        merged.endSource = existing.endSource or candidate.endSource
+    end
+    if CanPromoteToComplete(merged) == true then
+        merged.trajectoryType = "complete"
+    else
+        merged.trajectoryType = "fragment"
+    end
     if merged.source ~= "local" and (existing.source == "local" or candidate.source == "local") then
         merged.source = "local"
     end
@@ -1059,14 +1124,41 @@ local function DoesCanonicalRouteMatch(store, existingRoute, candidateRoute)
         return false
     end
 
-    local candidateProjection = ((tonumber(candidateRoute.endX) or 0) * existingDescriptor.ux) + ((tonumber(candidateRoute.endY) or 0) * existingDescriptor.uy)
-    local projectionDistance = math.abs(candidateProjection - (tonumber(existingDescriptor.endProjection) or 0))
-    if projectionDistance > (tonumber(store.LANDING_PROJECTION_THRESHOLD) or 0.03) then
+    local existingIsComplete = IsCompleteRoute(existingRoute) == true
+    local candidateIsComplete = IsCompleteRoute(candidateRoute) == true
+    local projectionThreshold = tonumber(store.LANDING_PROJECTION_THRESHOLD) or 0.03
+    local endpointThreshold = tonumber(store.LANDING_ENDPOINT_DISTANCE_THRESHOLD) or 0.03
+
+    local existingStartProjection = ((tonumber(existingRoute.startX) or 0) * existingDescriptor.ux) + ((tonumber(existingRoute.startY) or 0) * existingDescriptor.uy)
+    local existingEndProjection = ((tonumber(existingRoute.endX) or 0) * existingDescriptor.ux) + ((tonumber(existingRoute.endY) or 0) * existingDescriptor.uy)
+    local candidateStartProjection = ((tonumber(candidateRoute.startX) or 0) * existingDescriptor.ux) + ((tonumber(candidateRoute.startY) or 0) * existingDescriptor.uy)
+    local candidateEndProjection = ((tonumber(candidateRoute.endX) or 0) * existingDescriptor.ux) + ((tonumber(candidateRoute.endY) or 0) * existingDescriptor.uy)
+
+    local existingMinProjection = math.min(existingStartProjection, existingEndProjection)
+    local existingMaxProjection = math.max(existingStartProjection, existingEndProjection)
+    local candidateMinProjection = math.min(candidateStartProjection, candidateEndProjection)
+    local candidateMaxProjection = math.max(candidateStartProjection, candidateEndProjection)
+
+    if existingIsComplete ~= candidateIsComplete then
+        local completeMinProjection = existingIsComplete == true and existingMinProjection or candidateMinProjection
+        local completeMaxProjection = existingIsComplete == true and existingMaxProjection or candidateMaxProjection
+        local fragmentMinProjection = existingIsComplete == true and candidateMinProjection or existingMinProjection
+        local fragmentMaxProjection = existingIsComplete == true and candidateMaxProjection or existingMaxProjection
+
+        if fragmentMinProjection < (completeMinProjection - projectionThreshold)
+            or fragmentMaxProjection > (completeMaxProjection + projectionThreshold) then
+            return false
+        end
+        return true
+    end
+
+    local projectionDistance = math.abs(candidateEndProjection - (tonumber(existingDescriptor.endProjection) or 0))
+    if projectionDistance > projectionThreshold then
         return false
     end
 
     return ComputeDistance(existingRoute.endX, existingRoute.endY, candidateRoute.endX, candidateRoute.endY)
-        <= (tonumber(store.LANDING_ENDPOINT_DISTANCE_THRESHOLD) or 0.03)
+        <= endpointThreshold
 end
 
 local function EnsureMapBucket(self, mapID)
@@ -1156,6 +1248,7 @@ local function SaveMapBucket(self, mapID)
                 lastPredictionVerified = route.lastPredictionVerified == true,
                 mergedRouteCount = route.mergedRouteCount,
                 representativeLegacyRouteKey = route.representativeLegacyRouteKey,
+                trajectoryType = ResolveTrajectoryType(route),
             }
         end
     end
@@ -1269,7 +1362,7 @@ local function ValidatePersistentState(db)
                 return false
             end
             local normalized = NormalizeCanonicalRouteRecord(savedRoute, savedRoute.source, savedRoute.updatedAt)
-            if IsRouteRecordValid(normalized) ~= true or IsReliableRoute(normalized) ~= true then
+            if IsRouteRecordValid(normalized) ~= true then
                 return false
             end
         end
@@ -1337,7 +1430,7 @@ local function BuildTrackGroupCacheForMap(self, mapID)
 
     local canonicalRoutes = {}
     for _, route in pairs(runtimeBucket) do
-        if IsReliableRoute(route) == true then
+        if IsCompleteRoute(route) == true then
             canonicalRoutes[#canonicalRoutes + 1] = route
         end
     end
@@ -1395,8 +1488,7 @@ local function LoadPersistentRoutesIntoRuntime(self, sourceBucket)
                         or (type(routeKey) == "string" and routeKey ~= "" and routeKey or nil)
                 end
                 local normalized = NormalizeCanonicalRouteRecord(routeState, routeState and routeState.source, routeState and routeState.updatedAt)
-                if IsRouteRecordValid(normalized) == true
-                    and IsReliableRoute(normalized) == true then
+                if IsRouteRecordValid(normalized) == true then
                     runtimeBucket[normalized.routeKey] = normalized
                     loadedCount = loadedCount + 1
                 end
@@ -1418,21 +1510,25 @@ function AirdropTrajectoryStore:Initialize()
 end
 
 function AirdropTrajectoryStore:IsPredictionReady(route)
-    return IsReliableRoute(route) == true
+    return IsCompleteRoute(route) == true
+end
+
+function AirdropTrajectoryStore:IsRouteRecordValid(route)
+    return IsRouteRecordValid(route) == true
 end
 
 function AirdropTrajectoryStore:GetRouteQualityLabel(route)
     if type(route) ~= "table" then
         return "unknown"
     end
-    if IsReliableRoute(route) ~= true then
-        return "invalid"
-    end
-    if (tonumber(route.verifiedPredictionCount) or 0) > 0 then
+    if IsCompleteRoute(route) == true and (tonumber(route.verifiedPredictionCount) or 0) > 0 then
         return "verified"
     end
-    if route.startConfirmed == true and route.endConfirmed == true then
+    if IsCompleteRoute(route) == true then
         return "complete"
+    end
+    if ResolveTrajectoryType(route) == "fragment" then
+        return "fragment"
     end
     return "unknown"
 end
@@ -1441,7 +1537,7 @@ function AirdropTrajectoryStore:IsShareEligible(route)
     if IsRouteRecordValid(route) ~= true then
         return false
     end
-    if IsReliableRoute(route) ~= true then
+    if IsCompleteRoute(route) ~= true then
         return false
     end
     if route.continuityConfirmed ~= true then
@@ -1587,19 +1683,42 @@ end
 function AirdropTrajectoryStore:AppendShareableRoutesTo(outRoutes)
     outRoutes = type(outRoutes) == "table" and outRoutes or {}
 
+    local routesByMap = {}
     for _, route in ipairs(self:AppendRoutesTo({})) do
-        if self:IsShareEligible(route) == true then
+        if type(route) == "table" and type(route.mapID) == "number" then
+            routesByMap[route.mapID] = routesByMap[route.mapID] or {
+                complete = {},
+                fragment = {},
+            }
+            if self:IsShareEligible(route) == true then
+                routesByMap[route.mapID].complete[#routesByMap[route.mapID].complete + 1] = route
+            else
+                routesByMap[route.mapID].fragment[#routesByMap[route.mapID].fragment + 1] = route
+            end
+        end
+    end
+
+    local mapIDs = {}
+    for mapID in pairs(routesByMap) do
+        mapIDs[#mapIDs + 1] = mapID
+    end
+    table.sort(mapIDs)
+
+    for _, mapID in ipairs(mapIDs) do
+        local bucket = routesByMap[mapID]
+        local selected = #bucket.complete > 0 and bucket.complete or bucket.fragment
+        for _, route in ipairs(selected) do
             outRoutes[#outRoutes + 1] = route
         end
     end
+
     return outRoutes
 end
 
 function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTime)
     local normalized = NormalizeCanonicalRouteRecord(routeState, source, currentTime)
     if IsRouteRecordValid(normalized) ~= true
-        or type(normalized) ~= "table"
-        or IsReliableRoute(normalized) ~= true then
+        or type(normalized) ~= "table" then
         return false, nil, {
             status = "rejected",
             reason = "invalid_route",
@@ -1619,7 +1738,25 @@ function AirdropTrajectoryStore:UpsertRoute(mapID, routeState, source, currentTi
 end
 
 function AirdropTrajectoryStore:GetPredictionRoutes(mapID)
-    return self:GetPredictionTracks(mapID)
+    if type(mapID) ~= "number" then
+        return {}
+    end
+
+    local allRoutes = self:GetRoutes(mapID)
+    local completeRoutes = {}
+    local fragmentRoutes = {}
+    for _, route in ipairs(allRoutes) do
+        if self:IsPredictionReady(route) == true then
+            completeRoutes[#completeRoutes + 1] = route
+        else
+            fragmentRoutes[#fragmentRoutes + 1] = route
+        end
+    end
+
+    if #completeRoutes > 0 then
+        return completeRoutes
+    end
+    return fragmentRoutes
 end
 
 function AirdropTrajectoryStore:GetRouteFamilies(mapID)

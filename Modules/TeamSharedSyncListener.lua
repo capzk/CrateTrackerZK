@@ -136,6 +136,7 @@ local function SendTrajectoryPayload(listener, routeState)
             verificationCount = routeState.verificationCount,
             verifiedPredictionCount = routeState.verifiedPredictionCount,
             confidenceScore = routeState.confidenceScore,
+            trajectoryType = routeState.trajectoryType,
             payload = payload,
             resultCode = resultCode,
             note = ResolveAuditNoteForSend(sent, resultCode),
@@ -548,6 +549,7 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
                 verificationCount = syncState.verificationCount,
                 verifiedPredictionCount = syncState.verifiedPredictionCount,
                 confidenceScore = syncState.confidenceScore,
+                trajectoryType = syncState.trajectoryType,
                 payload = payload,
                 note = note,
             })

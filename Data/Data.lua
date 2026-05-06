@@ -10,7 +10,7 @@ Data.DEFAULT_REFRESH_INTERVAL = (Data.MAP_CONFIG and Data.MAP_CONFIG.defaults an
 Data.maps = {};
 Data.mapsById = {};
 Data.mapsByMapID = {};
-Data.SCHEMA_VERSION = 4;
+Data.SCHEMA_VERSION = 5;
 
 local function ensureDB(clearLegacyMapData)
     AppContext:EnsurePersistentState();
@@ -198,16 +198,12 @@ function Data:TryMigrateSchema(oldVersion)
         uiDB.observedPhaseHistory = {};
         migratedCount = migratedCount + 1;
     end
+    if db.airdropShoutKnowledge ~= nil and type(db.airdropShoutKnowledge) ~= "table" then
+        db.airdropShoutKnowledge = nil;
+        migratedCount = migratedCount + 1;
+    end
 
     db.schemaVersion = self.SCHEMA_VERSION;
-    if Logger and Logger.Info then
-        Logger:Info("Data", "迁移", string.format(
-            "数据结构迁移完成：%s -> %d（迁移项=%d）",
-            tostring(oldVersion or "unknown"),
-            self.SCHEMA_VERSION,
-            migratedCount
-        ));
-    end
     return true;
 end
 
@@ -219,6 +215,7 @@ function Data:ResetDatabaseIfNeeded(forceReset)
         CRATETRACKERZK_DB = {
             schemaVersion = self.SCHEMA_VERSION,
             expansionData = {},
+            airdropShoutKnowledge = nil,
         };
         if type(CRATETRACKERZK_UI_DB) == "table" then
             CRATETRACKERZK_UI_DB.expansionUIData = {};
@@ -239,6 +236,7 @@ function Data:ResetDatabaseIfNeeded(forceReset)
             CRATETRACKERZK_DB = {
                 schemaVersion = self.SCHEMA_VERSION,
                 expansionData = {},
+                airdropShoutKnowledge = nil,
             };
             if type(CRATETRACKERZK_UI_DB) == "table" then
                 CRATETRACKERZK_UI_DB.expansionUIData = {};

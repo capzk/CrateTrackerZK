@@ -135,14 +135,20 @@ local function BuildTrajectoryLine(routeIndex, route, includeMapPrefix)
     local endX = FormatCoordinatePercent(route.endX);
     local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "%s#%d 起点 %s, %s -> 终点 %s, %s | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | merged %d | family=%s | landing=%s | alert=%s | 更新 %d",
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | 类型 %s | 状态 %s | 起点=%s(%s) | 终点=%s(%s) | continuity=%s | 可信度 %d | 验证 %d/%d | 样本 %d | 记录 %d | merged %d | family=%s | landing=%s | alert=%s | 更新 %d",
         prefix,
         tonumber(routeIndex) or 0,
         startX,
         startY,
         endX,
         endY,
+        tostring(route.trajectoryType or "unknown"),
         tostring(quality),
+        tostring(route.startConfirmed == true),
+        tostring(route.startSource or "nil"),
+        tostring(route.endConfirmed == true),
+        tostring(route.endSource or "nil"),
+        tostring(route.continuityConfirmed == true),
         confidence,
         verifiedPredictionCount,
         verificationCount,
@@ -173,18 +179,22 @@ local function BuildTrajectoryExportLine(route)
     local endX = FormatCoordinatePercent(route.endX);
     local endY = FormatCoordinatePercent(route.endY);
     return string.format(
-        "CTK_TRAJECTORY|mapID=%d|route=%s|family=%s|landing=%s|alert=%s|start=%s,%s|end=%s,%s|startConfirmed=%s|endConfirmed=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|merged=%d|updated=%d",
+        "CTK_TRAJECTORY|mapID=%d|route=%s|family=%s|landing=%s|alert=%s|type=%s|start=%s,%s|end=%s,%s|startConfirmed=%s|startSource=%s|endConfirmed=%s|endSource=%s|continuity=%s|quality=%s|confidence=%d|verified=%d/%d|samples=%d|count=%d|merged=%d|updated=%d",
         tonumber(route.mapID) or 0,
         tostring(route.routeKey or "unknown"),
         tostring(route.routeFamilyKey or "unknown"),
         tostring(route.landingKey or "unknown"),
         tostring(route.alertToken or "unknown"),
+        tostring(route.trajectoryType or "unknown"),
         startX,
         startY,
         endX,
         endY,
         tostring(route.startConfirmed == true),
+        tostring(route.startSource or "nil"),
         tostring(route.endConfirmed == true),
+        tostring(route.endSource or "nil"),
+        tostring(route.continuityConfirmed == true),
         tostring(quality),
         confidence,
         verifiedPredictionCount,
@@ -212,6 +222,95 @@ local function FormatTrackOffset(value)
     return string.format("%.3f", numberValue)
 end
 
+local function CountTrajectoryTypes(routes)
+    local completeCount = 0
+    local fragmentCount = 0
+    for _, route in ipairs(routes or {}) do
+        if type(route) == "table" and route.trajectoryType == "complete" then
+            completeCount = completeCount + 1
+        elseif type(route) == "table" then
+            fragmentCount = fragmentCount + 1
+        end
+    end
+    return completeCount, fragmentCount
+end
+
+local function BuildPredictionInputSummaryForMap(mapID)
+    if type(mapID) ~= "number" then
+        return "预测输入：无可用地图上下文"
+    end
+
+    local allRoutes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(mapID) or {}
+    local predictionRoutes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionRoutes and AirdropTrajectoryStore:GetPredictionRoutes(mapID) or {}
+    local completeCount, fragmentCount = CountTrajectoryTypes(allRoutes)
+    local selectedCompleteCount, selectedFragmentCount = CountTrajectoryTypes(predictionRoutes)
+    local mode = "无可用输入"
+    if selectedCompleteCount > 0 then
+        mode = "完整优先"
+    elseif selectedFragmentCount > 0 then
+        mode = "片段回退"
+    end
+    return string.format(
+        "预测输入：%s | 已选 %d（完整 %d / 片段 %d） | 全部 %d（完整 %d / 片段 %d）",
+        mode,
+        #predictionRoutes,
+        selectedCompleteCount,
+        selectedFragmentCount,
+        #allRoutes,
+        completeCount,
+        fragmentCount
+    )
+end
+
+local function BuildPredictionInputSummaryForAllMaps()
+    local mapIDs = {}
+    for mapID in pairs(AirdropTrajectoryStore and AirdropTrajectoryStore.routesByMap or {}) do
+        if type(mapID) == "number" then
+            mapIDs[#mapIDs + 1] = mapID
+        end
+    end
+    table.sort(mapIDs)
+
+    local completeModeMaps = 0
+    local fragmentModeMaps = 0
+    local emptyModeMaps = 0
+    local selectedRouteCount = 0
+    local totalRouteCount = 0
+    local totalCompleteCount = 0
+    local totalFragmentCount = 0
+
+    for _, mapID in ipairs(mapIDs) do
+        local allRoutes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(mapID) or {}
+        local predictionRoutes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionRoutes and AirdropTrajectoryStore:GetPredictionRoutes(mapID) or {}
+        local completeCount, fragmentCount = CountTrajectoryTypes(allRoutes)
+        local selectedCompleteCount, selectedFragmentCount = CountTrajectoryTypes(predictionRoutes)
+
+        totalRouteCount = totalRouteCount + #allRoutes
+        totalCompleteCount = totalCompleteCount + completeCount
+        totalFragmentCount = totalFragmentCount + fragmentCount
+        selectedRouteCount = selectedRouteCount + #predictionRoutes
+
+        if selectedCompleteCount > 0 then
+            completeModeMaps = completeModeMaps + 1
+        elseif selectedFragmentCount > 0 then
+            fragmentModeMaps = fragmentModeMaps + 1
+        else
+            emptyModeMaps = emptyModeMaps + 1
+        end
+    end
+
+    return string.format(
+        "预测输入（全部地图）：完整优先 %d 图 | 片段回退 %d 图 | 无输入 %d 图 | 已选 %d | 全部 %d（完整 %d / 片段 %d）",
+        completeModeMaps,
+        fragmentModeMaps,
+        emptyModeMaps,
+        selectedRouteCount,
+        totalRouteCount,
+        totalCompleteCount,
+        totalFragmentCount
+    )
+end
+
 local function BuildTrackGroupLine(trackIndex, track, includeMapPrefix)
     if type(track) ~= "table" then
         return nil;
@@ -233,13 +332,14 @@ local function BuildTrackGroupLine(trackIndex, track, includeMapPrefix)
     local endX = FormatCoordinatePercent(track.endX);
     local endY = FormatCoordinatePercent(track.endY);
     return string.format(
-        "%s#%d 起点 %s, %s -> 终点 %s, %s | track=%s | angle=%s | offset=%s | 落点 %d | canon %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | route=%s | family=%s | alert=%s | 更新 %d",
+        "%s#%d 起点 %s, %s -> 终点 %s, %s | 类型 %s | track=%s | angle=%s | offset=%s | 落点 %d | canon %d | 状态 %s | 可信度 %d | 验证 %d/%d | 样本 %d | route=%s | family=%s | alert=%s | 更新 %d",
         prefix,
         tonumber(trackIndex) or 0,
         startX,
         startY,
         endX,
         endY,
+        tostring(track.trajectoryType or "complete"),
         tostring(track.trackKey or "unknown"),
         FormatAngleDegrees(track.angle),
         FormatTrackOffset(track.offset),
@@ -266,10 +366,11 @@ local function BuildLandingClusterLine(track, landingCluster)
     local endX = FormatCoordinatePercent(landingCluster.endX);
     local endY = FormatCoordinatePercent(landingCluster.endY);
     return string.format(
-        "    落点#%d 终点 %s, %s | projection=%.3f | canon=%d | 验证 %d/%d | 样本 %d | route=%s | family=%s | landing=%s | alert=%s",
+        "    落点#%d 终点 %s, %s | 类型 %s | projection=%.3f | canon=%d | 验证 %d/%d | 样本 %d | route=%s | family=%s | landing=%s | alert=%s",
         math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
         endX,
         endY,
+        tostring(landingCluster.trajectoryType or "complete"),
         tonumber(landingCluster.endProjection) or 0,
         math.max(1, math.floor(tonumber(landingCluster.clusterRouteCount) or 1)),
         verifiedPredictionCount,
@@ -292,9 +393,10 @@ local function BuildTrackExportLine(track)
         and AirdropTrajectoryStore:GetPredictionConfidence(track)
         or 0;
     return string.format(
-        "CTK_TRACK|mapID=%d|trackKey=%s|start=%s,%s|end=%s,%s|angle=%.6f|offset=%.6f|landings=%d|canonicalRoutes=%d|verified=%d/%d|samples=%d|confidence=%d|updated=%d|route=%s|family=%s|alert=%s",
+        "CTK_TRACK|mapID=%d|trackKey=%s|type=%s|start=%s,%s|end=%s,%s|angle=%.6f|offset=%.6f|landings=%d|canonicalRoutes=%d|verified=%d/%d|samples=%d|confidence=%d|updated=%d|route=%s|family=%s|alert=%s",
         tonumber(track.mapID) or 0,
         tostring(track.trackKey or "unknown"),
+        tostring(track.trajectoryType or "complete"),
         FormatCoordinatePercent(track.startX),
         FormatCoordinatePercent(track.startY),
         FormatCoordinatePercent(track.endX),
@@ -321,10 +423,11 @@ local function BuildLandingExportLine(track, landingCluster)
     local verificationCount = math.max(0, math.floor(tonumber(landingCluster.verificationCount) or 0));
     local verifiedPredictionCount = math.max(0, math.floor(tonumber(landingCluster.verifiedPredictionCount) or 0));
     return string.format(
-        "CTK_LANDING|mapID=%d|trackKey=%s|index=%d|end=%s,%s|projection=%.6f|canonicalRoutes=%d|verified=%d/%d|samples=%d|updated=%d|route=%s|family=%s|landing=%s|alert=%s",
+        "CTK_LANDING|mapID=%d|trackKey=%s|index=%d|type=%s|end=%s,%s|projection=%.6f|canonicalRoutes=%d|verified=%d/%d|samples=%d|updated=%d|route=%s|family=%s|landing=%s|alert=%s",
         tonumber(track.mapID) or 0,
         tostring(track.trackKey or "unknown"),
         math.max(1, math.floor(tonumber(landingCluster.clusterIndex) or 1)),
+        tostring(landingCluster.trajectoryType or "complete"),
         FormatCoordinatePercent(landingCluster.endX),
         FormatCoordinatePercent(landingCluster.endY),
         tonumber(landingCluster.endProjection) or 0,
@@ -428,6 +531,9 @@ local function BuildSyncAuditLine(entry)
     if type(entry.timeType) == "string" and entry.timeType ~= "" then
         parts[#parts + 1] = "timeType=" .. entry.timeType
     end
+    if type(entry.trajectoryType) == "string" and entry.trajectoryType ~= "" then
+        parts[#parts + 1] = "trajectoryType=" .. entry.trajectoryType
+    end
     if type(entry.objectGUID) == "string" and entry.objectGUID ~= "" then
         parts[#parts + 1] = "objectGUID=" .. entry.objectGUID
     end
@@ -474,10 +580,47 @@ end
 
 function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨道命令：/ctk traj debug [all]");
+    SendLocalDebugMessage("轨道命令：/ctk traj raw [all]");
     SendLocalDebugMessage("轨道命令：/ctk traj export [all]");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace on|off|status");
     SendLocalDebugMessage("轨迹命令：/ctk traj trace recent");
     SendLocalDebugMessage("轨迹预测开关：设置 -> 轨迹预测（测试功能）");
+end
+
+function Commands:PrintRawTrajectoryRoutes(scope)
+    local includeAll = scope == "all"
+    local routes = {}
+    if includeAll == true then
+        routes = AirdropTrajectoryStore and AirdropTrajectoryStore.AppendRoutesTo and AirdropTrajectoryStore:AppendRoutesTo({}) or {}
+    else
+        local mapData = GetCurrentTrackedMapData();
+        if not mapData or type(mapData.mapID) ~= "number" then
+            SendLocalDebugMessage("当前不在可追踪地图，无法输出当前地图原始轨迹；可使用 /ctk traj raw all");
+            return true;
+        end
+        routes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(mapData.mapID) or {}
+    end
+
+    if #routes == 0 then
+        SendLocalDebugMessage("当前没有任何原始轨迹数据。");
+        return true;
+    end
+
+    if includeAll == true then
+        SendLocalDebugMessage(BuildPredictionInputSummaryForAllMaps());
+    else
+        local mapData = GetCurrentTrackedMapData();
+        SendLocalDebugMessage(BuildPredictionInputSummaryForMap(mapData and mapData.mapID or nil));
+    end
+    local completeCount, fragmentCount = CountTrajectoryTypes(routes)
+    SendLocalDebugMessage(string.format("原始轨迹视图：共 %d 条 | 完整 %d | 片段 %d", #routes, completeCount, fragmentCount));
+    for index, route in ipairs(routes) do
+        local line = BuildTrajectoryLine(index, route, includeAll == true);
+        if line then
+            SendLocalDebugMessage(line);
+        end
+    end
+    return true;
 end
 
 function Commands:PrintSyncHelp()
@@ -592,6 +735,9 @@ function Commands:BuildTrajectoryTraceEventLine(entry)
             tostring(entry.endSource or "nil")
         );
     end
+    if type(entry.trajectoryType) == "string" and entry.trajectoryType ~= "" then
+        parts[#parts + 1] = "trajectoryType=" .. entry.trajectoryType;
+    end
     if type(entry.trackKey) == "string" and entry.trackKey ~= "" then
         parts[#parts + 1] = "track=" .. entry.trackKey;
     end
@@ -703,8 +849,9 @@ function Commands:PrintTrajectoryRoutesForCurrentMap(exportMode)
 
     local tracks = AirdropTrajectoryStore and AirdropTrajectoryStore.GetTrackGroups and AirdropTrajectoryStore:GetTrackGroups(mapData.mapID) or {};
     local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapData.mapID);
+    SendLocalDebugMessage(BuildPredictionInputSummaryForMap(mapData.mapID));
     if #tracks == 0 then
-        SendLocalDebugMessage(string.format("【%s】当前没有可用的轨道组数据。", mapName));
+        SendLocalDebugMessage(string.format("【%s】当前没有可用的完整轨道组数据；若存在片段回退，请使用 /ctk traj raw 查看详情。", mapName));
         return true;
     end
 
@@ -758,8 +905,10 @@ function Commands:PrintAllTrajectoryRoutes(exportMode)
         end
     end
 
+    SendLocalDebugMessage(BuildPredictionInputSummaryForAllMaps());
+
     if #tracks == 0 then
-        SendLocalDebugMessage("当前没有任何轨道组数据。");
+        SendLocalDebugMessage("当前没有任何完整轨道组数据；若存在片段回退，请使用 /ctk traj raw all 查看详情。");
         return true;
     end
 
@@ -820,6 +969,9 @@ function Commands:HandleTrajectoryCommand(args)
     if mode == "family" then
         SendLocalDebugMessage("family 视图已被 track 视图替代，请使用 /ctk traj debug [all] 或 /ctk traj export [all]。");
         return true;
+    end
+    if mode == "raw" then
+        return self:PrintRawTrajectoryRoutes(scope);
     end
     if mode ~= "debug" and mode ~= "export" then
         self:PrintTrajectoryHelp();

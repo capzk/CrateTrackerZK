@@ -12,6 +12,8 @@ TeamSharedSyncProtocol.TRAJECTORY_REQUEST_MESSAGE_TYPE = "TRAJECTORY_REQUEST"
 TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE = "TRAJECTORY_ALERT_CLAIM"
 TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE = "TRAJECTORY_ALERT_ACK"
 TeamSharedSyncProtocol.PROTOCOL_VERSION = 5
+TeamSharedSyncProtocol.TRAJECTORY_PROTOCOL_VERSION = 6
+TeamSharedSyncProtocol.LEGACY_TRAJECTORY_PROTOCOL_VERSION = 5
 TeamSharedSyncProtocol.COORDINATE_SCALE = 10000
 
 local function EncodePayloadField(value)
@@ -78,18 +80,6 @@ function TeamSharedSyncProtocol:BuildPayload(syncState)
         return nil
     end
 
-    if AirdropEventService and AirdropEventService.IsShoutTimeType and AirdropEventService:IsShoutTimeType(timeType) == true then
-        return table.concat({
-            self.MESSAGE_TYPE,
-            tostring(self.PROTOCOL_VERSION),
-            EncodePayloadField(expansionID),
-            tostring(math.floor(mapID)),
-            EncodePayloadField(phaseID),
-            tostring(math.floor(timestamp)),
-            EncodePayloadField(objectGUID),
-        }, "|")
-    end
-
     return table.concat({
         self.MESSAGE_TYPE,
         tostring(self.PROTOCOL_VERSION),
@@ -140,6 +130,7 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
     local verificationCount = tonumber(routeState.verificationCount) or 0
     local verifiedPredictionCount = tonumber(routeState.verifiedPredictionCount) or 0
     local mergedRouteCount = tonumber(routeState.mergedRouteCount) or 1
+    local trajectoryType = DecodePayloadField(EncodePayloadField(routeState.trajectoryType == "complete" and "complete" or "fragment"))
     local startConfirmed = routeState.startConfirmed == true and 1 or 0
     local endConfirmed = routeState.endConfirmed == true and 1 or 0
     local continuityConfirmed = routeState.continuityConfirmed == true and 1 or 0
@@ -166,7 +157,7 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
 
     return table.concat({
         self.TRAJECTORY_MESSAGE_TYPE,
-        tostring(self.PROTOCOL_VERSION),
+        tostring(self.TRAJECTORY_PROTOCOL_VERSION),
         tostring(math.floor(mapID)),
         EncodePayloadField(routeKey),
         EncodePayloadField(routeFamilyKey),
@@ -187,6 +178,7 @@ function TeamSharedSyncProtocol:BuildTrajectoryPayload(routeState)
         tostring(math.max(0, math.floor(verifiedPredictionCount))),
         tostring(continuityConfirmed),
         tostring(math.max(1, math.floor(mergedRouteCount))),
+        EncodePayloadField(trajectoryType),
     }, "|")
 end
 
@@ -250,6 +242,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
 
     outState.messageType = nil
     outState.requestID = nil
+    outState.locale = nil
     outState.expansionID = nil
     outState.mapID = nil
     outState.phaseID = nil
@@ -274,7 +267,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     outState.verifiedPredictionCount = nil
     outState.continuityConfirmed = nil
     outState.mergedRouteCount = nil
-
+    outState.trajectoryType = nil
     local messageType = payload:match("^([^|]+)|")
     if type(messageType) ~= "string" or messageType == "" then
         return nil
@@ -357,8 +350,9 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
             verificationCountText,
             verifiedPredictionCountText,
             continuityConfirmedText,
-            mergedRouteCountText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+            mergedRouteCountText,
+            trajectoryTypeText =
+            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
 
         local protocolVersion = tonumber(versionText)
         local mapID = tonumber(mapIDText)
@@ -382,8 +376,13 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         local verifiedPredictionCount = tonumber(verifiedPredictionCountText)
         local continuityConfirmed = tonumber(continuityConfirmedText)
         local mergedRouteCount = tonumber(mergedRouteCountText)
+        local trajectoryType = DecodePayloadField(trajectoryTypeText)
+        local usedLegacyTrajectoryPayload = false
 
-        if parsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE or protocolVersion ~= self.PROTOCOL_VERSION then
+        if parsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE then
+            return nil
+        end
+        if protocolVersion ~= self.TRAJECTORY_PROTOCOL_VERSION and protocolVersion ~= self.LEGACY_TRAJECTORY_PROTOCOL_VERSION then
             return nil
         end
         if not mapID or mapID <= 0 or not timestamp or timestamp <= 0 then
@@ -395,6 +394,59 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
             or type(alertToken) ~= "string" or alertToken == "" then
             return nil
         end
+        if (protocolVersion == self.LEGACY_TRAJECTORY_PROTOCOL_VERSION)
+            and (type(trajectoryType) ~= "string" or trajectoryType == "") then
+            local legacyParsedMessageType,
+                legacyVersionText,
+                legacyMapIDText,
+                legacyRouteKeyText,
+                legacyRouteFamilyKeyText,
+                legacyLandingKeyText,
+                legacyAlertTokenText,
+                legacyStartXText,
+                legacyStartYText,
+                legacyEndXText,
+                legacyEndYText,
+                legacyTimestampText,
+                legacySampleCountText,
+                legacyStartConfirmedText,
+                legacyEndConfirmedText,
+                legacyStartSourceText,
+                legacyEndSourceText,
+                legacyObservationCountText,
+                legacyVerificationCountText,
+                legacyVerifiedPredictionCountText,
+                legacyContinuityConfirmedText,
+                legacyMergedRouteCountText =
+                payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
+            if legacyParsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE
+                or tonumber(legacyVersionText) ~= self.LEGACY_TRAJECTORY_PROTOCOL_VERSION then
+                return nil
+            end
+            mapID = tonumber(legacyMapIDText)
+            routeKey = DecodePayloadField(legacyRouteKeyText)
+            routeFamilyKey = DecodePayloadField(legacyRouteFamilyKeyText)
+            landingKey = DecodePayloadField(legacyLandingKeyText)
+            alertToken = DecodePayloadField(legacyAlertTokenText)
+            startX = tonumber(legacyStartXText)
+            startY = tonumber(legacyStartYText)
+            endX = tonumber(legacyEndXText)
+            endY = tonumber(legacyEndYText)
+            timestamp = tonumber(legacyTimestampText)
+            sampleCount = tonumber(legacySampleCountText)
+            startConfirmed = tonumber(legacyStartConfirmedText)
+            endConfirmed = tonumber(legacyEndConfirmedText)
+            startSource = DecodePayloadField(legacyStartSourceText)
+            endSource = DecodePayloadField(legacyEndSourceText)
+            observationCount = tonumber(legacyObservationCountText)
+            verificationCount = tonumber(legacyVerificationCountText)
+            verifiedPredictionCount = tonumber(legacyVerifiedPredictionCountText)
+            continuityConfirmed = tonumber(legacyContinuityConfirmedText)
+            mergedRouteCount = tonumber(legacyMergedRouteCountText)
+            trajectoryType = nil
+            usedLegacyTrajectoryPayload = true
+        end
+
         if not startX or not startY or not endX or not endY then
             return nil
         end
@@ -420,6 +472,11 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         outState.verifiedPredictionCount = math.max(0, math.floor(verifiedPredictionCount or 0))
         outState.continuityConfirmed = continuityConfirmed == 1
         outState.mergedRouteCount = math.max(1, math.floor(mergedRouteCount or 1))
+        if usedLegacyTrajectoryPayload == true then
+            outState.trajectoryType = "complete"
+        else
+            outState.trajectoryType = trajectoryType == "complete" and "complete" or "fragment"
+        end
         return outState
     end
 

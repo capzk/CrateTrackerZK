@@ -228,6 +228,41 @@ local function EnqueueRoute(owner, routeState, delaySeconds)
     return true
 end
 
+local function CanShareTrajectoryRoute(routeState)
+    if type(routeState) ~= "table" then
+        return false
+    end
+    if not AirdropTrajectoryStore or not AirdropTrajectoryStore.IsRouteRecordValid then
+        return false
+    end
+    if AirdropTrajectoryStore:IsRouteRecordValid(routeState) ~= true then
+        return false
+    end
+    local trajectoryType = routeState.trajectoryType == "complete" and "complete" or "fragment"
+    if trajectoryType == "complete" then
+        return AirdropTrajectoryStore.IsShareEligible
+            and AirdropTrajectoryStore:IsShareEligible(routeState) == true
+            or false
+    end
+    return true
+end
+
+local function HasShareEligibleCompleteRouteForMap(mapID, excludingRouteKey)
+    if type(mapID) ~= "number" or not AirdropTrajectoryStore or not AirdropTrajectoryStore.GetRoutes then
+        return false
+    end
+    local routes = AirdropTrajectoryStore:GetRoutes(mapID)
+    for _, route in ipairs(routes or {}) do
+        if type(route) == "table"
+            and route.routeKey ~= excludingRouteKey
+            and AirdropTrajectoryStore.IsShareEligible
+            and AirdropTrajectoryStore:IsShareEligible(route) == true then
+            return true
+        end
+    end
+    return false
+end
+
 function AirdropTrajectorySyncService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
@@ -419,9 +454,11 @@ function AirdropTrajectorySyncService:BroadcastRoute(routeState)
     if type(routeState) ~= "table" then
         return false
     end
-    if AirdropTrajectoryStore
-        and AirdropTrajectoryStore.IsShareEligible
-        and AirdropTrajectoryStore:IsShareEligible(routeState) ~= true then
+    if CanShareTrajectoryRoute(routeState) ~= true then
+        return false
+    end
+    if routeState.trajectoryType ~= "complete"
+        and HasShareEligibleCompleteRouteForMap(tonumber(routeState.mapID), routeState.routeKey) == true then
         return false
     end
 
@@ -519,9 +556,9 @@ function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
         sender = sender,
     }
 
-    if AirdropTrajectoryStore
-        and AirdropTrajectoryStore.IsShareEligible
-        and AirdropTrajectoryStore:IsShareEligible(incomingRoute) ~= true then
+    incomingRoute.trajectoryType = syncState.trajectoryType == "complete" and "complete" or "fragment"
+
+    if CanShareTrajectoryRoute(incomingRoute) ~= true then
         return false
     end
 

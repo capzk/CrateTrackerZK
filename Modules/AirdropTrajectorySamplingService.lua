@@ -39,6 +39,13 @@ local function IsCompleteReliableObservation(state)
         and state.endSource == "crate_vignette"
 end
 
+local function ResolveObservationTrajectoryType(state)
+    if IsCompleteReliableObservation(state) == true then
+        return "complete"
+    end
+    return "fragment"
+end
+
 local function IsPredictionAccurate(service, state, routeRecord)
     if type(service) ~= "table" or type(state) ~= "table" or type(routeRecord) ~= "table" then
         return nil
@@ -366,6 +373,23 @@ local function ResolveFinalizeRejectReason(state)
         return "invalid_end_source"
     end
     return "incomplete_route"
+end
+
+local function CanPersistObservationAsFragment(service, state, routeDistance)
+    if type(service) ~= "table" or type(state) ~= "table" then
+        return false
+    end
+    if type(routeDistance) ~= "number" then
+        return false
+    end
+    local minimumDistance = tonumber(service.PARTIAL_MIN_OBSERVATION_DISTANCE) or 0.015
+    if routeDistance < minimumDistance then
+        return false
+    end
+    if state.movingStarted ~= true then
+        return false
+    end
+    return true
 end
 
 local function ShouldSuppressFinalizeRejectNoise(state, reason)
@@ -718,7 +742,42 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
 
     self:FinalizeObservedEndpoints(service, state)
 
-    if IsCompleteReliableObservation(state) ~= true then
+    local startX = state.startConfirmed == true and state.startX or state.firstX
+    local startY = state.startConfirmed == true and state.startY or state.firstY
+    local endX = state.endConfirmed == true and state.endX or state.lastX
+    local endY = state.endConfirmed == true and state.endY or state.lastY
+    local routeDistance = ComputeDistance(startX, startY, endX, endY)
+    local isCompleteRoute = IsCompleteReliableObservation(state) == true
+    local trajectoryType = ResolveObservationTrajectoryType(state)
+    local minimumObservationDistance = isCompleteRoute == true
+        and (service.MIN_OBSERVATION_DISTANCE or 0.025)
+        or (service.PARTIAL_MIN_OBSERVATION_DISTANCE or 0.015)
+    if routeDistance < minimumObservationDistance then
+        if service and service.RecordTraceEvent then
+            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
+            service:RecordTraceEvent({
+                recordedAt = finalizeTime,
+                eventType = "finalize_rejected",
+                mapName = mapName,
+                mapID = state.mapID,
+                runtimeMapId = runtimeMapId,
+                sourceObjectGUID = state.objectGUID,
+                positionX = endX,
+                positionY = endY,
+                sampleCount = state.sampleCount,
+                startSource = state.startSource,
+                endSource = state.endSource,
+                startConfirmed = state.startConfirmed == true,
+                endConfirmed = state.endConfirmed == true,
+                trajectoryType = trajectoryType,
+                note = isCompleteRoute == true and "route_too_short" or "fragment_too_short",
+            })
+        end
+        EmitFinalizeRejectedDebugOutput(service, targetMapData or { mapID = state.mapID }, state, isCompleteRoute == true and "route_too_short" or "fragment_too_short")
+        return false
+    end
+
+    if isCompleteRoute ~= true and CanPersistObservationAsFragment(service, state, routeDistance) ~= true then
         local rejectReason = ResolveFinalizeRejectReason(state)
         if ShouldSuppressFinalizeRejectNoise(state, rejectReason) == true then
             return false
@@ -739,40 +798,11 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
                 endSource = state.endSource,
                 startConfirmed = state.startConfirmed == true,
                 endConfirmed = state.endConfirmed == true,
+                trajectoryType = trajectoryType,
                 note = rejectReason,
             })
         end
         EmitFinalizeRejectedDebugOutput(service, targetMapData or { mapID = state.mapID }, state, rejectReason)
-        return false
-    end
-
-    local startX = state.startConfirmed == true and state.startX or state.firstX
-    local startY = state.startConfirmed == true and state.startY or state.firstY
-    local endX = state.endConfirmed == true and state.endX or state.lastX
-    local endY = state.endConfirmed == true and state.endY or state.lastY
-    local routeDistance = ComputeDistance(startX, startY, endX, endY)
-    local minimumObservationDistance = service.MIN_OBSERVATION_DISTANCE or 0.025
-    if routeDistance < minimumObservationDistance then
-        if service and service.RecordTraceEvent then
-            local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring((targetMapData and targetMapData.mapID) or state.mapID or "")
-            service:RecordTraceEvent({
-                recordedAt = finalizeTime,
-                eventType = "finalize_rejected",
-                mapName = mapName,
-                mapID = state.mapID,
-                runtimeMapId = runtimeMapId,
-                sourceObjectGUID = state.objectGUID,
-                positionX = endX,
-                positionY = endY,
-                sampleCount = state.sampleCount,
-                startSource = state.startSource,
-                endSource = state.endSource,
-                startConfirmed = state.startConfirmed == true,
-                endConfirmed = state.endConfirmed == true,
-                note = "route_too_short",
-            })
-        end
-        EmitFinalizeRejectedDebugOutput(service, targetMapData or { mapID = state.mapID }, state, "route_too_short")
         return false
     end
 
@@ -802,6 +832,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
                 startConfirmed = state.startConfirmed == true,
                 endConfirmed = state.endConfirmed == true,
                 representativeLegacyRouteKey = inputRouteKey,
+                trajectoryType = trajectoryType,
             },
             "local",
             finalizeTime
@@ -823,6 +854,7 @@ function AirdropTrajectorySamplingService:FinalizeObservation(service, runtimeMa
             endSource = state.endSource,
             startConfirmed = state.startConfirmed == true,
             endConfirmed = state.endConfirmed == true,
+            trajectoryType = routeRecord.trajectoryType,
             note = routeStoreMeta and routeStoreMeta.status or (routeChanged == true and "stored_immediately_on_end_confirm" or "matched_existing_route"),
         })
     end
@@ -874,10 +906,6 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
     end
 
     if state.startConfirmed == true and state.endConfirmed ~= true then
-        -- 这里故意采用最严格的完整性门禁：起点一旦确认，后续采样只要发生断链，
-        -- 就直接放弃本地观测，避免带缺口的半程路线进入正式库或共享链路污染 canonical 事实源。
-        -- 该设计优先保证“入库/共享数据绝对完整”，而不是追求单客户端尽量保留残缺样本；
-        -- 团队场景下若其他成员采到了完整路线，会再通过轨迹共享同步回来。
         state.continuityBroken = true
         if service and service.RecordTraceEvent then
             local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(targetMapData) or tostring(targetMapData.mapID or "")
@@ -895,12 +923,12 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
                 endSource = state.endSource,
                 startConfirmed = state.startConfirmed == true,
                 endConfirmed = state.endConfirmed == true,
+                trajectoryType = ResolveObservationTrajectoryType(state),
                 note = "detection_interrupted_before_end_confirm",
             })
         end
         EmitContinuityInterruptedDebugOutput(service, targetMapData, state)
-        service.activeObservationByMap[targetMapData.id] = nil
-        return false
+        return self:FinalizeObservation(service, targetMapData.id, now)
     end
 
     if state.movingStarted == true then
@@ -931,8 +959,7 @@ function AirdropTrajectorySamplingService:HandleNoDetection(service, targetMapDa
             })
         end
         EmitMissingCrateDebugOutput(service, targetMapData, state)
-        service.activeObservationByMap[targetMapData.id] = nil
-        return false
+        return self:FinalizeObservation(service, targetMapData.id, now)
     end
 
     if type(state.missingSince) ~= "number" then

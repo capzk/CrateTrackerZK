@@ -261,11 +261,8 @@ end
 local function BuildShoutMatchers()
     ShoutDetector.compiledShouts = {};
     ShoutDetector.compiledLocale = GetLocale and GetLocale() or nil;
-
-    if not Localization or not Localization.GetCurrentLocaleAirdropShouts then
-        return 0;
-    end
-    local shouts = Localization:GetCurrentLocaleAirdropShouts();
+    ShoutDetector.compiledExpansionID = nil;
+    local shouts = Localization and Localization.GetCurrentLocaleAirdropShouts and Localization:GetCurrentLocaleAirdropShouts() or nil;
     if not shouts or #shouts == 0 then
         return 0;
     end
@@ -293,7 +290,9 @@ local function MessageMatchesShout(message)
         return false;
     end
     local currentLocale = GetLocale and GetLocale() or nil;
-    if not ShoutDetector.compiledShouts or #ShoutDetector.compiledShouts == 0 or ShoutDetector.compiledLocale ~= currentLocale then
+    if not ShoutDetector.compiledShouts
+        or #ShoutDetector.compiledShouts == 0
+        or ShoutDetector.compiledLocale ~= currentLocale then
         if BuildShoutMatchers() == 0 then
             return false;
         end
@@ -334,7 +333,7 @@ function ShoutDetector:Initialize()
     self.isInitialized = true;
 end
 
-function ShoutDetector:HandleChatEvent(event, message)
+function ShoutDetector:HandleChatEvent(event, message, speakerName)
     if not self.isInitialized then
         return;
     end

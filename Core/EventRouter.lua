@@ -7,6 +7,7 @@ local AddonLifecycle = BuildEnv("CrateTrackerZKAddonLifecycle")
 local HiddenSyncDispatcher = BuildEnv("HiddenSyncDispatcher")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local Utils = BuildEnv("Utils")
+local MapTracker = BuildEnv("MapTracker")
 
 local MONSTER_CHAT_EVENTS = {
     CHAT_MSG_MONSTER_SAY = true,
@@ -111,9 +112,12 @@ local function HandleMonsterChat(event, ...)
     if not CoreShared:IsAreaActive() then
         return
     end
+    local message = select(1, ...)
+    local speakerName = select(2, ...)
+    local currentMapID = CoreShared:GetCurrentMapID()
+    local targetMapData = MapTracker and MapTracker.GetTargetMapData and MapTracker:GetTargetMapData(currentMapID) or nil
     if ShoutDetector and ShoutDetector.HandleChatEvent then
-        local message = select(1, ...)
-        ShoutDetector:HandleChatEvent(event, message)
+        ShoutDetector:HandleChatEvent(event, message, speakerName)
     end
 end
 

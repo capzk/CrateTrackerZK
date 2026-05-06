@@ -494,6 +494,7 @@ function AirdropTrajectoryService:RecordTraceEvent(event)
         endSource = NormalizeTraceText(event.endSource),
         startConfirmed = event.startConfirmed == nil and nil or event.startConfirmed == true,
         endConfirmed = event.endConfirmed == nil and nil or event.endConfirmed == true,
+        trajectoryType = NormalizeTraceText(event.trajectoryType),
         note = NormalizeTraceText(event.note),
     }
 

@@ -583,7 +583,7 @@ function AirdropTrajectoryMatchingService:TryMatchPrediction(service, targetMapD
     end
 
     local mapID = tonumber(targetMapData.mapID) or tonumber(state.mapID)
-    local routes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetRoutes and AirdropTrajectoryStore:GetRoutes(mapID) or {}
+    local routes = AirdropTrajectoryStore and AirdropTrajectoryStore.GetPredictionRoutes and AirdropTrajectoryStore:GetPredictionRoutes(mapID) or {}
     if type(routes) ~= "table" or #routes == 0 then
         RecordPredictionEvent(service, targetMapData, state, iconResult, "prediction_wait", { reason = "route_missing" })
         return false
