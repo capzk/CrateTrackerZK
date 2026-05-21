@@ -189,7 +189,7 @@ function MainFrameChrome:CreateTitleBar(frame, createSettingsButtonCallback, cre
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
-    title:SetText("CrateTrackerZK")
+    title:SetText("CTK")
     local titleColor = UIConfig.GetTextColor("normal")
     title:SetTextColor(titleColor[1], titleColor[2], titleColor[3], titleColor[4])
     title:SetJustifyH("CENTER")

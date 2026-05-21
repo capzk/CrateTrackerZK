@@ -345,7 +345,6 @@ function AddonRuntimeCoordinator:ClearDataAndReinitialize()
         ResetShoutDetector()
         if CRATETRACKERZK_DB then
             CRATETRACKERZK_DB.expansionData = {}
-            CRATETRACKERZK_DB.mapData = nil
             if Data and Data.SCHEMA_VERSION then
                 CRATETRACKERZK_DB.schemaVersion = Data.SCHEMA_VERSION
             end

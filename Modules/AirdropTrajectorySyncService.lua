@@ -7,6 +7,7 @@ local TeamSharedSyncListener = BuildEnv("TeamSharedSyncListener")
 local TeamSharedSyncChannelService = BuildEnv("TeamSharedSyncChannelService")
 local TeamSharedSyncProtocol = BuildEnv("TeamSharedSyncProtocol")
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
+local Data = BuildEnv("Data")
 
 AirdropTrajectorySyncService.FEATURE_ENABLED = true
 AirdropTrajectorySyncService.REQUEST_COOLDOWN = 15
@@ -263,6 +264,17 @@ local function HasShareEligibleCompleteRouteForMap(mapID, excludingRouteKey)
     return false
 end
 
+local function IsTrackedSyncMap(mapID)
+    local resolvedMapID = tonumber(mapID)
+    if type(resolvedMapID) ~= "number" then
+        return false
+    end
+    return Data
+        and Data.GetMapByMapID
+        and Data:GetMapByMapID(resolvedMapID) ~= nil
+        or false
+end
+
 function AirdropTrajectorySyncService:IsFeatureEnabled()
     return self.FEATURE_ENABLED == true
 end
@@ -436,12 +448,18 @@ function AirdropTrajectorySyncService:QueueFullBroadcast(delaySeconds, force)
 
     local routes = {}
     routes = AirdropTrajectoryStore and AirdropTrajectoryStore.AppendShareableRoutesTo and AirdropTrajectoryStore:AppendShareableRoutesTo(routes) or routes
-    if #routes == 0 then
+    local filteredRoutes = {}
+    for _, route in ipairs(routes) do
+        if type(route) == "table" and IsTrackedSyncMap(route.mapID) == true then
+            filteredRoutes[#filteredRoutes + 1] = route
+        end
+    end
+    if #filteredRoutes == 0 then
         return false
     end
 
     local delay = math.max(0, tonumber(delaySeconds) or 0)
-    for _, route in ipairs(routes) do
+    for _, route in ipairs(filteredRoutes) do
         EnqueueRoute(self, route, delay)
     end
     return ScheduleBroadcastPump(self, delay)
@@ -452,6 +470,9 @@ function AirdropTrajectorySyncService:BroadcastRoute(routeState)
         return false
     end
     if type(routeState) ~= "table" then
+        return false
+    end
+    if IsTrackedSyncMap(routeState.mapID) ~= true then
         return false
     end
     if CanShareTrajectoryRoute(routeState) ~= true then
@@ -527,7 +548,10 @@ end
 
 function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
     if type(syncState) ~= "table" then
-        return false
+        return false, "invalid_sync_state"
+    end
+    if IsTrackedSyncMap(syncState.mapID) ~= true then
+        return false, "untracked_map"
     end
 
     local incomingRoute = {
@@ -559,20 +583,27 @@ function AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
     incomingRoute.trajectoryType = syncState.trajectoryType == "complete" and "complete" or "fragment"
 
     if CanShareTrajectoryRoute(incomingRoute) ~= true then
-        return false
+        return false, "route_not_share_eligible"
     end
 
-    local changed = AirdropTrajectoryStore
-        and AirdropTrajectoryStore.UpsertRoute
-        and AirdropTrajectoryStore:UpsertRoute(
+    local changed, routeRecord, storeMeta = false, nil, nil
+    if AirdropTrajectoryStore
+        and AirdropTrajectoryStore.UpsertRoute then
+        changed, routeRecord, storeMeta = AirdropTrajectoryStore:UpsertRoute(
             tonumber(syncState.mapID),
             incomingRoute,
             "shared",
             Utils:GetCurrentTimestamp()
         )
-        or false
+    end
 
-    return changed == true
+    if changed == true then
+        return true, (storeMeta and storeMeta.status) or "updated_canonical_route"
+    end
+    if type(storeMeta) == "table" and type(storeMeta.status) == "string" and storeMeta.status ~= "" then
+        return false, storeMeta.status
+    end
+    return false, "store_not_changed"
 end
 
 return AirdropTrajectorySyncService

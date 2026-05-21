@@ -63,7 +63,7 @@ local function ApplyTooltip(tooltip)
     if not tooltip then
         return
     end
-    tooltip:AddLine("CrateTrackerZK", 1, 1, 1)
+    tooltip:AddLine("CTK", 1, 1, 1)
     local line3 = L and L["FloatingButtonTooltipLine3"] or "Right-click to open settings"
     if line3 and line3 ~= "" then
         tooltip:AddLine(line3, 0.8, 0.8, 0.8)
@@ -162,7 +162,7 @@ function MinimapButton:CreateButton()
         if not ldbObject then
             ldbObject = ldb:NewDataObject("CrateTrackerZK", {
                 type = "launcher",
-                text = "CrateTrackerZK",
+                text = "CTK",
                 icon = GetIconPath(),
                 OnClick = function(_, button)
                     HandleClick(button)
@@ -251,9 +251,12 @@ function MinimapButton:UpdatePosition()
 end
 
 function MinimapButton:Show()
+    local db = EnsureMinimapDB()
+    db.hide = false
+    if not minimapButton then
+        self:CreateButton()
+    end
     if minimapButton then
-        local db = EnsureMinimapDB()
-        db.hide = false
         if dbIcon then
             dbIcon:Show("CrateTrackerZK")
         else
@@ -263,15 +266,29 @@ function MinimapButton:Show()
 end
 
 function MinimapButton:Hide()
+    local db = EnsureMinimapDB()
+    db.hide = true
     if minimapButton then
-        local db = EnsureMinimapDB()
-        db.hide = true
         if dbIcon then
             dbIcon:Hide("CrateTrackerZK")
         else
             minimapButton:Hide()
         end
     end
+end
+
+function MinimapButton:IsVisibleSettingEnabled()
+    local db = EnsureMinimapDB()
+    return db.hide ~= true
+end
+
+function MinimapButton:SetVisibleSettingEnabled(enabled)
+    if enabled == true then
+        self:Show()
+    else
+        self:Hide()
+    end
+    return self:IsVisibleSettingEnabled()
 end
 
 function MinimapButton:UpdateIcon(iconPath)

@@ -262,12 +262,7 @@ local function EnsureTrackedMapsSelection()
     local uiDB = EnsureUIState()
     local trackedMaps = uiDB.trackedMaps
     if type(trackedMaps) ~= "table" then
-        local legacyExpansionID = uiDB.expansionVersionID
-        if IsValidExpansionID(legacyExpansionID) then
-            trackedMaps = BuildTrackedSelectionForExpansion(legacyExpansionID)
-        else
-            trackedMaps = BuildTrackedSelectionForExpansion(ExpansionConfig.defaultExpansionID)
-        end
+        trackedMaps = BuildTrackedSelectionForExpansion(ExpansionConfig.defaultExpansionID)
         uiDB.trackedMaps = trackedMaps
     end
 
@@ -370,7 +365,15 @@ end
 
 function ExpansionConfig:GetCurrentExpansionID()
     local db = EnsureUIState()
-    local selected = db.expansionVersionID
+    local trackedMaps = EnsureTrackedMapsSelection()
+    local selected = nil
+    for _, expansionID in ipairs(GetCachedExpansionOrder(false)) do
+        local expansionSelection = trackedMaps[expansionID]
+        if type(expansionSelection) == "table" and next(expansionSelection) ~= nil then
+            selected = expansionID
+            break
+        end
+    end
     if IsValidExpansionID(selected) then
         return selected
     end

@@ -99,5 +99,8 @@ localeData["SettingsHelpText"] = [[
    알림 간격 (초): 자동 메시지 전송 간격을 설정합니다
 ]];
 
+localeData["SettingsMinimapButtonVisible"] = "미니맵 버튼 표시";
+localeData["SettingsMinimapButtonVisibleTooltip"] = "활성화하면 미니맵 옆에 애드온 버튼을 표시하고, 비활성화하면 숨깁니다.";
+
 -- Register this locale
 LocaleManager.RegisterLocale("koKR", localeData);

@@ -76,6 +76,17 @@ local function BuildCandidateKey(expansionID, mapID, phaseID)
     return tostring(expansionID) .. ":" .. tostring(mapID) .. ":" .. tostring(phaseID)
 end
 
+local function IsTrackedSyncMap(expansionID, mapID)
+    local resolvedMapID = tonumber(mapID)
+    if type(resolvedMapID) ~= "number" then
+        return false
+    end
+    return Data
+        and Data.GetMapByMapID
+        and Data:GetMapByMapID(resolvedMapID, expansionID) ~= nil
+        or false
+end
+
 local function GetSharedRecordTTL()
     if TeamSharedSyncStore and type(TeamSharedSyncStore.RECORD_TTL) == "number" then
         return TeamSharedSyncStore.RECORD_TTL
@@ -385,7 +396,10 @@ function TeamSharedWarmupService:CollectPersistentCandidates(candidateByKey, cur
     local count = 0
 
     for _, mapData in ipairs(maps) do
-        if mapData and type(mapData.expansionID) == "string" and type(mapData.mapID) == "number" then
+        if mapData
+            and type(mapData.expansionID) == "string"
+            and type(mapData.mapID) == "number"
+            and IsTrackedSyncMap(mapData.expansionID, mapData.mapID) == true then
             ClearMap(stateBuffer)
             local persistentState = UnifiedDataManager
                 and UnifiedDataManager.GetPersistentAirdropStateInto
@@ -430,6 +444,7 @@ function TeamSharedWarmupService:CollectSharedCandidates(candidateByKey, current
     local count = 0
     for _, record in ipairs(sharedRecords) do
         if record
+            and IsTrackedSyncMap(record.expansionID, record.mapID) == true
             and Data
             and Data.GetMapByMapID
             and Data:GetMapByMapID(record.mapID, record.expansionID) then

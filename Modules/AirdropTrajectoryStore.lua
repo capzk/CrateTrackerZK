@@ -44,14 +44,6 @@ local function CreateEmptyPersistentState()
     }
 end
 
-local function ClearObsoletePersistentBuckets()
-    local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil
-    if type(db) == "table" then
-        db.trajectoryData = nil
-    end
-    return true
-end
-
 local function EnsurePersistentRootTable()
     if type(CRATETRACKERZK_TRAJECTORY_DB) ~= "table" then
         CRATETRACKERZK_TRAJECTORY_DB = CreateEmptyPersistentState()
@@ -1372,7 +1364,6 @@ end
 
 local function EnsureTrajectoryPersistentState()
     local db = EnsurePersistentRootTable()
-    ClearObsoletePersistentBuckets()
 
     if ValidatePersistentState(db) ~= true then
         -- 旧结构与损坏结构不再做迁移兼容，直接清空并进入当前 canonical schema。
@@ -1590,7 +1581,6 @@ function AirdropTrajectoryStore:ClearPersistentData()
     CRATETRACKERZK_TRAJECTORY_DB = CreateEmptyPersistentState()
     self.routesByMap = {}
     self.trackGroupsByMap = {}
-    ClearObsoletePersistentBuckets()
     return true
 end
 

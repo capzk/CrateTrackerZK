@@ -260,6 +260,12 @@ function SettingsPanelView:RefreshState()
         SetTextEnabled(controls.trajectoryPredictionTeamAlert.label, snapshot.trajectoryPredictionTeamAlertInteractable == true)
     end
 
+    if controls.minimapButtonVisible then
+        controls.minimapButtonVisible:SetChecked(snapshot.minimapButtonVisible == true)
+        controls.minimapButtonVisible:SetEnabled(snapshot.minimapButtonVisibleInteractable == true)
+        SetTextEnabled(controls.minimapButtonVisible.label, snapshot.minimapButtonVisibleInteractable == true)
+    end
+
     if controls.autoReport then
         controls.autoReport:SetChecked(snapshot.autoReportEnabled == true)
         controls.autoReport:SetEnabled(snapshot.autoReportInteractable == true)

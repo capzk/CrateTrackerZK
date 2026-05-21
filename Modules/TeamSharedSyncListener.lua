@@ -572,11 +572,13 @@ function TeamSharedSyncListener:HandleAddonEvent(event, prefix, payload, chatTyp
         return handled
     end
     if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_MESSAGE_TYPE or "TRAJECTORY_ROUTE") then
-        local handled = AirdropTrajectorySyncService
-            and AirdropTrajectorySyncService.HandleTrajectoryRoute
-            and AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
-            or false
-        RecordProcessed(handled == true and "processed" or "ignored", "trajectory_route")
+        local handled = false
+        local trajectoryNote = nil
+        if AirdropTrajectorySyncService
+            and AirdropTrajectorySyncService.HandleTrajectoryRoute then
+            handled, trajectoryNote = AirdropTrajectorySyncService:HandleTrajectoryRoute(syncState, sender)
+        end
+        RecordProcessed(handled == true and "processed" or "ignored", trajectoryNote or "trajectory_route")
         return handled
     end
     if syncState.messageType == (TeamSharedSyncProtocol and TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE or "TRAJECTORY_ALERT_CLAIM")

@@ -105,5 +105,8 @@ Notificar automaticamente: cuando esta activado, envia automaticamente la cuenta
 Intervalo de reporte (seg): establece el intervalo para los mensajes automaticos de cuenta regresiva
 ]];
 
+localeData["SettingsMinimapButtonVisible"] = "Mostrar boton del minimapa";
+localeData["SettingsMinimapButtonVisibleTooltip"] = "Cuando esta activado, muestra el boton del addon junto al minimapa; cuando esta desactivado, lo oculta.";
+
 -- Register this locale
 LocaleManager.RegisterLocale("esMX", localeData);

@@ -308,9 +308,24 @@ function SettingsPanelPages:BuildAppearancePage(parent, pageKey, pages, controls
     local page = SettingsPanelFactory:CreatePageFrame(parent)
     pages[pageKey] = page
 
-    controls.theme = SettingsPanelFactory:CreateInlineButtonRow(
+    controls.minimapButtonVisible = SettingsPanelFactory:CreateCheckbox(
         page,
         page.topAnchor,
+        lt("SettingsMinimapButtonVisible", "显示小地图按钮"),
+        function(enabled)
+            if SettingsPanelActions and SettingsPanelActions.SetMinimapButtonVisible then
+                SettingsPanelActions:SetMinimapButtonVisible(enabled)
+            end
+            if onRefresh then
+                onRefresh()
+            end
+        end,
+        lt("SettingsMinimapButtonVisibleTooltip", "开启后显示小地图旁边的插件按钮，关闭后隐藏该按钮。")
+    )
+
+    controls.theme = SettingsPanelFactory:CreateInlineButtonRow(
+        page,
+        controls.minimapButtonVisible,
         lt("SettingsThemeSwitch", "界面主题"),
         "N/A",
         160,

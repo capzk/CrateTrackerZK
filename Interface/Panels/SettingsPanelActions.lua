@@ -7,6 +7,7 @@ local Commands = BuildEnv("Commands")
 local Notification = BuildEnv("Notification")
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
+local MinimapButton = BuildEnv("MinimapButton")
 
 function SettingsPanelActions:SetAddonEnabled(enabled)
     if AddonControlService and AddonControlService.ApplyAddonEnabled then
@@ -55,6 +56,12 @@ end
 function SettingsPanelActions:SetTrajectoryPredictionTeamAlertEnabled(enabled)
     if AirdropTrajectoryAlertCoordinator and AirdropTrajectoryAlertCoordinator.SetSettingEnabled then
         AirdropTrajectoryAlertCoordinator:SetSettingEnabled(enabled == true)
+    end
+end
+
+function SettingsPanelActions:SetMinimapButtonVisible(enabled)
+    if MinimapButton and MinimapButton.SetVisibleSettingEnabled then
+        MinimapButton:SetVisibleSettingEnabled(enabled == true)
     end
 end
 

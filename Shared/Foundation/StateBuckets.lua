@@ -15,7 +15,6 @@ end
 
 function StateBuckets:GetExpansionMapData(expansionID)
     local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or {}
-    db.mapData = nil
 
     if type(db.expansionData) ~= "table" then
         db.expansionData = {}

@@ -105,5 +105,8 @@ Usage Guide
    Report Interval (sec): sets the interval for automatic countdown messages
 ]];
 
+localeData["SettingsMinimapButtonVisible"] = "Show minimap button";
+localeData["SettingsMinimapButtonVisibleTooltip"] = "When enabled, shows the addon button next to the minimap; when disabled, hides it.";
+
 -- Register this locale
 LocaleManager.RegisterLocale("enUS", localeData);

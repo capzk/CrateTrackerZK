@@ -10,6 +10,7 @@ local Data = BuildEnv("Data")
 local Localization = BuildEnv("Localization")
 local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
+local MinimapButton = BuildEnv("MinimapButton")
 
 function SettingsPanelState:LT(key, fallback)
     local L = CrateTrackerZK and CrateTrackerZK.L
@@ -94,6 +95,16 @@ function SettingsPanelState:IsTrajectoryPredictionTeamAlertEnabled()
         return CRATETRACKERZK_UI_DB.trajectoryPredictionTeamAlertEnabled == true
     end
     return false
+end
+
+function SettingsPanelState:IsMinimapButtonVisible()
+    if MinimapButton and MinimapButton.IsVisibleSettingEnabled then
+        return MinimapButton:IsVisibleSettingEnabled() == true
+    end
+    if CRATETRACKERZK_UI_DB and type(CRATETRACKERZK_UI_DB.minimap) == "table" then
+        return CRATETRACKERZK_UI_DB.minimap.hide ~= true
+    end
+    return true
 end
 
 function SettingsPanelState:GetAutoTeamReportInterval()
@@ -201,6 +212,8 @@ function SettingsPanelState:GetSettingsSnapshot()
         trajectoryPredictionInteractable = addonEnabled,
         trajectoryPredictionTeamAlertEnabled = self:IsTrajectoryPredictionTeamAlertEnabled(),
         trajectoryPredictionTeamAlertInteractable = addonEnabled and teamEnabled and trajectoryPredictionEnabled,
+        minimapButtonVisible = self:IsMinimapButtonVisible(),
+        minimapButtonVisibleInteractable = true,
         autoReportEnabled = autoEnabled,
         autoReportInteractable = addonEnabled and teamEnabled,
         autoReportInterval = self:GetAutoTeamReportInterval(),

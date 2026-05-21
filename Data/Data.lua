@@ -12,11 +12,8 @@ Data.mapsById = {};
 Data.mapsByMapID = {};
 Data.SCHEMA_VERSION = 5;
 
-local function ensureDB(clearLegacyMapData)
+local function ensureDB()
     AppContext:EnsurePersistentState();
-    if clearLegacyMapData == true then
-        CRATETRACKERZK_DB.mapData = nil;
-    end
     if type(CRATETRACKERZK_DB.expansionData) ~= "table" then
         CRATETRACKERZK_DB.expansionData = {};
     end
@@ -70,157 +67,17 @@ local function getScopedMapLookup(expansionID, mapID)
     return Data.mapsByMapID[mapID];
 end
 
-local function resolveMapExpansionID(mapID)
-    if type(mapID) ~= "number" then
-        return nil;
-    end
-    if ExpansionConfig and ExpansionConfig.GetMapExpansionID then
-        return ExpansionConfig:GetMapExpansionID(mapID);
-    end
-    return nil;
-end
-
-local function ensureSchemaExpansionBucket(db, expansionID)
-    expansionID = expansionID or "default";
-    if type(db.expansionData) ~= "table" then
-        db.expansionData = {};
-    end
-    if type(db.expansionData[expansionID]) ~= "table" then
-        db.expansionData[expansionID] = {};
-    end
-    if type(db.expansionData[expansionID].mapData) ~= "table" then
-        db.expansionData[expansionID].mapData = {};
-    end
-    return db.expansionData[expansionID].mapData;
-end
-
-local function migrateLegacyMapData(db, legacyMapData)
-    if type(legacyMapData) ~= "table" then
-        return 0;
-    end
-    local movedCount = 0;
-    for rawMapID, savedData in pairs(legacyMapData) do
-        local mapID = tonumber(rawMapID);
-        if mapID and type(savedData) == "table" then
-            local expansionID = resolveMapExpansionID(mapID) or "default";
-            local mapStore = ensureSchemaExpansionBucket(db, expansionID);
-            if type(mapStore[mapID]) ~= "table" then
-                mapStore[mapID] = savedData;
-                movedCount = movedCount + 1;
-            end
-        end
-    end
-    return movedCount;
-end
-
-local function migrateLegacyHiddenState(uiDB)
-    local legacyHiddenMaps = uiDB.hiddenMaps;
-    local legacyHiddenRemaining = uiDB.hiddenRemaining;
-    if type(legacyHiddenMaps) ~= "table" and type(legacyHiddenRemaining) ~= "table" then
-        return 0;
-    end
-
-    if type(uiDB.expansionUIData) ~= "table" then
-        uiDB.expansionUIData = {};
-    end
-
-    local movedCount = 0;
-    for rawMapID, isHidden in pairs(legacyHiddenMaps or {}) do
-        local mapID = tonumber(rawMapID);
-        if mapID and isHidden == true then
-            local expansionID = resolveMapExpansionID(mapID) or "default";
-            if type(uiDB.expansionUIData[expansionID]) ~= "table" then
-                uiDB.expansionUIData[expansionID] = {};
-            end
-            local bucket = uiDB.expansionUIData[expansionID];
-            if type(bucket.hiddenMaps) ~= "table" then
-                bucket.hiddenMaps = {};
-            end
-            if type(bucket.hiddenRemaining) ~= "table" then
-                bucket.hiddenRemaining = {};
-            end
-
-            bucket.hiddenMaps[mapID] = true;
-            local remainingValue = legacyHiddenRemaining and (legacyHiddenRemaining[rawMapID] or legacyHiddenRemaining[mapID]) or nil;
-            if remainingValue ~= nil then
-                bucket.hiddenRemaining[mapID] = remainingValue;
-            end
-            movedCount = movedCount + 1;
-        end
-    end
-
-    uiDB.hiddenMaps = nil;
-    uiDB.hiddenRemaining = nil;
-    return movedCount;
-end
-
-function Data:TryMigrateSchema(oldVersion)
-    local db = AppContext and AppContext.EnsurePersistentState and AppContext:EnsurePersistentState() or nil;
-    local uiDB = AppContext and AppContext.EnsureUIState and AppContext:EnsureUIState() or nil;
-    if type(db) ~= "table" or type(uiDB) ~= "table" then
-        return false;
-    end
-
-    local migratedCount = 0;
-    if type(db.expansionData) ~= "table" then
-        db.expansionData = {};
-    end
-
-    local movedMapDataCount = migrateLegacyMapData(db, db.mapData);
-    if movedMapDataCount > 0 then
-        migratedCount = migratedCount + movedMapDataCount;
-    end
-    db.mapData = nil;
-
-    for expansionID, bucket in pairs(db.expansionData) do
-        if type(bucket) ~= "table" then
-            db.expansionData[expansionID] = { mapData = {} };
-            migratedCount = migratedCount + 1;
-        elseif type(bucket.mapData) ~= "table" then
-            bucket.mapData = {};
-            migratedCount = migratedCount + 1;
-        end
-    end
-
-    local movedHiddenStateCount = migrateLegacyHiddenState(uiDB);
-    if movedHiddenStateCount > 0 then
-        migratedCount = migratedCount + movedHiddenStateCount;
-    end
-
-    if type(uiDB.expansionUIData) ~= "table" then
-        uiDB.expansionUIData = {};
-    end
-    if uiDB.phaseCache ~= nil and type(uiDB.phaseCache) ~= "table" then
-        uiDB.phaseCache = {};
-        migratedCount = migratedCount + 1;
-    end
-    if uiDB.observedPhaseHistory ~= nil and type(uiDB.observedPhaseHistory) ~= "table" then
-        uiDB.observedPhaseHistory = {};
-        migratedCount = migratedCount + 1;
-    end
-    if db.airdropShoutKnowledge ~= nil and type(db.airdropShoutKnowledge) ~= "table" then
-        db.airdropShoutKnowledge = nil;
-        migratedCount = migratedCount + 1;
-    end
-
-    db.schemaVersion = self.SCHEMA_VERSION;
-    return true;
-end
-
 function Data:ResetDatabaseIfNeeded(forceReset)
-    ensureDB(false);
+    ensureDB();
     local currentVersion = tonumber(CRATETRACKERZK_DB.schemaVersion) or 0;
     local shouldUpgrade = currentVersion ~= self.SCHEMA_VERSION;
     if forceReset == true then
         CRATETRACKERZK_DB = {
             schemaVersion = self.SCHEMA_VERSION,
             expansionData = {},
-            airdropShoutKnowledge = nil,
         };
         if type(CRATETRACKERZK_UI_DB) == "table" then
             CRATETRACKERZK_UI_DB.expansionUIData = {};
-            CRATETRACKERZK_UI_DB.hiddenMaps = nil;
-            CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
             CRATETRACKERZK_UI_DB.phaseCache = nil;
             CRATETRACKERZK_UI_DB.observedPhaseHistory = nil;
         end
@@ -228,33 +85,24 @@ function Data:ResetDatabaseIfNeeded(forceReset)
             Logger:Info("Data", "初始化", string.format("执行强制重置（schema=%d）", self.SCHEMA_VERSION));
         end
     elseif shouldUpgrade then
-        local migrated = false;
-        if currentVersion <= self.SCHEMA_VERSION and self.TryMigrateSchema then
-            migrated = self:TryMigrateSchema(currentVersion) == true;
+        CRATETRACKERZK_DB = {
+            schemaVersion = self.SCHEMA_VERSION,
+            expansionData = {},
+        };
+        if type(CRATETRACKERZK_UI_DB) == "table" then
+            CRATETRACKERZK_UI_DB.expansionUIData = {};
+            CRATETRACKERZK_UI_DB.phaseCache = nil;
+            CRATETRACKERZK_UI_DB.observedPhaseHistory = nil;
         end
-        if not migrated then
-            CRATETRACKERZK_DB = {
-                schemaVersion = self.SCHEMA_VERSION,
-                expansionData = {},
-                airdropShoutKnowledge = nil,
-            };
-            if type(CRATETRACKERZK_UI_DB) == "table" then
-                CRATETRACKERZK_UI_DB.expansionUIData = {};
-                CRATETRACKERZK_UI_DB.hiddenMaps = nil;
-                CRATETRACKERZK_UI_DB.hiddenRemaining = nil;
-                CRATETRACKERZK_UI_DB.phaseCache = nil;
-                CRATETRACKERZK_UI_DB.observedPhaseHistory = nil;
-            end
-            if Logger and Logger.Warn then
-                Logger:Warn("Data", "初始化", string.format(
-                    "迁移失败，已回退为重置策略（from=%s,to=%d）",
-                    tostring(currentVersion),
-                    self.SCHEMA_VERSION
-                ));
-            end
+        if Logger and Logger.Warn then
+            Logger:Warn("Data", "初始化", string.format(
+                "检测到旧版空投数据结构，已直接重置为当前 schema（from=%s,to=%d）",
+                tostring(currentVersion),
+                self.SCHEMA_VERSION
+            ));
         end
     end
-    ensureDB(true);
+    ensureDB();
     CRATETRACKERZK_DB.schemaVersion = self.SCHEMA_VERSION;
 end
 

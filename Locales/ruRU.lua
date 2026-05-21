@@ -103,5 +103,8 @@ localeData["SettingsHelpText"] = [[
    Интервал отправки (сек): задает интервал автоматической отправки сообщений
 ]];
 
+localeData["SettingsMinimapButtonVisible"] = "Показывать кнопку у миникарты";
+localeData["SettingsMinimapButtonVisibleTooltip"] = "При включении кнопка аддона показывается рядом с миникартой; при выключении скрывается.";
+
 -- Register this locale
 LocaleManager.RegisterLocale("ruRU", localeData);

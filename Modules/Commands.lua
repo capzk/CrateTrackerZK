@@ -578,6 +578,103 @@ local function BuildSyncAuditLine(entry)
     return table.concat(parts, " | ")
 end
 
+local function CopyAuditEntries(entries)
+    local copied = {}
+    for _, entry in ipairs(entries or {}) do
+        copied[#copied + 1] = entry
+    end
+    return copied
+end
+
+local function GetAuditTailEntries(entries, limit)
+    local count = #(entries or {})
+    local resolvedLimit = math.max(1, math.floor(tonumber(limit) or 20))
+    if resolvedLimit > count then
+        resolvedLimit = count
+    end
+
+    local result = {}
+    for index = math.max(1, count - resolvedLimit + 1), count do
+        result[#result + 1] = entries[index]
+    end
+    return result
+end
+
+local function IsTrajectoryAuditEntry(entry)
+    if type(entry) ~= "table" then
+        return false
+    end
+    return entry.protocol == "CTKZK_PTRJ"
+        or entry.messageType == "TRAJECTORY_ROUTE"
+        or entry.messageType == "TRAJECTORY_REQUEST"
+        or entry.messageType == "TRAJECTORY_ALERT_CLAIM"
+        or entry.messageType == "TRAJECTORY_ALERT_ACK"
+end
+
+local function IsSyncWindowTriggerEntry(entry, trajectoryOnly)
+    if type(entry) ~= "table" then
+        return false
+    end
+    if trajectoryOnly == true then
+        return entry.messageType == "TRAJECTORY_REQUEST"
+            or entry.messageType == "TRAJECTORY_ROUTE"
+            or entry.messageType == "TRAJECTORY_ALERT_CLAIM"
+            or entry.messageType == "TRAJECTORY_ALERT_ACK"
+    end
+    return entry.messageType == "SYNC_REQUEST"
+        or entry.messageType == "TRAJECTORY_REQUEST"
+        or entry.messageType == "AIRDROP"
+        or entry.messageType == "PHASE_AIRDROP"
+        or entry.messageType == "TRAJECTORY_ROUTE"
+        or entry.messageType == "TRAJECTORY_ALERT_CLAIM"
+        or entry.messageType == "TRAJECTORY_ALERT_ACK"
+        or entry.messageType == "PHASE_CLAIM"
+        or entry.messageType == "PHASE_ACK"
+end
+
+local function BuildLatestSyncWindow(entries, trajectoryOnly)
+    local sourceEntries = entries or {}
+    local filtered = {}
+    for _, entry in ipairs(sourceEntries) do
+        if trajectoryOnly ~= true or IsTrajectoryAuditEntry(entry) == true then
+            filtered[#filtered + 1] = entry
+        end
+    end
+    if #filtered == 0 then
+        return {}
+    end
+
+    local lastIndex = #filtered
+    local lastEntry = filtered[lastIndex]
+    if type(lastEntry) ~= "table" then
+        return {}
+    end
+
+    local latestTime = tonumber(lastEntry.recordedAt) or 0
+    local clusterGapSeconds = 3
+    local maxWindowSeconds = 45
+    local startIndex = lastIndex
+
+    for index = lastIndex - 1, 1, -1 do
+        local currentRecordedAt = tonumber(filtered[index].recordedAt) or 0
+        local nextRecordedAt = tonumber(filtered[index + 1].recordedAt) or currentRecordedAt
+        local gap = nextRecordedAt - currentRecordedAt
+        if gap > clusterGapSeconds then
+            break
+        end
+        if (latestTime - currentRecordedAt) > maxWindowSeconds then
+            break
+        end
+        startIndex = index
+    end
+
+    local result = {}
+    for index = startIndex, lastIndex do
+        result[#result + 1] = filtered[index]
+    end
+    return result
+end
+
 function Commands:PrintTrajectoryHelp()
     SendLocalDebugMessage("轨道命令：/ctk traj debug [all]");
     SendLocalDebugMessage("轨道命令：/ctk traj raw [all]");
@@ -626,6 +723,9 @@ end
 function Commands:PrintSyncHelp()
     SendLocalDebugMessage("同步命令：/ctk sync audit");
     SendLocalDebugMessage("同步命令：/ctk sync audit all");
+    SendLocalDebugMessage("同步命令：/ctk sync tail [N]");
+    SendLocalDebugMessage("同步命令：/ctk sync latest");
+    SendLocalDebugMessage("同步命令：/ctk sync latest traj");
 end
 
 function Commands:HandleTrajectoryTraceCommand(args)
@@ -992,7 +1092,7 @@ function Commands:HandleSyncCommand(args)
         self:PrintSyncHelp();
         return true;
     end
-    if mode ~= "audit" then
+    if mode ~= "audit" and mode ~= "tail" and mode ~= "latest" then
         self:PrintSyncHelp();
         return true;
     end
@@ -1002,11 +1102,50 @@ function Commands:HandleSyncCommand(args)
         return true;
     end
 
+    local allEntries = HiddenSyncAuditService.entries or {};
+    local recentEntries = HiddenSyncAuditService:GetRecentEntries(3600);
+
+    if mode == "tail" then
+        local tailCount = tonumber(scope) or tonumber(args[4]) or 20
+        local entries = GetAuditTailEntries(allEntries, tailCount)
+        if #entries == 0 then
+            SendLocalDebugMessage("当前没有任何隐藏同步审计记录。");
+            return true;
+        end
+        SendLocalDebugMessage(string.format("隐藏同步审计（最后 %d 条）：", #entries));
+        SendLocalDebugMessage(BuildSyncAuditSummary(entries));
+        for _, entry in ipairs(entries) do
+            local line = BuildSyncAuditLine(entry);
+            if line then
+                SendLocalDebugMessage(line);
+            end
+        end
+        return true;
+    end
+
+    if mode == "latest" then
+        local trajectoryOnly = scope == "traj" or scope == "trajectory"
+        local entries = BuildLatestSyncWindow(allEntries, trajectoryOnly)
+        if #entries == 0 then
+            SendLocalDebugMessage(trajectoryOnly and "当前没有最近一次轨迹同步窗口记录。" or "当前没有最近一次同步窗口记录。");
+            return true;
+        end
+        SendLocalDebugMessage(trajectoryOnly and "隐藏同步审计（最近一次轨迹同步窗口）：" or "隐藏同步审计（最近一次同步窗口）：");
+        SendLocalDebugMessage(BuildSyncAuditSummary(entries));
+        for _, entry in ipairs(entries) do
+            local line = BuildSyncAuditLine(entry);
+            if line then
+                SendLocalDebugMessage(line);
+            end
+        end
+        return true;
+    end
+
     local entries = nil;
     if scope == "all" then
-        entries = HiddenSyncAuditService.entries or {};
+        entries = CopyAuditEntries(allEntries);
     else
-        entries = HiddenSyncAuditService:GetRecentEntries(3600);
+        entries = recentEntries;
     end
 
     if #entries == 0 then

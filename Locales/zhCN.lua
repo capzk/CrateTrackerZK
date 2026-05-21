@@ -105,5 +105,8 @@ localeData["SettingsHelpText"] = [[
    通知频率（秒）：设置自动通知发送间隔
 ]];
 
+localeData["SettingsMinimapButtonVisible"] = "显示小地图按钮";
+localeData["SettingsMinimapButtonVisibleTooltip"] = "开启后显示小地图旁边的插件按钮，关闭后隐藏该按钮。";
+
 -- Register this locale
 LocaleManager.RegisterLocale("zhCN", localeData);

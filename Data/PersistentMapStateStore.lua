@@ -18,7 +18,6 @@ end
 
 local function EnsureExpansionBucket(expansionID)
     local db = EnsurePersistentState()
-    db.mapData = nil
     db.expansionData = db.expansionData or {}
     db.expansionData[expansionID] = db.expansionData[expansionID] or {}
     db.expansionData[expansionID].mapData = db.expansionData[expansionID].mapData or {}

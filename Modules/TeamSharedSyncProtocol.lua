@@ -13,7 +13,6 @@ TeamSharedSyncProtocol.TRAJECTORY_ALERT_CLAIM_MESSAGE_TYPE = "TRAJECTORY_ALERT_C
 TeamSharedSyncProtocol.TRAJECTORY_ALERT_ACK_MESSAGE_TYPE = "TRAJECTORY_ALERT_ACK"
 TeamSharedSyncProtocol.PROTOCOL_VERSION = 5
 TeamSharedSyncProtocol.TRAJECTORY_PROTOCOL_VERSION = 6
-TeamSharedSyncProtocol.LEGACY_TRAJECTORY_PROTOCOL_VERSION = 5
 TeamSharedSyncProtocol.COORDINATE_SCALE = 10000
 
 local function EncodePayloadField(value)
@@ -377,12 +376,11 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         local continuityConfirmed = tonumber(continuityConfirmedText)
         local mergedRouteCount = tonumber(mergedRouteCountText)
         local trajectoryType = DecodePayloadField(trajectoryTypeText)
-        local usedLegacyTrajectoryPayload = false
 
         if parsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE then
             return nil
         end
-        if protocolVersion ~= self.TRAJECTORY_PROTOCOL_VERSION and protocolVersion ~= self.LEGACY_TRAJECTORY_PROTOCOL_VERSION then
+        if protocolVersion ~= self.TRAJECTORY_PROTOCOL_VERSION then
             return nil
         end
         if not mapID or mapID <= 0 or not timestamp or timestamp <= 0 then
@@ -393,58 +391,6 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
             or type(landingKey) ~= "string" or landingKey == ""
             or type(alertToken) ~= "string" or alertToken == "" then
             return nil
-        end
-        if (protocolVersion == self.LEGACY_TRAJECTORY_PROTOCOL_VERSION)
-            and (type(trajectoryType) ~= "string" or trajectoryType == "") then
-            local legacyParsedMessageType,
-                legacyVersionText,
-                legacyMapIDText,
-                legacyRouteKeyText,
-                legacyRouteFamilyKeyText,
-                legacyLandingKeyText,
-                legacyAlertTokenText,
-                legacyStartXText,
-                legacyStartYText,
-                legacyEndXText,
-                legacyEndYText,
-                legacyTimestampText,
-                legacySampleCountText,
-                legacyStartConfirmedText,
-                legacyEndConfirmedText,
-                legacyStartSourceText,
-                legacyEndSourceText,
-                legacyObservationCountText,
-                legacyVerificationCountText,
-                legacyVerifiedPredictionCountText,
-                legacyContinuityConfirmedText,
-                legacyMergedRouteCountText =
-                payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)$")
-            if legacyParsedMessageType ~= self.TRAJECTORY_MESSAGE_TYPE
-                or tonumber(legacyVersionText) ~= self.LEGACY_TRAJECTORY_PROTOCOL_VERSION then
-                return nil
-            end
-            mapID = tonumber(legacyMapIDText)
-            routeKey = DecodePayloadField(legacyRouteKeyText)
-            routeFamilyKey = DecodePayloadField(legacyRouteFamilyKeyText)
-            landingKey = DecodePayloadField(legacyLandingKeyText)
-            alertToken = DecodePayloadField(legacyAlertTokenText)
-            startX = tonumber(legacyStartXText)
-            startY = tonumber(legacyStartYText)
-            endX = tonumber(legacyEndXText)
-            endY = tonumber(legacyEndYText)
-            timestamp = tonumber(legacyTimestampText)
-            sampleCount = tonumber(legacySampleCountText)
-            startConfirmed = tonumber(legacyStartConfirmedText)
-            endConfirmed = tonumber(legacyEndConfirmedText)
-            startSource = DecodePayloadField(legacyStartSourceText)
-            endSource = DecodePayloadField(legacyEndSourceText)
-            observationCount = tonumber(legacyObservationCountText)
-            verificationCount = tonumber(legacyVerificationCountText)
-            verifiedPredictionCount = tonumber(legacyVerifiedPredictionCountText)
-            continuityConfirmed = tonumber(legacyContinuityConfirmedText)
-            mergedRouteCount = tonumber(legacyMergedRouteCountText)
-            trajectoryType = nil
-            usedLegacyTrajectoryPayload = true
         end
 
         if not startX or not startY or not endX or not endY then
@@ -472,11 +418,7 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
         outState.verifiedPredictionCount = math.max(0, math.floor(verifiedPredictionCount or 0))
         outState.continuityConfirmed = continuityConfirmed == 1
         outState.mergedRouteCount = math.max(1, math.floor(mergedRouteCount or 1))
-        if usedLegacyTrajectoryPayload == true then
-            outState.trajectoryType = "complete"
-        else
-            outState.trajectoryType = trajectoryType == "complete" and "complete" or "fragment"
-        end
+        outState.trajectoryType = trajectoryType == "complete" and "complete" or "fragment"
         return outState
     end
 
@@ -517,11 +459,6 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     if prefix ~= self.ADDON_PREFIX then
         return nil
     end
-    if parsedMessageType == nil then
-        parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
-        timeTypeText = nil
-    end
 
     local protocolVersion = tonumber(versionText)
     local expansionID = DecodePayloadField(expansionIDText)
@@ -554,30 +491,6 @@ function TeamSharedSyncProtocol:ParsePayloadInto(prefix, payload, outState)
     end
 
     if type(timeType) ~= "string" or timeType == "" then
-        parsedMessageType, versionText, expansionIDText, mapIDText, phaseIDText, timestampText, objectGUIDText =
-            payload:match("^([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]*)$")
-        protocolVersion = tonumber(versionText)
-        expansionID = DecodePayloadField(expansionIDText)
-        mapID = tonumber(mapIDText)
-        phaseID = DecodePayloadField(phaseIDText)
-        timestamp = tonumber(timestampText)
-        objectGUID = DecodePayloadField(objectGUIDText)
-        timeType = nil
-    end
-
-    if type(expansionID) ~= "string" or expansionID == "" then
-        return nil
-    end
-    if not mapID or mapID <= 0 then
-        return nil
-    end
-    if type(phaseID) ~= "string" or phaseID == "" then
-        return nil
-    end
-    if not timestamp or timestamp <= 0 then
-        return nil
-    end
-    if type(objectGUID) ~= "string" or objectGUID == "" then
         return nil
     end
 
