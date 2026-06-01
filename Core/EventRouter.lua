@@ -8,6 +8,7 @@ local HiddenSyncDispatcher = BuildEnv("HiddenSyncDispatcher")
 local TickerController = BuildEnv("CrateTrackerZKTickerController")
 local Utils = BuildEnv("Utils")
 local MapTracker = BuildEnv("MapTracker")
+local AirdropTrajectoryService = BuildEnv("AirdropTrajectoryService")
 
 local MONSTER_CHAT_EVENTS = {
     CHAT_MSG_MONSTER_SAY = true,
@@ -24,6 +25,13 @@ local TEAM_ADDON_EVENT = "CHAT_MSG_ADDON"
 local function HandleZoneChanged()
     C_Timer.After(0.1, function()
         local currentMapID = CoreShared:GetCurrentMapID()
+        local targetMapData = MapTracker and MapTracker.GetTargetMapData and MapTracker:GetTargetMapData(currentMapID) or nil
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandlePlayerMapContextChanged then
+            AirdropTrajectoryService:HandlePlayerMapContextChanged(
+                targetMapData,
+                Utils and Utils.GetCurrentTimestamp and Utils:GetCurrentTimestamp() or nil
+            )
+        end
         if Area then
             Area:CheckAndUpdateAreaValid(currentMapID)
         end

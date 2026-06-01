@@ -7,6 +7,7 @@ local AirdropTrajectoryGeometryService = BuildEnv("AirdropTrajectoryGeometryServ
 local AirdropTrajectoryStore = BuildEnv("AirdropTrajectoryStore")
 local AirdropTrajectoryAlertCoordinator = BuildEnv("AirdropTrajectoryAlertCoordinator")
 local AppSettingsStore = BuildEnv("AppSettingsStore")
+local Notification = BuildEnv("Notification")
 local NotificationOutputService = BuildEnv("NotificationOutputService")
 local NotificationQueryService = BuildEnv("NotificationQueryService")
 local Data = BuildEnv("Data")
@@ -94,6 +95,10 @@ AirdropTrajectoryService.TRAJECTORY_SAMPLE_INTERVAL = 0.25
 AirdropTrajectoryService.TRACE_DEBUG_SETTING_KEY = "trajectoryTraceDebugEnabled"
 AirdropTrajectoryService.PREDICTION_ENABLED_SETTING_KEY = "trajectoryPredictionEnabled"
 AirdropTrajectoryService.LEGACY_MATCH_DEBUG_SETTING_KEY = "trajectoryMatchDebugEnabled"
+AirdropTrajectoryService.WAYPOINT_AUTO_CLEAR_ENABLED_SETTING_KEY = "trajectoryWaypointAutoClearEnabled"
+AirdropTrajectoryService.WAYPOINT_AUTO_CLEAR_SECONDS_SETTING_KEY = "trajectoryWaypointAutoClearSeconds"
+AirdropTrajectoryService.DEFAULT_WAYPOINT_AUTO_CLEAR_SECONDS = 180
+AirdropTrajectoryService.WAYPOINT_MATCH_EPSILON = 0.002
 AirdropTrajectoryService.MAX_TRACE_EVENTS = 120
 
 local function NormalizeTraceText(value)
@@ -242,6 +247,68 @@ local function BuildStableCandidateSignature(candidateRoutes)
     return signature
 end
 
+local function ResolveWaypointMapID(waypoint)
+    if type(waypoint) ~= "table" then
+        return nil
+    end
+    if waypoint.GetUiMapID then
+        local ok, value = pcall(waypoint.GetUiMapID, waypoint)
+        if ok and type(value) == "number" then
+            return value
+        end
+    end
+    if type(waypoint.uiMapID) == "number" then
+        return waypoint.uiMapID
+    end
+    return nil
+end
+
+local function ResolveWaypointXY(waypoint)
+    if type(waypoint) ~= "table" then
+        return nil, nil
+    end
+    if waypoint.GetXY then
+        local ok, x, y = pcall(waypoint.GetXY, waypoint)
+        if ok and type(x) == "number" and type(y) == "number" then
+            return x, y
+        end
+    end
+    local position = waypoint.position
+    if type(position) == "table" and position.GetXY then
+        local ok, x, y = pcall(position.GetXY, position)
+        if ok and type(x) == "number" and type(y) == "number" then
+            return x, y
+        end
+    end
+    return nil, nil
+end
+
+local function ClearUserWaypoint()
+    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+        pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, false)
+    end
+    if C_Map and C_Map.ClearUserWaypoint then
+        local ok = pcall(C_Map.ClearUserWaypoint)
+        return ok == true
+    end
+    return false
+end
+
+local function ShouldSuppressLocalTrajectoryMessage()
+    if not Notification
+        or not Notification.IsTeamNotificationEnabled
+        or Notification:IsTeamNotificationEnabled() ~= true then
+        return false
+    end
+
+    if not AirdropTrajectoryAlertCoordinator
+        or not AirdropTrajectoryAlertCoordinator.CanSendVisibleTrajectoryAlerts then
+        return false
+    end
+
+    return AirdropTrajectoryAlertCoordinator:CanSendVisibleTrajectoryAlerts() == true
+end
+
 function AirdropTrajectoryService:Initialize()
     self.isInitialized = true
     self.activeObservationByMap = self.activeObservationByMap or {}
@@ -252,6 +319,133 @@ function AirdropTrajectoryService:Initialize()
         AirdropTrajectoryStore:Initialize()
     end
     return true
+end
+
+function AirdropTrajectoryService:IsWaypointAutoClearEnabled()
+    if AppSettingsStore and AppSettingsStore.GetBoolean then
+        return AppSettingsStore:GetBoolean(self.WAYPOINT_AUTO_CLEAR_ENABLED_SETTING_KEY, true)
+    end
+    return true
+end
+
+function AirdropTrajectoryService:GetWaypointAutoClearSeconds()
+    if AppSettingsStore and AppSettingsStore.GetNumber then
+        local configured = AppSettingsStore:GetNumber(
+            self.WAYPOINT_AUTO_CLEAR_SECONDS_SETTING_KEY,
+            self.DEFAULT_WAYPOINT_AUTO_CLEAR_SECONDS
+        )
+        if type(configured) == "number" and configured > 0 then
+            return configured
+        end
+    end
+    return self.DEFAULT_WAYPOINT_AUTO_CLEAR_SECONDS
+end
+
+function AirdropTrajectoryService:StorePredictionWaypoint(targetMapData, route, currentTime)
+    if type(targetMapData) ~= "table" or type(route) ~= "table" then
+        return false
+    end
+    local runtimeMapId = tonumber(targetMapData.id)
+    local mapID = tonumber(targetMapData.mapID)
+    local endX = tonumber(route.endX)
+    local endY = tonumber(route.endY)
+    if type(runtimeMapId) ~= "number"
+        or type(mapID) ~= "number"
+        or type(endX) ~= "number"
+        or type(endY) ~= "number" then
+        return false
+    end
+
+    self.predictionWaypointState = {
+        runtimeMapId = runtimeMapId,
+        mapID = mapID,
+        endX = endX,
+        endY = endY,
+        setAt = tonumber(currentTime) or Utils:GetCurrentTimestamp(),
+    }
+    return true
+end
+
+function AirdropTrajectoryService:IsCurrentWaypointOwnedByAddon()
+    local state = self.predictionWaypointState
+    if type(state) ~= "table" then
+        return false
+    end
+    if not C_Map then
+        return true
+    end
+    if C_Map.HasUserWaypoint and C_Map.HasUserWaypoint() ~= true then
+        return false
+    end
+    if C_Map.GetUserWaypointPositionForMap then
+        local ok, mapPosition = pcall(C_Map.GetUserWaypointPositionForMap, state.mapID)
+        if ok == true and type(mapPosition) == "table" then
+            local x = tonumber(mapPosition.x)
+            local y = tonumber(mapPosition.y)
+            if type(x) == "number" and type(y) == "number" then
+                local epsilon = tonumber(self.WAYPOINT_MATCH_EPSILON) or 0.002
+                return math.abs(x - state.endX) <= epsilon
+                    and math.abs(y - state.endY) <= epsilon
+            end
+            return nil
+        end
+    end
+    if not C_Map.GetUserWaypoint then
+        return nil
+    end
+
+    local ok, waypoint = pcall(C_Map.GetUserWaypoint)
+    if ok ~= true or type(waypoint) ~= "table" then
+        return nil
+    end
+
+    local mapID = ResolveWaypointMapID(waypoint)
+    local x, y = ResolveWaypointXY(waypoint)
+    if type(mapID) ~= "number" or type(x) ~= "number" or type(y) ~= "number" then
+        return nil
+    end
+
+    local epsilon = tonumber(self.WAYPOINT_MATCH_EPSILON) or 0.002
+    return mapID == state.mapID
+        and math.abs(x - state.endX) <= epsilon
+        and math.abs(y - state.endY) <= epsilon
+end
+
+function AirdropTrajectoryService:ClearPredictionWaypoint(reason)
+    local hadState = type(self.predictionWaypointState) == "table"
+    local ownershipState = hadState == true and self:IsCurrentWaypointOwnedByAddon() or false
+    local shouldClearWaypoint = hadState == true and ownershipState ~= false
+    self.predictionWaypointState = nil
+
+    if shouldClearWaypoint ~= true then
+        return false, reason or "state_cleared"
+    end
+
+    local cleared = ClearUserWaypoint() == true
+    return cleared, reason or "cleared"
+end
+
+function AirdropTrajectoryService:HandlePlayerMapContextChanged(targetMapData, currentTime)
+    if type(self.predictionWaypointState) ~= "table" then
+        return false
+    end
+    if self:IsWaypointAutoClearEnabled() ~= true then
+        return false
+    end
+
+    local now = tonumber(currentTime) or Utils:GetCurrentTimestamp()
+    local waypointState = self.predictionWaypointState
+    if type(targetMapData) ~= "table" or tonumber(targetMapData.id) ~= tonumber(waypointState.runtimeMapId) then
+        local cleared = self:ClearPredictionWaypoint("map_changed")
+        return cleared == true
+    end
+
+    local autoClearSeconds = tonumber(self:GetWaypointAutoClearSeconds()) or self.DEFAULT_WAYPOINT_AUTO_CLEAR_SECONDS
+    if autoClearSeconds > 0 and (now - (tonumber(waypointState.setAt) or now)) >= autoClearSeconds then
+        local cleared = self:ClearPredictionWaypoint("timeout")
+        return cleared == true
+    end
+    return false
 end
 
 function AirdropTrajectoryService:StartSamplingTicker(interval)
@@ -357,6 +551,9 @@ function AirdropTrajectoryService:SetPredictionEnabled(enabled)
         local uiState = AppSettingsStore:GetUIState()
         uiState[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
         uiState[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
+        if normalized ~= true and self.ClearPredictionWaypoint then
+            self:ClearPredictionWaypoint("prediction_disabled")
+        end
         if normalized ~= true
             and AirdropTrajectoryAlertCoordinator
             and AirdropTrajectoryAlertCoordinator.Reset then
@@ -368,6 +565,9 @@ function AirdropTrajectoryService:SetPredictionEnabled(enabled)
     CRATETRACKERZK_UI_DB = type(CRATETRACKERZK_UI_DB) == "table" and CRATETRACKERZK_UI_DB or {}
     CRATETRACKERZK_UI_DB[self.PREDICTION_ENABLED_SETTING_KEY] = normalized
     CRATETRACKERZK_UI_DB[self.LEGACY_MATCH_DEBUG_SETTING_KEY] = nil
+    if normalized ~= true and self.ClearPredictionWaypoint then
+        self:ClearPredictionWaypoint("prediction_disabled")
+    end
     if normalized ~= true
         and AirdropTrajectoryAlertCoordinator
         and AirdropTrajectoryAlertCoordinator.Reset then
@@ -388,6 +588,7 @@ function AirdropTrajectoryService:Reset()
     self.activeObservationByMap = {}
     self.pendingShoutStartByMap = {}
     self.recentFinalizedObservationByMap = {}
+    self:ClearPredictionWaypoint("reset")
     self.isInitialized = false
     self:RefreshSamplingTicker(true)
     return true
@@ -655,6 +856,13 @@ function AirdropTrajectoryService:NotifyPrediction(targetMapData, route)
 
     local message = BuildPredictionMessage(targetMapData, route)
     local waypointSet = SetPredictionWaypoint(targetMapData, route)
+    if waypointSet == true then
+        self:StorePredictionWaypoint(targetMapData, route, Utils:GetCurrentTimestamp())
+    end
+    if ShouldSuppressLocalTrajectoryMessage() == true then
+        return waypointSet == true
+    end
+
     local sentMessage = false
 
     if type(message) == "string" and message ~= "" and NotificationOutputService and NotificationOutputService.SendLocalMessage then
@@ -684,6 +892,9 @@ function AirdropTrajectoryService:NotifyPredictionCandidates(targetMapData, cand
     local announcedCandidateKey = state.localCandidateAlertKey or state.announcedCandidateKey
     if announcedCandidateKey == candidateSignature then
         return false, "candidate_already_announced"
+    end
+    if ShouldSuppressLocalTrajectoryMessage() == true then
+        return false, "suppressed_for_team_chat"
     end
 
     local message = BuildPredictionCandidatesMessage(targetMapData, candidateRoutes)

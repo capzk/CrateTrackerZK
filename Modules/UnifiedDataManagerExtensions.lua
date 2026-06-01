@@ -299,10 +299,14 @@ function UnifiedDataManager:NotifySharedDisplayApplied(mapId, sharedRecord)
         state.lastNotifiedRecordKey = sharedRecord.recordKey;
     end
 
+    local coordinatedSharedDisplay = false;
     if PhaseTeamAlertCoordinator and PhaseTeamAlertCoordinator.HandleSharedDisplayActivated then
-        PhaseTeamAlertCoordinator:HandleSharedDisplayActivated(mapId, sharedRecord);
+        coordinatedSharedDisplay = PhaseTeamAlertCoordinator:HandleSharedDisplayActivated(mapId, sharedRecord) == true;
     end
-    if isFirstNotifyForRecord and Notification and Notification.NotifySharedPhaseSyncApplied then
+    if isFirstNotifyForRecord
+        and coordinatedSharedDisplay ~= true
+        and Notification
+        and Notification.NotifySharedPhaseSyncApplied then
         Notification:NotifySharedPhaseSyncApplied(mapId, sharedRecord);
     end
     if UIRefreshCoordinator and UIRefreshCoordinator.RequestRowRefresh then

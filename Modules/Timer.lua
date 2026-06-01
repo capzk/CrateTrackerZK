@@ -235,6 +235,9 @@ function TimerManager:HandleMapContextChanged(currentMapID, targetMapData, curre
     local now = currentTime or getCurrentTimestamp();
     local resolvedTargetMapData = targetMapData or MapTracker:GetTargetMapData(playerMapID);
     if not resolvedTargetMapData then
+        if AirdropTrajectoryService and AirdropTrajectoryService.HandlePlayerMapContextChanged then
+            AirdropTrajectoryService:HandlePlayerMapContextChanged(nil, now);
+        end
         local clearedState = MapTracker.ClearCurrentMapState and MapTracker:ClearCurrentMapState(playerMapID) or nil;
         local oldMapId = clearedState and clearedState.oldMapId or nil;
         if AirdropTrajectoryService and AirdropTrajectoryService.HandleMapSwitch and oldMapId then
@@ -244,6 +247,10 @@ function TimerManager:HandleMapContextChanged(currentMapID, targetMapData, curre
         self:DiscardPendingAuthoritativeShout(oldMapId, true);
         self.mapSwitchGuardState = nil;
         return nil, nil;
+    end
+
+    if AirdropTrajectoryService and AirdropTrajectoryService.HandlePlayerMapContextChanged then
+        AirdropTrajectoryService:HandlePlayerMapContextChanged(resolvedTargetMapData, now);
     end
 
     local mapChangeState = MapTracker.OnMapChanged and MapTracker:OnMapChanged(playerMapID, resolvedTargetMapData, now) or nil;

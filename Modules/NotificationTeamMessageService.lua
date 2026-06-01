@@ -42,6 +42,14 @@ local function BuildCandidateEntry(mapId, index, endX, endY)
     }
 end
 
+local function BuildSharedPhaseSyncAppliedMessage(mapId)
+    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil
+    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
+    return NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
+        and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
+        or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName)
+end
+
 local function ResolveStandardVisibleChatType(notification)
     if type(notification) ~= "table"
         or not notification.IsTeamNotificationEnabled
@@ -60,6 +68,14 @@ local function ResolveStandardVisibleChatType(notification)
         or nil
 end
 
+local function CanSendPhaseFollowupTeamMessage(notification)
+    return type(notification) == "table"
+        and notification.IsTeamNotificationEnabled
+        and notification:IsTeamNotificationEnabled() == true
+        and notification.IsPhaseTeamAlertEnabled
+        and notification:IsPhaseTeamAlertEnabled() == true
+end
+
 function NotificationTeamMessageService:NotifySharedPhaseSyncApplied(notification, mapId, sharedRecord)
     if not notification.isInitialized then
         notification:Initialize()
@@ -68,11 +84,16 @@ function NotificationTeamMessageService:NotifySharedPhaseSyncApplied(notificatio
         return false
     end
 
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
-    local message = NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
-        and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
-        or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName)
+    local message = BuildSharedPhaseSyncAppliedMessage(mapId)
+    local visibleChatType = CanSendPhaseFollowupTeamMessage(notification) == true
+        and ResolveStandardVisibleChatType(notification)
+        or nil
+    if type(visibleChatType) == "string" and visibleChatType ~= "" then
+        return NotificationOutputService
+            and NotificationOutputService.SendTeamMessage
+            and NotificationOutputService:SendTeamMessage(message, visibleChatType) == true
+            or false
+    end
 
     return NotificationOutputService
         and NotificationOutputService.SendLocalMessage
@@ -87,17 +108,16 @@ function NotificationTeamMessageService:SendSharedPhaseSyncAppliedTeamMessage(no
     if type(mapId) ~= "number" or type(sharedRecord) ~= "table" then
         return false
     end
+    if CanSendPhaseFollowupTeamMessage(notification) ~= true then
+        return false
+    end
 
     local visibleChatType = ResolveStandardVisibleChatType(notification)
     if type(visibleChatType) ~= "string" or visibleChatType == "" then
         return false
     end
 
-    local mapData = Data and Data.GetMap and Data:GetMap(mapId) or nil
-    local mapName = Data and Data.GetMapDisplayName and Data:GetMapDisplayName(mapData) or tostring(mapId)
-    local message = NotificationQueryService and NotificationQueryService.BuildSharedPhaseSyncAppliedMessage
-        and NotificationQueryService:BuildSharedPhaseSyncAppliedMessage(mapName)
-        or string.format((L and L["SharedPhaseSyncApplied"]) or "Acquired the latest shared airdrop info for the current phase in [%s].", mapName)
+    local message = BuildSharedPhaseSyncAppliedMessage(mapId)
 
     return NotificationOutputService
         and NotificationOutputService.SendTeamMessage
@@ -110,6 +130,9 @@ function NotificationTeamMessageService:SendTimeRemainingTeamMessage(notificatio
         notification:Initialize()
     end
     if type(mapId) ~= "number" then
+        return false
+    end
+    if CanSendPhaseFollowupTeamMessage(notification) ~= true then
         return false
     end
 

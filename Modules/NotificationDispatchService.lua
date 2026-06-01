@@ -211,7 +211,12 @@ function NotificationDispatchService:NotifyMapRefresh(notification, mapData, isA
         end
     end
 
-    local chatType = notification.GetTeamChatType and notification:GetTeamChatType() or nil
+    local teamNotificationEnabled = notification.IsTeamNotificationEnabled
+        and notification:IsTeamNotificationEnabled() == true
+    local chatType = teamNotificationEnabled
+        and notification.GetTeamChatType
+        and notification:GetTeamChatType()
+        or nil
     if chatType then
         local visibleChatType = NotificationOutputService
             and NotificationOutputService.GetManualAirdropChatType
