@@ -201,7 +201,6 @@ function AddonRuntimeCoordinator:BootstrapOnLogin()
         if CrateTrackerZK and CrateTrackerZK.CreateFloatingButton then
             CrateTrackerZK:CreateFloatingButton()
         end
-        Logger:Warn("Core", "状态", "插件处于关闭状态，已跳过初始化")
         return true
     end
 
