@@ -3,6 +3,7 @@
 local TeamCommMessageService = BuildEnv("TeamCommMessageService")
 local TeamCommMapCache = BuildEnv("TeamCommMapCache")
 local AirdropEventService = BuildEnv("AirdropEventService")
+local CoreShared = BuildEnv("CrateTrackerZKCoreShared")
 local IconDetector = BuildEnv("IconDetector")
 local UnifiedDataManager = BuildEnv("UnifiedDataManager")
 local TimerManager = BuildEnv("TimerManager")
@@ -122,11 +123,13 @@ local function ResolveSyncContext(listener, mapID, sender, outContext)
     local persistentState = UnifiedDataManager and UnifiedDataManager.GetPersistentAirdropStateInto
         and UnifiedDataManager:GetPersistentAirdropStateInto(mapData.id, outContext.persistentStateBuffer)
         or nil
+    local currentMapID = CoreShared and CoreShared.GetCurrentMapID and CoreShared:GetCurrentMapID() or nil
     outContext.mapId = mapData.id
     outContext.mapID = numericMapID
     outContext.mapData = mapData
     outContext.mapName = mapName
     outContext.persistentState = persistentState
+    outContext.isStrictCurrentMapMatch = type(currentMapID) == "number" and currentMapID == numericMapID
     outContext.currentTime = Utils:GetCurrentTimestamp()
     outContext.sender = sender
     return outContext
@@ -156,6 +159,11 @@ function TeamCommMessageService:ProcessConfirmedSync(listener, syncState, _, sen
         eventTimestamp = syncTimestamp,
         objectGUID = incomingGUID,
     })
+
+    -- 同图场景只记录可见消息窗口，不允许队友同步覆盖本地确认状态。
+    if context.isStrictCurrentMapMatch == true then
+        return true
+    end
 
     -- 确认状态采用“同事件最早时间优先、跨事件仅接受更新事件”的规则：
     -- 1. 同 objectGUID 视为同一空投事件，若收到更早时间则允许回写修正；
