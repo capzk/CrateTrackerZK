@@ -69,6 +69,7 @@ ExpansionConfig.expansions = {
             { id = 1203, mapID = 2405, order = 3 },
             { id = 1204, mapID = 2444, order = 4 },
             { id = 1205, mapID = 2413, order = 5 },
+            { id = 1206, mapID = 2512, order = 6 },
         },
     },
 }

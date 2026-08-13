@@ -13,9 +13,11 @@
 Release/
 prod/
 
+# 尚未整理完成的项目文档
+docs/
+
 # IDE 文件
 .vscode/
 .idea/
 *.swp
 *.swo
-
