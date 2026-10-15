@@ -1,5 +1,5 @@
-## Interface: 120100
-## Version: v2.0.24
+## Interface: 120105, 120100
+## Version: v2.0.25
 ## Title: CrateTrackerZK
 ## Author: capzk
 ## IconTexture: Interface\Icons\Achievement_pvp_h_14
